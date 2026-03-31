@@ -1,0 +1,555 @@
+﻿<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>POS Restaurante</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section id="moduleLauncher" class="module-launcher">
+      <div class="module-launcher-card">
+        <p class="module-launcher-tag">Sistema Principal</p>
+        <h1>Seleccion de Modulo</h1>
+        <p class="module-launcher-subtitle">Elige el area con la que deseas trabajar.</p>
+        <div class="module-grid">
+          <button id="moduleRestaurantBtn" type="button" class="module-btn module-btn-restaurant">
+            <span class="module-btn-title">Modulo Restaurante</span>
+            <span class="module-btn-desc">Tomar ordenes, mesas, caja y operaciones.</span>
+          </button>
+          <button id="moduleReceptionBtn" type="button" class="module-btn module-btn-disabled">
+            <span class="module-btn-title">Modulo Recepcion</span>
+            <span class="module-btn-desc">Proximamente.</span>
+          </button>
+          <button id="moduleCrmBtn" type="button" class="module-btn module-btn-disabled">
+            <span class="module-btn-title">Modulo CRM</span>
+            <span class="module-btn-desc">Proximamente.</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <header id="restaurantHeader" class="hidden">
+      <h1>POS Restaurante</h1>
+      <div class="toolbar">
+        <label class="toolbar-picker">
+          Mesero:
+          <select id="waiterSelect"></select>
+        </label>
+        <label class="toolbar-picker">
+          Caja:
+          <select id="cashierSelect"></select>
+        </label>
+        <label class="toolbar-picker">
+          Centro:
+          <select id="centerSelect"></select>
+        </label>
+        <span id="terminalIpText"></span>
+        <button id="backToModulesBtn" type="button">Modulos</button>
+        <button id="restaurantHomeBtn" type="button">Inicio</button>
+      </div>
+    </header>
+
+    <main id="restaurantMain" class="hidden">
+      <section id="restaurantHomeView" class="panel home-panel">
+        <div class="view-header">
+          <h2>Inicio Restaurante</h2>
+          <span class="home-hint">Accesos principales</span>
+        </div>
+        <div class="home-grid">
+          <button id="openTablesFromHomeBtn" type="button" class="home-card home-card-tables">
+            <span class="home-card-title">Mesas</span>
+            <span class="home-card-desc">Ver mapa de mesas y cuentas activas.</span>
+          </button>
+          <button id="openCashierFromHomeBtn" type="button" class="home-card home-card-cashier">
+            <span class="home-card-title">Caja y Cobros</span>
+            <span class="home-card-desc">Buscar cuentas, cobrar y cerrar.</span>
+          </button>
+          <button id="openSettingsFromHomeBtn" type="button" class="home-card home-card-settings">
+            <span class="home-card-title">Configuraciones</span>
+            <span class="home-card-desc">Catalogos, productos, mesas y pagos.</span>
+          </button>
+          <button id="openOpsFromHomeBtn" type="button" class="home-card home-card-ops">
+            <span class="home-card-title">Operaciones</span>
+            <span class="home-card-desc">Turnos, caja y accesos administrativos.</span>
+          </button>
+        </div>
+        <div class="home-ambience-wrap">
+          <h3>Ambiente Visual</h3>
+          <div class="home-ambience-row">
+            <button id="ambienceDefaultBtn" type="button">Clasico</button>
+            <button id="ambienceWarmBtn" type="button">Calido</button>
+            <button id="ambienceCoolBtn" type="button">Frio</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="tablesView" class="panel tables-panel">
+        <div class="view-header">
+          <h2>Mesas</h2>
+          <button id="backHomeFromTablesBtn" type="button">Inicio</button>
+        </div>
+        <div id="tablesGrid" class="tables-grid"></div>
+      </section>
+
+      <section id="accountPickerView" class="panel hidden">
+        <div class="view-header">
+          <h2 id="accountPickerTitle">Selecciona una cuenta</h2>
+          <button id="createAccountFromPickerBtn" type="button">Nueva Cuenta</button>
+        </div>
+        <div id="accountPickerCards" class="tabs"></div>
+      </section>
+
+      <section id="serviceView" class="service-view hidden">
+        <section class="panel order-panel">
+          <div class="view-header">
+            <button id="backToTablesBtn" type="button">Volver a Mesas</button>
+            <div class="order-title-stack">
+              <h2 id="orderTitle">Cuenta</h2>
+              <div id="orderWaiterText" class="order-waiter-text">Mesero: -</div>
+            </div>
+          </div>
+          <div id="orderList" class="order-list"></div>
+          <div class="totals">
+            <div>Subtotal: <strong id="subtotalText">$0.00</strong></div>
+            <div>Descuento: <strong id="discountText">$0.00</strong></div>
+            <div>Propina: <strong id="tipText">$0.00</strong></div>
+            <div>Total: <strong id="totalText">$0.00</strong></div>
+            <div>Pagado: <strong id="paidText">$0.00</strong></div>
+            <div>Pendiente: <strong id="pendingText">$0.00</strong></div>
+          </div>
+        </section>
+
+        <section class="panel menu-panel">
+          <h2>Menu</h2>
+          <div id="categoriesRow" class="row-wrap"></div>
+          <div id="productsRow" class="row-wrap"></div>
+          <div id="productBuilder" class="product-builder hidden"></div>
+          <div id="menuQuickActions" class="menu-quick-actions">
+            <button id="menuFunctionsBtn" type="button" class="menu-functions-btn">Funciones</button>
+            <button id="menuPrecheckBtn" type="button" class="menu-precheck-btn">Pre Cuenta</button>
+            <button id="menuPayTableBtn" type="button" class="menu-pay-btn">Pagar Mesa</button>
+            <button id="menuSendOrderBtn" type="button" class="menu-send-btn">Enviar Pedido</button>
+          </div>
+        </section>
+      </section>
+
+      <section id="settingsView" class="panel hidden">
+        <div class="view-header">
+          <h2>Configuraciones</h2>
+          <button id="backFromSettingsBtn" type="button">Volver</button>
+        </div>
+
+        <div class="line">
+          <button id="cfgNavProductsBtn" type="button">Platillos</button>
+          <button id="cfgNavModifiersBtn" type="button">Guarniciones y Pasos</button>
+          <button id="cfgNavDiscountsBtn" type="button">Tipos de Descuento</button>
+          <button id="cfgNavOpsBtn" type="button">Mesas y Pagos</button>
+        </div>
+
+        <div class="settings-grid">
+          <section id="cfgOpsSection" class="settings-block cfg-section">
+            <h3>Categorias de Platillos</h3>
+            <div class="line">
+              <input id="cfgCategoryNameInput" type="text" placeholder="Nombre categoria (Ej: Bebidas Calientes)" />
+              <label><input id="cfgCategoryActiveInput" type="checkbox" checked /> Activa</label>
+              <input id="cfgCategorySortInput" type="number" min="0" value="1" />
+              <button id="cfgAddCategoryBtn" type="button">Crear Categoria</button>
+            </div>
+            <div id="cfgCategoriesList" class="order-list cfg-list"></div>
+
+            <h3>Areas</h3>
+            <div class="line">
+              <input id="cfgAreaNameInput" type="text" placeholder="Nombre area (Ej: Terraza)" />
+              <label><input id="cfgAreaActiveInput" type="checkbox" checked /> Activa</label>
+              <input id="cfgAreaSortInput" type="number" min="0" value="1" />
+              <button id="cfgAddAreaBtn" type="button">Crear Area</button>
+            </div>
+            <div id="cfgAreasList" class="order-list cfg-list"></div>
+
+            <h3>Centro de Operacion</h3>
+            <div class="line">
+              <input id="cfgCenterNameInput" type="text" placeholder="Nombre centro (Ej: Sucursal Zona 10)" />
+              <select id="cfgCenterAreaSelect"></select>
+              <input id="cfgCenterTableCountInput" type="number" min="0" value="0" placeholder="No. mesas" />
+              <input id="cfgCenterTablePrefixInput" type="text" value="M" placeholder="Prefijo" />
+              <button id="cfgAddCenterBtn" type="button">Crear Centro</button>
+            </div>
+            <div id="cfgCentersList" class="order-list cfg-list"></div>
+            <div class="line">
+              <select id="cfgTerminalCenterSelect"></select>
+              <input id="cfgTerminalLabelInput" type="text" placeholder="Etiqueta PC (opcional)" />
+              <button id="cfgBindThisPcBtn" type="button">Asignar Esta PC al Centro</button>
+            </div>
+            <div id="cfgTerminalBindingsList" class="order-list cfg-list"></div>
+
+            <h3>Productos por Centro</h3>
+            <div class="line">
+              <select id="cfgCenterProductCenterSelect"></select>
+              <select id="cfgCenterProductSelect"></select>
+              <label><input id="cfgCenterProductEnabledInput" type="checkbox" checked /> Habilitado</label>
+              <button id="cfgSaveCenterProductBtn" type="button">Guardar Producto/Centro</button>
+            </div>
+            <div id="cfgCenterProductsList" class="order-list cfg-list"></div>
+
+            <h3>Mesas</h3>
+            <div class="line">
+              <select id="cfgAreaSelect"></select>
+              <select id="cfgTableCenterSelect"></select>
+              <input id="cfgTableCodeInput" type="text" placeholder="Codigo mesa (M10)" />
+              <input id="cfgTableSeatsInput" type="number" min="1" value="4" />
+              <button id="cfgAddTableBtn" type="button">Crear Mesa</button>
+            </div>
+            <div id="cfgTablesList" class="order-list cfg-list"></div>
+          </section>
+
+          <section class="settings-block">
+            <h3>Formas de Pago</h3>
+            <div class="line">
+              <input id="cfgPaymentCodeInput" type="text" placeholder="Codigo (ej: cash, visa, cxc_empresa)" />
+              <input id="cfgPaymentLabelInput" type="text" placeholder="Nombre visible" />
+              <label><input id="cfgPaymentActiveInput" type="checkbox" checked /> Activo</label>
+              <input id="cfgPaymentSortInput" type="number" min="0" value="1" />
+              <button id="cfgSavePaymentBtn" type="button">Guardar</button>
+            </div>
+            <div id="cfgPaymentsList" class="order-list cfg-list"></div>
+
+            <h3>Propina</h3>
+            <div class="line">
+              <input id="cfgTipPercentInput" type="number" min="0" max="100" step="0.01" placeholder="Porcentaje propina" />
+              <button id="cfgSaveTipBtn" type="button">Guardar Propina</button>
+            </div>
+          </section>
+
+          <section id="cfgProductsSection" class="settings-block cfg-section hidden">
+            <h3>Gestion de Platillos</h3>
+            
+            <!-- Modo: Listar/Editar o Crear Nuevo -->
+            <div class="line">
+              <button id="cfgProductsViewListBtn" class="tab-btn tab-active">Ver Platillos</button>
+              <button id="cfgProductsViewCreateBtn" class="tab-btn">Crear Nuevo</button>
+            </div>
+
+            <!-- Vista: Lista de platillos -->
+            <div id="cfgProductsListView" class="cfg-products-layout">
+              <div class="cfg-products-form">
+                <div class="line">
+                  <input id="cfgProductSearchInput" type="text" placeholder="Buscar platillo..." />
+                </div>
+              </div>
+              <div class="cfg-products-list-wrap">
+                <div id="cfgProductsList" class="order-list cfg-list"></div>
+              </div>
+            </div>
+
+            <!-- Vista: Crear nuevo platillo con wizard -->
+            <div id="cfgProductsCreateView" class="cfg-wizard hidden">
+              <div class="wizard-step" id="wizardStep1">
+                <h4>Paso 1: Informacion Basica del Platillo</h4>
+                <div class="wizard-form-grid">
+                  <div class="wizard-field">
+                    <label for="wizardCategorySelect">Categoria</label>
+                    <select id="wizardCategorySelect"></select>
+                  </div>
+                  <div class="wizard-field">
+                    <label for="wizardProductTypeSelect">Tipo de platillo</label>
+                    <select id="wizardProductTypeSelect"></select>
+                  </div>
+                  <div class="wizard-field wizard-field-full">
+                    <label for="wizardProductNameInput">Nombre del platillo</label>
+                    <input id="wizardProductNameInput" type="text" placeholder="Ej: Filete de Pollo a la Plancha" />
+                  </div>
+                  <div class="wizard-field">
+                    <label for="wizardProductPriceInput">Precio base</label>
+                    <input id="wizardProductPriceInput" type="number" min="0" step="0.01" placeholder="0.00" />
+                  </div>
+                  <div class="wizard-field wizard-field-checkbox">
+                    <label class="wizard-checkbox-row">
+                      <input id="wizardAllowDiscountInput" type="checkbox" checked />
+                      <span>Permite descuento</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="line wizard-actions">
+                  <button type="button" id="wizardNextStep1Btn" class="btn-primary">Siguiente > Atributos</button>
+                </div>
+              </div>
+
+              <div class="wizard-step hidden" id="wizardStep2">
+                <h4>Paso 2: Selecciona los Atributos del Platillo</h4>
+                <p class="wizard-hint">Se muestran solo los grupos segun el tipo seleccionado</p>
+                <div id="wizardModifierGroupsContainer" class="modifier-groups-grid"></div>
+                <div class="line wizard-actions">
+                  <button type="button" id="wizardBackStep2Btn">< Atras</button>
+                  <button type="button" id="wizardNextStep2Btn" class="btn-primary">Siguiente > Verificar</button>
+                </div>
+              </div>
+
+              <div class="wizard-step hidden" id="wizardStep3">
+                <h4>Paso 3: Verificar y Crear</h4>
+                <div id="wizardSummary" class="wizard-summary"></div>
+                <div class="line wizard-actions">
+                  <button type="button" id="wizardBackStep3Btn">< Atras</button>
+                  <button type="button" id="wizardCreateBtn" class="btn-primary btn-success">Crear Platillo</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="cfgModifiersSection" class="settings-block cfg-section hidden">
+            <h3>Armar Plato (Paso 1, 2, 3...)</h3>
+            <div class="line cfg-mod-row cfg-mod-row-group">
+              <select id="cfgGroupTemplateTypeSelect">
+                <option value="other">Plantilla: Personalizada</option>
+                <option value="garnish">Plantilla: Guarniciones</option>
+                <option value="preparation">Plantilla: Metodo Preparacion</option>
+                <option value="sauce">Plantilla: Salsas</option>
+                <option value="meat_term">Plantilla: Termino de Carne</option>
+                <option value="milk_type">Plantilla: Tipo de Leche</option>
+                <option value="beverage_temp">Plantilla: Temperatura de Bebida</option>
+                <option value="ice">Plantilla: Hielo</option>
+              </select>
+              <input id="cfgGroupNameInput" type="text" placeholder="Nombre del paso (Ej: Guarniciones)" />
+              <input id="cfgGroupMinInput" type="number" min="0" value="0" />
+              <input id="cfgGroupMaxInput" type="number" min="1" value="1" />
+              <input id="cfgGroupSortInput" type="number" min="0" value="1" />
+              <button id="cfgAddGroupBtn" type="button">Crear Paso</button>
+            </div>
+            <div class="line cfg-mod-row cfg-mod-row-template">
+              <input
+                id="cfgGroupQuickOptionsInput"
+                type="text"
+                placeholder="Opciones plantilla separadas por coma (Ej: Frio, Caliente, Tibio)"
+              />
+              <button id="cfgCreateGroupTemplateBtn" type="button">Crear Plantilla + Opciones</button>
+            </div>
+            <div class="line cfg-mod-row cfg-mod-row-option">
+              <select id="cfgOptionGroupSelect"></select>
+              <input id="cfgOptionNameInput" type="text" placeholder="Opcion (Arroz, Vegetales, Salsa...)" />
+              <input id="cfgOptionPriceInput" type="number" step="0.01" value="0" />
+              <input id="cfgOptionSortInput" type="number" min="0" value="1" />
+              <button id="cfgAddOptionBtn" type="button">Agregar Opcion</button>
+            </div>
+            <div class="line cfg-mod-row cfg-mod-row-assign">
+              <select id="cfgStepProductSelect"></select>
+              <select id="cfgStepGroupSelect"></select>
+              <input id="cfgStepSortInput" type="number" min="0" value="1" />
+              <button id="cfgAssignStepBtn" type="button">Asignar Paso al Plato</button>
+            </div>
+            <div id="cfgGroupsList" class="order-list cfg-list"></div>
+          </section>
+
+          <section id="cfgDiscountsSection" class="settings-block cfg-section hidden">
+            <h3>Tipos de Descuento</h3>
+            <div class="line">
+              <input id="cfgDiscountPresetNameInput" type="text" placeholder="Nombre (Ej: Promo Almuerzo)" />
+              <select id="cfgDiscountPresetTypeSelect">
+                <option value="percent">Porcentaje</option>
+                <option value="fixed">Monto fijo</option>
+              </select>
+              <input id="cfgDiscountPresetValueInput" type="number" min="0" step="0.01" placeholder="Valor" />
+              <label><input id="cfgDiscountPresetActiveInput" type="checkbox" checked /> Activo</label>
+              <input id="cfgDiscountPresetSortInput" type="number" min="0" value="1" />
+              <button id="cfgAddDiscountPresetBtn" type="button">Guardar Tipo</button>
+            </div>
+            <div id="cfgDiscountPresetsList" class="order-list cfg-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="cashierView" class="panel hidden">
+        <div class="view-header">
+          <h2>Caja y Cobros</h2>
+          <button id="backFromCashierBtn" type="button">Volver</button>
+        </div>
+        <div class="line">
+          <input id="cashierCheckInput" type="text" placeholder="Numero de check (ej: CHK-123...)" />
+          <button id="findByCheckBtn" type="button">Buscar por Check</button>
+          <input id="cashierAccountIdInput" type="number" min="1" placeholder="ID Cuenta" />
+          <button id="findByAccountIdBtn" type="button">Buscar por ID</button>
+        </div>
+        <h3 id="cashierAccountTitle">Cuenta no cargada</h3>
+        <div id="cashierOrderList" class="order-list"></div>
+        <div class="totals">
+          <div>Subtotal: <strong id="cashSubtotalText">Q 0.00</strong></div>
+          <div>Descuento: <strong id="cashDiscountText">Q 0.00</strong></div>
+          <div>Propina: <strong id="cashTipText">Q 0.00</strong></div>
+          <div>Total: <strong id="cashTotalText">Q 0.00</strong></div>
+          <div>Pagado: <strong id="cashPaidText">Q 0.00</strong></div>
+          <div>Pendiente: <strong id="cashPendingText">Q 0.00</strong></div>
+        </div>
+        <div class="line">
+          <select id="cashDiscountType">
+            <option value="percent">Descuento %</option>
+            <option value="fixed">Descuento fijo</option>
+          </select>
+          <input id="cashDiscountValue" type="number" min="0" step="0.01" placeholder="Valor descuento" />
+          <button id="cashAddDiscountBtn" type="button">Aplicar Descuento</button>
+        </div>
+        <div class="line">
+          <select id="cashPaymentMethod"></select>
+          <input id="cashPaymentAmount" type="number" min="0" step="0.01" placeholder="Monto pago" />
+          <button id="cashAddPaymentBtn" type="button">Agregar Pago</button>
+          <button id="cashCloseAccountBtn" type="button">Cerrar Cuenta</button>
+          <button id="cashCloseShiftBtn" type="button">Cerrar Turno</button>
+        </div>
+      </section>
+
+      <section id="opsView" class="panel hidden">
+        <div class="view-header">
+          <h2>Operaciones</h2>
+          <button id="closeOpsBtn" type="button">Volver</button>
+        </div>
+        <div class="line">
+          <button id="openShiftBtn">Abrir Turno</button>
+          <button id="closeShiftBtn">Cerrar Turno</button>
+          <button id="openCashierBtn" type="button">Caja</button>
+          <button id="openSettingsBtn" type="button">Configuraciones</button>
+        </div>
+      </section>
+    </main>
+
+    <div id="toastHost" class="toast-host" aria-live="polite" aria-atomic="true"></div>
+
+    <div id="uiModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-card">
+        <h3 id="modalTitle">Mensaje</h3>
+        <p id="modalMessage"></p>
+        <input id="modalInput" type="text" class="hidden" />
+        <div class="modal-actions">
+          <button id="modalCancelBtn" type="button">Cancelar</button>
+          <button id="modalOkBtn" type="button">Aceptar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="countPickerModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="countPickerTitle">
+      <div class="modal-card count-picker-card">
+        <h3 id="countPickerTitle">Cantidad</h3>
+        <p id="countPickerMessage"></p>
+        <input id="countPickerInput" type="number" min="1" step="1" />
+        <div id="countPickerQuickButtons" class="count-picker-grid"></div>
+        <div class="modal-actions">
+          <button id="countPickerCancelBtn" type="button">Cancelar</button>
+          <button id="countPickerOkBtn" type="button">Aceptar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="payTableModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="payTableTitle">
+      <div class="modal-card pay-table-card">
+        <h3 id="payTableTitle">Pagar Mesa</h3>
+        <p id="payTableSummaryText">Cuenta</p>
+        <div class="pay-table-totals">
+          <div>Total cuenta: <strong id="payTableTotalText">Q 0.00</strong></div>
+          <div>Pagado: <strong id="payTablePaidText">Q 0.00</strong></div>
+          <div>Pendiente: <strong id="payTablePendingText">Q 0.00</strong></div>
+        </div>
+        <div class="pay-table-line">
+          <button id="payTableAddLineBtn" type="button">Agregar Forma de Pago</button>
+        </div>
+        <div id="payTableLines" class="pay-table-lines"></div>
+        <div class="pay-table-preview">
+          <div>Total a aplicar: <strong id="payTableApplyTotalText">Q 0.00</strong></div>
+          <div>Total recibido: <strong id="payTableReceivedTotalText">Q 0.00</strong></div>
+          <div>Cambio: <strong id="payTableChangeText">Q 0.00</strong></div>
+        </div>
+        <div id="payTableChangeBreakdown" class="pay-table-breakdown hidden"></div>
+        <div class="pay-table-tendered">
+          <label for="payTableTenderedInput">Me pagaron con (efectivo)</label>
+          <input id="payTableTenderedInput" type="number" min="0" step="0.01" placeholder="Ej: 200.00" />
+          <div>Vuelto sobre pendiente: <strong id="payTableTenderedChangeText">Q 0.00</strong></div>
+        </div>
+        <div id="payTableTenderedBreakdown" class="pay-table-breakdown hidden"></div>
+        <div class="modal-actions">
+          <button id="payTableRemoveTipBtn" type="button">Quitar Propina</button>
+          <button id="payTableCancelBtn" type="button">Cancelar</button>
+          <button id="payTableApplyBtn" type="button">Aplicar Pagos</button>
+          <button id="payTableApplyCloseBtn" type="button">Pagar y Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="functionsModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="functionsTitle">
+      <div class="modal-card functions-card">
+        <h3 id="functionsTitle">Funciones de Cuenta</h3>
+        <p id="functionsSummaryText">Mesa / Cuenta</p>
+
+        <div id="functionsMenuSection">
+          <div class="functions-grid">
+            <button id="functionsMoveSeatBtn" type="button">Cambiar Silla de Platillo</button>
+            <button id="functionsSeatSummaryBtn" type="button">Cuenta por Silla</button>
+            <button id="functionsSplitAccountsBtn" type="button">Separar Cuentas</button>
+          </div>
+          <div class="modal-actions">
+            <button id="functionsCloseBtn" type="button">Cerrar</button>
+          </div>
+        </div>
+
+        <div id="functionsMoveSeatSection" class="hidden">
+          <div class="functions-form">
+            <label for="functionsMoveSeatItemSelect">Platillos (puedes seleccionar varios)</label>
+            <select id="functionsMoveSeatItemSelect" multiple size="8"></select>
+            <label for="functionsMoveSeatInput">Nueva silla</label>
+            <input id="functionsMoveSeatInput" type="number" min="1" step="1" />
+          </div>
+          <div class="modal-actions">
+            <button id="functionsMoveSeatBackBtn" type="button">Atras</button>
+            <button id="functionsMoveSeatApplyBtn" type="button">Aplicar Cambio</button>
+          </div>
+        </div>
+
+        <div id="functionsSeatSummarySection" class="hidden">
+          <div class="functions-seat-actions">
+            <button id="functionsSeatSummaryPrintAllBtn" type="button">Imprimir Todas las Sillas (80mm)</button>
+          </div>
+          <div id="functionsSeatSummaryList" class="functions-seat-list"></div>
+          <div class="functions-seat-total">Total de la cuenta: <strong id="functionsSeatSummaryTotal">Q 0.00</strong></div>
+          <div class="modal-actions">
+            <button id="functionsSeatSummaryBackBtn" type="button">Atras</button>
+            <button id="functionsSeatSummaryCloseBtn" type="button">Cerrar</button>
+          </div>
+        </div>
+
+        <div id="functionsSplitAccountsSection" class="hidden">
+          <div class="functions-split-top">
+            <label for="functionsSplitSourceAccountSelect">Cuenta Origen</label>
+            <select id="functionsSplitSourceAccountSelect"></select>
+            <button id="functionsSplitAddAccountBtn" type="button">Nueva Cuenta Vacia</button>
+            <button id="functionsSplitRefreshBtn" type="button">Refrescar</button>
+          </div>
+          <div id="functionsSplitAccountsBoard" class="functions-split-board"></div>
+          <div class="functions-split-move">
+            <h4>Mover por Silla</h4>
+            <label for="functionsSplitSeatSelect">Silla</label>
+            <select id="functionsSplitSeatSelect"></select>
+            <label for="functionsSplitSeatTargetSelect">Cuenta Destino</label>
+            <select id="functionsSplitSeatTargetSelect"></select>
+            <button id="functionsSplitMoveSeatBtn" type="button">Mover Silla</button>
+          </div>
+          <div class="functions-split-move">
+            <h4>Mover Platillo</h4>
+            <label for="functionsSplitItemSelect">Platillo</label>
+            <select id="functionsSplitItemSelect"></select>
+            <label for="functionsSplitItemQtyInput">Cantidad a mover</label>
+            <input id="functionsSplitItemQtyInput" type="number" min="0.01" step="0.01" placeholder="Ej: 1 o 0.50" />
+            <label for="functionsSplitItemTargetSelect">Cuenta Destino</label>
+            <select id="functionsSplitItemTargetSelect"></select>
+            <button id="functionsSplitMoveItemBtn" type="button">Mover Platillo</button>
+          </div>
+          <div class="functions-split-share">
+            <button id="functionsSplitShareEqualBtn" type="button">Compartir 1/N entre cuentas</button>
+            <span>N = numero de cuentas abiertas en esta mesa</span>
+          </div>
+          <div class="modal-actions">
+            <button id="functionsSplitBackBtn" type="button">Atras</button>
+            <button id="functionsSplitCloseBtn" type="button">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+  </html>
+
