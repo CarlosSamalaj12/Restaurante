@@ -329,6 +329,16 @@ function renderLoginPinDisplay() {
   display.classList.add("pulse");
 }
 
+function animateLoginPinKey(key) {
+  const safeKey = String(key || "").trim();
+  if (!safeKey) return;
+  const btn = document.querySelector(`#loginPinPad [data-pin-key="${safeKey}"]`);
+  if (!(btn instanceof HTMLElement)) return;
+  btn.classList.remove("login-key-pop");
+  void btn.offsetWidth;
+  btn.classList.add("login-key-pop");
+}
+
 function forceTransparentLoginPadButtons() {
   // Removed to avoid conflict with CSS glassmorphism styles
 }
@@ -373,6 +383,7 @@ async function submitLoginPin() {
 
 function handleLoginPadKey(key) {
   if (!key) return;
+  animateLoginPinKey(key);
   if (key === "clear") {
     resetLoginPin();
     return;
@@ -2063,6 +2074,7 @@ function clearProductBuilder() {
   const host = document.getElementById("productBuilder");
   host.classList.add("hidden");
   host.innerHTML = "";
+  document.getElementById("serviceView")?.classList.remove("menu-builder-active");
   renderOrderWithLiveBuilder();
 }
 
@@ -2275,8 +2287,10 @@ function renderProductBuilder() {
   if (!builder) {
     host.classList.add("hidden");
     host.innerHTML = "";
+    document.getElementById("serviceView")?.classList.remove("menu-builder-active");
     return;
   }
+  document.getElementById("serviceView")?.classList.add("menu-builder-active");
 
 const group = builder.product.modifiers[builder.groupIndex];
   const selectedByOption = builder.selections[group.groupId] || {};
@@ -2880,12 +2894,12 @@ function renderSettings() {
           </div>
         </div>
         <div class="cfg-entity-actions">
-          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-category-action="edit" data-category-id="${cat.id}">âœŽ</button>
-          <button type="button" class="cfg-icon-btn ${Number(cat.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
+          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-category-action="edit" data-category-id="${cat.id}"><span class="material-symbols-outlined">edit</span></button>
+          <button type="button" class="cfg-icon-btn cfg-toggle-switch ${Number(cat.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
             Number(cat.is_active) ? "Inhabilitar" : "Habilitar"
           }" aria-label="${Number(cat.is_active) ? "Inhabilitar" : "Habilitar"}" data-category-action="toggle" data-category-id="${
             cat.id
-          }" data-next-active="${Number(cat.is_active) ? 0 : 1}">${Number(cat.is_active) ? "âœ•" : "âœ“"}</button>
+          }" data-next-active="${Number(cat.is_active) ? 0 : 1}">${Number(cat.is_active) ? "on" : "off"}</button>
         </div>
       </div>
     `
@@ -2904,12 +2918,12 @@ function renderSettings() {
           </div>
         </div>
         <div class="cfg-entity-actions">
-          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-area-action="edit" data-area-id="${a.id}">âœŽ</button>
-          <button type="button" class="cfg-icon-btn ${Number(a.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
+          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-area-action="edit" data-area-id="${a.id}"><span class="material-symbols-outlined">edit</span></button>
+          <button type="button" class="cfg-icon-btn cfg-toggle-switch ${Number(a.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
             Number(a.is_active) ? "Inhabilitar" : "Habilitar"
           }" aria-label="${Number(a.is_active) ? "Inhabilitar" : "Habilitar"}" data-area-action="toggle" data-area-id="${
             a.id
-          }" data-next-active="${Number(a.is_active) ? 0 : 1}">${Number(a.is_active) ? "âœ•" : "âœ“"}</button>
+          }" data-next-active="${Number(a.is_active) ? 0 : 1}">${Number(a.is_active) ? "on" : "off"}</button>
         </div>
       </div>
     `
@@ -2931,12 +2945,12 @@ function renderSettings() {
           </div>
         </div>
         <div class="cfg-entity-actions">
-          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-center-action="edit" data-center-id="${c.id}">âœŽ</button>
-          <button type="button" class="cfg-icon-btn ${Number(c.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
+          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-center-action="edit" data-center-id="${c.id}"><span class="material-symbols-outlined">edit</span></button>
+          <button type="button" class="cfg-icon-btn cfg-toggle-switch ${Number(c.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
             Number(c.is_active) ? "Inhabilitar" : "Habilitar"
           }" aria-label="${Number(c.is_active) ? "Inhabilitar" : "Habilitar"}" data-center-action="toggle" data-center-id="${
             c.id
-          }" data-next-active="${Number(c.is_active) ? 0 : 1}">${Number(c.is_active) ? "âœ•" : "âœ“"}</button>
+          }" data-next-active="${Number(c.is_active) ? 0 : 1}">${Number(c.is_active) ? "on" : "off"}</button>
         </div>
       </div>
     `
@@ -2959,12 +2973,12 @@ function renderSettings() {
             </div>
           </div>
           <div class="cfg-entity-actions">
-            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-table-action="edit" data-table-id="${t.id}">âœŽ</button>
-            <button type="button" class="cfg-icon-btn ${Number(t.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
+            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-table-action="edit" data-table-id="${t.id}"><span class="material-symbols-outlined">edit</span></button>
+            <button type="button" class="cfg-icon-btn cfg-toggle-switch ${Number(t.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
               Number(t.is_active) ? "Inhabilitar" : "Habilitar"
             }" aria-label="${Number(t.is_active) ? "Inhabilitar" : "Habilitar"}" data-table-action="toggle" data-table-id="${
               t.id
-            }" data-next-active="${Number(t.is_active) ? 0 : 1}">${Number(t.is_active) ? "âœ•" : "âœ“"}</button>
+            }" data-next-active="${Number(t.is_active) ? 0 : 1}">${Number(t.is_active) ? "on" : "off"}</button>
           </div>
         </div>
       `;
@@ -3018,12 +3032,12 @@ function renderSettings() {
           <div class="cfg-entity-actions">
             <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-payment-action="edit" data-payment-code="${escapeHtml(
               p.code
-            )}">âœŽ</button>
-            <button type="button" class="cfg-icon-btn ${Number(p.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
+            )}"><span class="material-symbols-outlined">edit</span></button>
+            <button type="button" class="cfg-icon-btn cfg-toggle-switch ${Number(p.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
               Number(p.is_active) ? "Inhabilitar" : "Habilitar"
             }" aria-label="${Number(p.is_active) ? "Inhabilitar" : "Habilitar"}" data-payment-action="toggle" data-payment-code="${escapeHtml(
               p.code
-            )}" data-next-active="${Number(p.is_active) ? 0 : 1}">${Number(p.is_active) ? "âœ•" : "âœ“"}</button>
+            )}" data-next-active="${Number(p.is_active) ? 0 : 1}">${Number(p.is_active) ? "on" : "off"}</button>
           </div>
         </div>
       `
@@ -3080,12 +3094,12 @@ function renderSettings() {
                     </div>
                   </div>
                   <div class="cfg-entity-actions">
-                    <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-option-action="edit" data-option-id="${o.id}">âœŽ</button>
-                    <button type="button" class="cfg-icon-btn ${Number(o.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
+                    <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-option-action="edit" data-option-id="${o.id}"><span class="material-symbols-outlined">edit</span></button>
+                    <button type="button" class="cfg-icon-btn cfg-toggle-switch ${Number(o.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
                       Number(o.is_active) ? "Inhabilitar" : "Habilitar"
                     }" aria-label="${Number(o.is_active) ? "Inhabilitar" : "Habilitar"}" data-option-action="toggle" data-option-id="${
                       o.id
-                    }" data-next-active="${Number(o.is_active) ? 0 : 1}">${Number(o.is_active) ? "âœ•" : "âœ“"}</button>
+                    }" data-next-active="${Number(o.is_active) ? 0 : 1}">${Number(o.is_active) ? "on" : "off"}</button>
                   </div>
                 </div>
               `
@@ -3108,12 +3122,12 @@ function renderSettings() {
             <div class="cfg-entity-meta"><span>Asignado: ${escapeHtml(used || "No asignado")}</span></div>
           </div>
           <div class="cfg-entity-actions">
-            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-group-action="edit" data-group-id="${g.id}">âœŽ</button>
-            <button type="button" class="cfg-icon-btn ${Number(g.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
+            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-group-action="edit" data-group-id="${g.id}"><span class="material-symbols-outlined">edit</span></button>
+            <button type="button" class="cfg-icon-btn cfg-toggle-switch ${Number(g.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
               Number(g.is_active) ? "Inhabilitar" : "Habilitar"
             }" aria-label="${Number(g.is_active) ? "Inhabilitar" : "Habilitar"}" data-group-action="toggle" data-group-id="${
               g.id
-            }" data-next-active="${Number(g.is_active) ? 0 : 1}">${Number(g.is_active) ? "âœ•" : "âœ“"}</button>
+            }" data-next-active="${Number(g.is_active) ? 0 : 1}">${Number(g.is_active) ? "on" : "off"}</button>
           </div>
         </div>
         <div class="cfg-sublist">${optionRows}</div>
@@ -3139,12 +3153,12 @@ function renderSettings() {
             </div>
           </div>
           <div class="cfg-entity-actions">
-            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-discount-action="edit" data-discount-id="${d.id}">âœŽ</button>
-            <button type="button" class="cfg-icon-btn ${Number(d.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
+            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-discount-action="edit" data-discount-id="${d.id}"><span class="material-symbols-outlined">edit</span></button>
+            <button type="button" class="cfg-icon-btn cfg-toggle-switch ${Number(d.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
               Number(d.is_active) ? "Inhabilitar" : "Habilitar"
             }" aria-label="${Number(d.is_active) ? "Inhabilitar" : "Habilitar"}" data-discount-action="toggle" data-discount-id="${
               d.id
-            }" data-next-active="${Number(d.is_active) ? 0 : 1}">${Number(d.is_active) ? "âœ•" : "âœ“"}</button>
+            }" data-next-active="${Number(d.is_active) ? 0 : 1}">${Number(d.is_active) ? "on" : "off"}</button>
           </div>
         </div>
       `;
@@ -4060,6 +4074,7 @@ function renderWizardModifierGroups() {
         <div class="modifier-group-card ${selected ? "selected" : ""}">
           <div class="modifier-group-title">${escapeHtml(template.label || groupType)}</div>
           <div class="modifier-group-desc">${escapeHtml(template.description || "")}</div>
+          <div class="wizard-guide">Define reglas de seleccion para este grupo. Ejemplo: Min 1, Max 2, Obligatorio activado.</div>
           <div class="wizard-rule-row">
             <div class="wizard-rule-field">
               <label>Min</label>
@@ -4073,6 +4088,10 @@ function renderWizardModifierGroups() {
               <input type="checkbox" data-wizard-rule-required="${groupType}" ${rule.isMandatory ? "checked" : ""} />
               <span>Obligatorio</span>
             </label>
+          </div>
+          <div class="wizard-inline-create">
+            <input type="text" placeholder="Agregar opcion (Ej: A la plancha)" data-wizard-new-option-name="${groupType}" />
+            <button type="button" data-wizard-new-option-add="${groupType}">Agregar</button>
           </div>
           <div class="modifier-options-list">${optionsHtml || '<div class="wizard-hint">No hay opciones en este grupo. Crealas en "Guarniciones y Pasos".</div>'}</div>
         </div>
@@ -4121,6 +4140,40 @@ function renderWizardModifierGroups() {
       state.wizardData.modifierOptions[groupType] = current;
       renderWizardModifierGroups();
     });
+  });
+
+  wrap.querySelectorAll("[data-wizard-new-option-add]").forEach((btn) => {
+    const handleAddOption = () => {
+      const groupType = String(btn.getAttribute("data-wizard-new-option-add") || "");
+      const input = wrap.querySelector(`[data-wizard-new-option-name="${groupType}"]`);
+      if (!(input instanceof HTMLInputElement)) return;
+      const name = String(input.value || "").trim();
+      if (!name) return;
+      const pool = state.wizardData.optionPoolByGroup[groupType] || [];
+      const exists = pool.some((x) => String(x.name || "").toLowerCase() === name.toLowerCase());
+      if (exists) {
+        toast("Esta opcion ya existe en el grupo", "info");
+        return;
+      }
+      pool.push({ name, priceDelta: 0 });
+      state.wizardData.optionPoolByGroup[groupType] = pool;
+      const selected = state.wizardData.modifierOptions[groupType] || [];
+      selected.push({ name, priceDelta: 0 });
+      state.wizardData.modifierOptions[groupType] = selected;
+      renderWizardModifierGroups();
+    };
+
+    btn.addEventListener("click", handleAddOption);
+    const groupType = String(btn.getAttribute("data-wizard-new-option-add") || "");
+    const input = wrap.querySelector(`[data-wizard-new-option-name="${groupType}"]`);
+    if (input instanceof HTMLInputElement) {
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          handleAddOption();
+        }
+      });
+    }
   });
 }
 
@@ -5297,6 +5350,8 @@ loadBootstrap()
     if (!state.activeModule) showLoginView();
   })
   .catch((e) => toast(e.message, "error", 4000));
+
+
 
 
 

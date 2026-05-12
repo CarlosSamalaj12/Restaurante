@@ -625,6 +625,7 @@
             <div id="cfgProductsCreateView" class="cfg-wizard hidden">
               <div class="wizard-step" id="wizardStep1">
                 <h4>Paso 1: Informacion Basica del Platillo</h4>
+                <p class="wizard-guide">Completa los datos base del platillo. Luego podras definir sus guarniciones, salsas y reglas.</p>
                 <div class="wizard-form-grid">
                   <div class="wizard-field">
                     <label for="wizardCategorySelect">Categoria</label>
@@ -657,6 +658,7 @@
               <div class="wizard-step hidden" id="wizardStep2">
                 <h4>Paso 2: Selecciona los Atributos del Platillo</h4>
                 <p class="wizard-hint">Se muestran solo los grupos segun el tipo seleccionado</p>
+                <p class="wizard-guide">Tip: usa Min/Max para controlar cuantas opciones puede elegir el mesero, y marca Obligatorio cuando sea requerido.</p>
                 <div id="wizardModifierGroupsContainer" class="modifier-groups-grid"></div>
                 <div class="line wizard-actions">
                   <button type="button" id="wizardBackStep2Btn">< Atras</button>
@@ -666,6 +668,7 @@
 
               <div class="wizard-step hidden" id="wizardStep3">
                 <h4>Paso 3: Verificar y Crear</h4>
+                <p class="wizard-guide">Revisa la configuracion final. Si todo esta correcto, crea el platillo para usarlo en el menu.</p>
                 <div id="wizardSummary" class="wizard-summary"></div>
                 <div class="line wizard-actions">
                   <button type="button" id="wizardBackStep3Btn">< Atras</button>
@@ -727,7 +730,7 @@
                 <option value="fixed">Monto fijo</option>
               </select>
               <input id="cfgDiscountPresetValueInput" type="number" min="0" step="0.01" placeholder="Valor" />
-              <label><input id="cfgDiscountPresetActiveInput" type="checkbox" checked /> Activo</label>
+              <label class="cfg-checkbox-label"><input id="cfgDiscountPresetActiveInput" type="checkbox" checked /> Activo</label>
               <input id="cfgDiscountPresetSortInput" type="number" min="0" value="1" />
               <button id="cfgAddDiscountPresetBtn" type="button">Guardar Tipo</button>
             </div>
