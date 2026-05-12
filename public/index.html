@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>POS Restaurante</title>
+    <title>SamaPos</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -20,7 +20,7 @@
           <div class="login-brand-icon">
             <span class="material-symbols-outlined">restaurant_menu</span>
           </div>
-          <h1>Samalaj POS</h1>
+          <h1 id="loginSystemName">SamaPos</h1>
           <p>Sistema de gestión para tu restaurante. Ingrese su código para comenzar.</p>
           <div class="login-station-pill">
             <span></span>
@@ -90,7 +90,7 @@
       <div>
         <div>
           <div>
-            <h1>Samalaj POS</h1>
+            <h1 id="headerSystemName">SamaPos</h1>
           </div>
           <nav class="restaurant-header-nav">
             <a href="#">Dashboard</a>
@@ -130,7 +130,7 @@
               <span class="material-symbols-outlined">restaurant</span>
             </div>
             <div>
-              <h2>Baruch Restaurante</h2>
+              <h2 id="homeRestaurantName">Mi Restaurante</h2>
               <span class="home-hint">Panel de control principal</span>
             </div>
           </div>
@@ -258,7 +258,7 @@
             </button>
             <div class="tables-brand">
               <span class="material-symbols-outlined">restaurant</span>
-              Baruch POS
+              <span id="tablesBrandName">Mi Restaurante</span>
             </div>
           </div>
           <nav class="tables-topbar-nav">
@@ -536,6 +536,18 @@
           </section>
 
           <section class="settings-block">
+            <div class="settings-section-header">
+              <span class="material-symbols-outlined">badge</span>
+              <h3>Identidad</h3>
+            </div>
+            <div class="cfg-form-row">
+              <input id="cfgRestaurantNameInput" type="text" placeholder="Nombre del restaurante" />
+              <button id="cfgSaveRestaurantNameBtn" type="button" class="cfg-action-btn">
+                <span class="material-symbols-outlined">save</span>
+                Guardar Nombre
+              </button>
+            </div>
+
             <div class="settings-section-header">
               <span class="material-symbols-outlined">payment</span>
               <h3>Formas de Pago</h3>

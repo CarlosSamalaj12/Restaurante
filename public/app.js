@@ -97,6 +97,29 @@ const MODIFIER_TEMPLATE_PRESETS = {
   other: { minSelect: 0, maxSelect: 1, suggestedName: "" },
 };
 
+const SYSTEM_NAME = "SamaPos";
+const DEFAULT_RESTAURANT_NAME = "Mi Restaurante";
+
+function currentRestaurantName() {
+  const fromSettings = String(state.settings?.restaurantName || "").trim();
+  if (fromSettings) return fromSettings;
+  const fromCache = String(localStorage.getItem("restaurantName") || "").trim();
+  return fromCache || DEFAULT_RESTAURANT_NAME;
+}
+
+function applyBranding() {
+  const restaurantName = currentRestaurantName();
+  const systemNameEl = document.getElementById("loginSystemName");
+  if (systemNameEl) systemNameEl.textContent = SYSTEM_NAME;
+  const headerSystemNameEl = document.getElementById("headerSystemName");
+  if (headerSystemNameEl) headerSystemNameEl.textContent = SYSTEM_NAME;
+  const homeNameEl = document.getElementById("homeRestaurantName");
+  if (homeNameEl) homeNameEl.textContent = restaurantName;
+  const tablesBrandNameEl = document.getElementById("tablesBrandName");
+  if (tablesBrandNameEl) tablesBrandNameEl.textContent = restaurantName;
+  document.title = `${SYSTEM_NAME} | ${restaurantName}`;
+}
+
 async function api(url, options = {}) {
   const headers = {
     "Content-Type": "application/json",
@@ -1356,7 +1379,8 @@ function buildSeatPrecheckBlock(detail, seatNo, withPageBreak = false) {
     <div class="seat-block ${withPageBreak ? "page-break" : ""}">
       <div class="center">
         <h1>CUENTA POR SILLA</h1>
-        <p>POS Restaurante</p>
+        <p>${escapeHtml(currentRestaurantName())}</p>
+        <p>${escapeHtml(SYSTEM_NAME)}</p>
       </div>
       <div class="sp">Mesa: ${escapeHtml(state.selectedTableCode || "-")}</div>
       <div>Check: ${escapeHtml(detail.account?.check_number || "-")}</div>
@@ -1602,6 +1626,9 @@ async function loadBootstrap() {
   state.paymentMethods = data.paymentMethods || [];
   state.centers = data.centers || [];
   state.terminalIp = data.terminalIp || "";
+  state.settings = state.settings || {};
+  state.settings.restaurantName = String(data.restaurantName || state.settings.restaurantName || DEFAULT_RESTAURANT_NAME);
+  localStorage.setItem("restaurantName", state.settings.restaurantName);
   state.selectedCenterId = Number(data.autoCenterId || data.defaultCenterId || 0);
 
   const waiter = document.getElementById("waiterSelect");
@@ -1621,6 +1648,7 @@ async function loadBootstrap() {
 
   renderPaymentMethodSelect();
   renderCategories();
+  applyBranding();
   await loadTables();
 }
 
@@ -2867,6 +2895,8 @@ function selectedModuleCodes(prefix) {
 function renderSettings() {
   const cfg = state.settings;
   if (!cfg) return;
+  const restaurantNameInput = document.getElementById("cfgRestaurantNameInput");
+  if (restaurantNameInput) restaurantNameInput.value = currentRestaurantName();
 
   const activeAreas = (cfg.areas || []).filter((a) => Number(a.is_active) === 1);
   const areasForSelects = activeAreas.length ? activeAreas : cfg.areas || [];
@@ -4345,8 +4375,11 @@ async function saveDeviceModulePermissions() {
 
 async function loadSettings() {
   state.settings = await api("/api/settings");
+  state.settings.restaurantName = String(state.settings?.restaurantName || DEFAULT_RESTAURANT_NAME);
+  localStorage.setItem("restaurantName", state.settings.restaurantName);
   state.wizardData.modifierTemplates = {};
   state.wizardData.optionPoolByGroup = {};
+  applyBranding();
   renderSettings();
 }
 
@@ -4523,6 +4556,24 @@ async function saveTipConfig() {
   toast("Porcentaje de propina guardado", "success");
 }
 
+async function saveRestaurantNameConfig() {
+  const input = document.getElementById("cfgRestaurantNameInput");
+  const restaurantName = String(input?.value || "").trim();
+  if (!restaurantName) {
+    toast("Escribe el nombre del restaurante", "error");
+    return;
+  }
+  await api("/api/settings/branding", {
+    method: "POST",
+    body: JSON.stringify({ restaurantName }),
+  });
+  state.settings = state.settings || {};
+  state.settings.restaurantName = restaurantName;
+  localStorage.setItem("restaurantName", restaurantName);
+  applyBranding();
+  toast("Nombre del restaurante actualizado", "success");
+}
+
 function openPrecheckPrint() {
   if (!state.selectedAccountId || !state.accountDetail) {
     toast("Selecciona una cuenta", "error");
@@ -4568,7 +4619,8 @@ function openPrecheckPrint() {
       <body>
         <div class="center">
           <h1>PRE CUENTA</h1>
-          <p>POS Restaurante</p>
+          <p>${escapeHtml(currentRestaurantName())}</p>
+          <p>${escapeHtml(SYSTEM_NAME)}</p>
         </div>
         <div class="sp">Mesa: ${escapeHtml(state.selectedTableCode || "-")}</div>
         <div>Check: ${escapeHtml(detail.account?.check_number || "-")}</div>
@@ -5298,6 +5350,9 @@ document.getElementById("cfgSavePaymentBtn")?.addEventListener("click", () =>
 document.getElementById("cfgSaveTipBtn")?.addEventListener("click", () =>
   saveTipConfig().catch((e) => toast(e.message, "error"))
 );
+document.getElementById("cfgSaveRestaurantNameBtn")?.addEventListener("click", () =>
+  saveRestaurantNameConfig().catch((e) => toast(e.message, "error"))
+);
 document.getElementById("cfgAddProductBtn")?.addEventListener("click", () => saveProductConfig().catch((e) => toast(e.message, "error")));
 document.getElementById("cfgResetProductFormBtn")?.addEventListener("click", resetProductForm);
 document.getElementById("cfgProductSearchInput")?.addEventListener("input", renderProductsManager);
@@ -5337,6 +5392,9 @@ document.getElementById("cfgAddDiscountPresetBtn")?.addEventListener("click", ()
 switchProductsManagerView("list");
 showWizardStep(1);
 applyModifierTemplatePreset();
+state.settings = state.settings || {};
+state.settings.restaurantName = String(localStorage.getItem("restaurantName") || DEFAULT_RESTAURANT_NAME);
+applyBranding();
 applyLoginBackground(localStorage.getItem("loginScreenBackground") || "amber");
 applyLoginBackgroundImage(localStorage.getItem("loginBackgroundImageSrc") || localStorage.getItem("loginBackgroundImageUrl") || "");
 applyLoginTint(localStorage.getItem("loginTintColor") || "#0a1119", Number(localStorage.getItem("loginTintOpacity") || "38"));

@@ -266,6 +266,11 @@ async function ensureConfigTables() {
      VALUES ('tip_percent', '0')
      ON DUPLICATE KEY UPDATE setting_value = setting_value`
   );
+  await query(
+    `INSERT INTO app_settings (setting_key, setting_value)
+     VALUES ('restaurant_name', 'Mi Restaurante')
+     ON DUPLICATE KEY UPDATE setting_value = setting_value`
+  );
 
   for (const mod of MODULE_DEFAULTS) {
     await query(
@@ -327,6 +332,17 @@ async function getTipPercent() {
   const pct = Number(rows?.[0]?.setting_value || 0);
   if (Number.isNaN(pct)) return 0;
   return Math.max(0, Math.min(100, pct));
+}
+
+async function getRestaurantName() {
+  const [rows] = await query(
+    `SELECT setting_value
+     FROM app_settings
+     WHERE setting_key = 'restaurant_name'
+     LIMIT 1`
+  );
+  const raw = String(rows?.[0]?.setting_value || "").trim();
+  return raw || "Mi Restaurante";
 }
 
 async function getAccountTotals(accountId) {
@@ -499,8 +515,9 @@ app.get("/api/bootstrap", async (_req, res) => {
     `SELECT id, full_name, discount_type, discount_value
      FROM customers ORDER BY full_name`
   );
+  const restaurantName = await getRestaurantName();
 
-  res.json({ tables, waiters, cashiers, categories, paymentMethods, customers, centers, defaultCenterId, autoCenterId, terminalIp: ip });
+  res.json({ tables, waiters, cashiers, categories, paymentMethods, customers, centers, defaultCenterId, autoCenterId, terminalIp: ip, restaurantName });
 });
 
 app.post("/api/auth/pin-login", async (req, res) => {
@@ -626,6 +643,7 @@ app.get("/api/settings", async (_req, res) => {
     [currentIp]
   );
   const tipPercent = await getTipPercent();
+  const restaurantName = await getRestaurantName();
   res.json({
     operationCenters,
     areas,
@@ -645,7 +663,20 @@ app.get("/api/settings", async (_req, res) => {
     deviceModulePermissions,
     currentIp,
     tipPercent,
+    restaurantName,
   });
+});
+
+app.post("/api/settings/branding", async (req, res) => {
+  const restaurantName = String(req.body?.restaurantName || "").trim();
+  if (!restaurantName) return res.status(400).json({ error: "restaurantName es requerido" });
+  await query(
+    `INSERT INTO app_settings (setting_key, setting_value)
+     VALUES ('restaurant_name', ?)
+     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+    [restaurantName.slice(0, 120)]
+  );
+  res.json({ ok: true, restaurantName: restaurantName.slice(0, 120) });
 });
 
 app.post("/api/settings/tip-config", async (req, res) => {
@@ -2051,4 +2082,3 @@ app.listen(port, async () => {
     console.error("No se pudo conectar a MariaDB. Revisa variables en .env", e.message);
   }
 });
-
