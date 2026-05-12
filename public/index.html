@@ -1,223 +1,602 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POS Restaurante</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css?v=20260428-clean-ui" />
   </head>
   <body>
-    <section id="moduleLauncher" class="module-launcher">
-      <div class="module-launcher-card">
-        <p class="module-launcher-tag">Sistema Principal</p>
-        <h1>Seleccion de Modulo</h1>
-        <p class="module-launcher-subtitle">Elige el area con la que deseas trabajar.</p>
-        <div class="module-grid">
-          <button id="moduleRestaurantBtn" type="button" class="module-btn module-btn-restaurant">
-            <span class="module-btn-title">Modulo Restaurante</span>
-            <span class="module-btn-desc">Tomar ordenes, mesas, caja y operaciones.</span>
-          </button>
-          <button id="moduleReceptionBtn" type="button" class="module-btn module-btn-disabled">
-            <span class="module-btn-title">Modulo Recepcion</span>
-            <span class="module-btn-desc">Proximamente.</span>
-          </button>
-          <button id="moduleCrmBtn" type="button" class="module-btn module-btn-disabled">
-            <span class="module-btn-title">Modulo CRM</span>
-            <span class="module-btn-desc">Proximamente.</span>
-          </button>
+    <section id="loginView" class="login-screen">
+      <div class="login-hero">
+        <div class="login-hero-image"></div>
+        <div class="login-brand">
+          <div class="login-brand-icon">
+            <span class="material-symbols-outlined">restaurant_menu</span>
+          </div>
+          <h1>Samalaj POS</h1>
+          <p>Sistema de gestión para tu restaurante. Ingrese su código para comenzar.</p>
+          <div class="login-station-pill">
+            <span></span>
+            Estación 01 Activa
+          </div>
+        </div>
+      </div>
+
+      <div class="login-panel-shell">
+        <div class="login-card">
+          <div class="login-title">
+            <h2>Acceso de Usuario</h2>
+            <p>Por favor, ingrese su PIN de acceso</p>
+          </div>
+          <div id="loginPinDisplay" class="login-pin-display" aria-live="polite"></div>
+          <p class="login-pin-help">Mínimo 6 dígitos</p>
+          <div id="loginPinPad" class="login-pin-pad">
+            <button type="button" data-pin-key="1">1</button>
+            <button type="button" data-pin-key="2">2</button>
+            <button type="button" data-pin-key="3">3</button>
+            <button type="button" data-pin-key="4">4</button>
+            <button type="button" data-pin-key="5">5</button>
+            <button type="button" data-pin-key="6">6</button>
+            <button type="button" data-pin-key="7">7</button>
+            <button type="button" data-pin-key="8">8</button>
+            <button type="button" data-pin-key="9">9</button>
+            <button type="button" data-pin-key="clear">Limpiar</button>
+            <button type="button" data-pin-key="0">0</button>
+            <button type="button" data-pin-key="submit">Entrar</button>
+          </div>
+          <div class="login-footer">
+            <button type="button"><span class="material-symbols-outlined">help</span>Ayuda técnica</button>
+            <div><span class="material-symbols-outlined">language</span>Español (ES)</div>
+          </div>
         </div>
       </div>
     </section>
 
+    <section id="moduleLauncher" class="module-launcher hidden">
+      <div class="module-launcher-card">
+        <p class="module-launcher-tag">Sistema Principal</p>
+        <h1>Selección de Módulo</h1>
+        <p class="module-launcher-subtitle">Elige el área con la que deseas trabajar.</p>
+        <div class="module-grid">
+          <button id="moduleRestaurantBtn" type="button" class="module-btn module-btn-restaurant">
+            <span class="module-btn-title">Módulo Restaurante</span>
+            <span class="module-btn-desc">Tomar órdenes, mesas, caja y operaciones.</span>
+          </button>
+          <button id="modulePmsBtn" type="button" class="module-btn hidden">
+            <span class="module-btn-title">Módulo PMS</span>
+            <span class="module-btn-desc">Hotelería, recepción y habitaciones.</span>
+          </button>
+          <button id="moduleCrmBtn" type="button" class="module-btn hidden">
+            <span class="module-btn-title">Módulo CRM</span>
+            <span class="module-btn-desc">Clientes, seguimiento y fidelización.</span>
+          </button>
+          <button id="moduleErpBtn" type="button" class="module-btn hidden">
+            <span class="module-btn-title">Módulo ERP</span>
+            <span class="module-btn-desc">Inventario, compras y administración.</span>
+          </button>
+        </div>
+        <p id="moduleLauncherInfo" class="module-launcher-subtitle hidden"></p>
+      </div>
+    </section>
+
     <header id="restaurantHeader" class="hidden">
-      <h1>POS Restaurante</h1>
-      <div class="toolbar">
-        <label class="toolbar-picker">
-          Mesero:
-          <select id="waiterSelect"></select>
-        </label>
-        <label class="toolbar-picker">
-          Caja:
-          <select id="cashierSelect"></select>
-        </label>
-        <label class="toolbar-picker">
-          Centro:
-          <select id="centerSelect"></select>
-        </label>
-        <span id="terminalIpText"></span>
-        <button id="backToModulesBtn" type="button">Modulos</button>
-        <button id="restaurantHomeBtn" type="button">Inicio</button>
+      <div>
+        <div>
+          <div>
+            <h1>Samalaj POS</h1>
+          </div>
+          <nav class="restaurant-header-nav">
+            <a href="#">Dashboard</a>
+            <a href="#">Mesas</a>
+            <a href="#">Caja</a>
+            <a href="#">Operaciones</a>
+          </nav>
+        </div>
+        <div class="hidden" aria-hidden="true">
+            <label class="toolbar-picker">
+              Mesero:
+              <select id="waiterSelect"></select>
+            </label>
+            <label class="toolbar-picker">
+              Caja:
+              <select id="cashierSelect"></select>
+            </label>
+            <label class="toolbar-picker">
+              Centro:
+              <select id="centerSelect"></select>
+            </label>
+            <span id="terminalIpText"></span>
+            <button id="backToModulesBtn" type="button">Módulos</button>
+            <button id="restaurantHomeBtn" type="button">Inicio</button>
+          </div>
+          <button class="material-symbols-outlined" type="button" aria-label="Notificaciones">notifications</button>
+          <button class="material-symbols-outlined" type="button" aria-label="Configuración">settings</button>
+        </div>
       </div>
     </header>
 
-    <main id="restaurantMain" class="hidden">
+    <main id="restaurantMain" class="hidden flex h-screen pt-16">
       <section id="restaurantHomeView" class="panel home-panel">
         <div class="view-header">
-          <h2>Inicio Restaurante</h2>
-          <span class="home-hint">Accesos principales</span>
+          <div class="home-header-left">
+            <div class="home-brand-icon">
+              <span class="material-symbols-outlined">restaurant</span>
+            </div>
+            <div>
+              <h2>Baruch Restaurante</h2>
+              <span class="home-hint">Panel de control principal</span>
+            </div>
+          </div>
+          <div class="home-header-right">
+            <div class="home-stat-pill">
+              <span class="material-symbols-outlined">schedule</span>
+              <span id="homeShiftStatus">Turno Activo</span>
+            </div>
+          </div>
         </div>
+
+        <div class="home-hero-card">
+          <div class="home-hero-content">
+            <div class="home-hero-text">
+              <h3>Bienvenido de vuelta</h3>
+              <p>¿Qué deseas hacer hoy?</p>
+            </div>
+            <div class="home-hero-graphic">
+              <span class="material-symbols-outlined">restaurant_menu</span>
+            </div>
+          </div>
+          <div class="home-hero-particles"></div>
+        </div>
+
         <div class="home-grid">
           <button id="openTablesFromHomeBtn" type="button" class="home-card home-card-tables">
-            <span class="home-card-title">Mesas</span>
-            <span class="home-card-desc">Ver mapa de mesas y cuentas activas.</span>
+            <div class="home-card-icon">
+              <span class="material-symbols-outlined">table_restaurant</span>
+            </div>
+            <div class="home-card-content">
+              <span class="home-card-title">Mesas</span>
+              <span class="home-card-desc">Ver mapa de mesas y cuentas activas.</span>
+            </div>
+            <div class="home-card-arrow">
+              <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
+            <div class="home-card-glow"></div>
           </button>
+
           <button id="openCashierFromHomeBtn" type="button" class="home-card home-card-cashier">
-            <span class="home-card-title">Caja y Cobros</span>
-            <span class="home-card-desc">Buscar cuentas, cobrar y cerrar.</span>
+            <div class="home-card-icon">
+              <span class="material-symbols-outlined">payments</span>
+            </div>
+            <div class="home-card-content">
+              <span class="home-card-title">Caja y Cobros</span>
+              <span class="home-card-desc">Buscar cuentas, cobrar y cerrar.</span>
+            </div>
+            <div class="home-card-arrow">
+              <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
+            <div class="home-card-glow"></div>
           </button>
+
           <button id="openSettingsFromHomeBtn" type="button" class="home-card home-card-settings">
-            <span class="home-card-title">Configuraciones</span>
-            <span class="home-card-desc">Catalogos, productos, mesas y pagos.</span>
+            <div class="home-card-icon">
+              <span class="material-symbols-outlined">settings</span>
+            </div>
+            <div class="home-card-content">
+              <span class="home-card-title">Configuraciones</span>
+              <span class="home-card-desc">Catalogos, productos, mesas y pagos.</span>
+            </div>
+            <div class="home-card-arrow">
+              <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
+            <div class="home-card-glow"></div>
           </button>
+
           <button id="openOpsFromHomeBtn" type="button" class="home-card home-card-ops">
-            <span class="home-card-title">Operaciones</span>
-            <span class="home-card-desc">Turnos, caja y accesos administrativos.</span>
+            <div class="home-card-icon">
+              <span class="material-symbols-outlined">admin_panel_settings</span>
+            </div>
+            <div class="home-card-content">
+              <span class="home-card-title">Operaciones</span>
+              <span class="home-card-desc">Turnos, caja y accesos administrativos.</span>
+            </div>
+            <div class="home-card-arrow">
+              <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
+            <div class="home-card-glow"></div>
           </button>
         </div>
-        <div class="home-ambience-wrap">
-          <h3>Ambiente Visual</h3>
-          <div class="home-ambience-row">
-            <button id="ambienceDefaultBtn" type="button">Clasico</button>
-            <button id="ambienceWarmBtn" type="button">Calido</button>
-            <button id="ambienceCoolBtn" type="button">Frio</button>
+
+        <div class="home-bottom-row">
+          <div class="home-quick-stats">
+            <h3><span class="material-symbols-outlined">insights</span> Resumen Rápido</h3>
+            <div class="home-stats-grid">
+              <div class="home-stat-card">
+                <span class="material-symbols-outlined">event_seat</span>
+                <div class="home-stat-info">
+                  <span id="homeFreeTablesText" class="home-stat-value">0</span>
+                  <span class="home-stat-label">Mesas Libres</span>
+                </div>
+              </div>
+              <div class="home-stat-card home-stat-busy">
+                <span class="material-symbols-outlined">chair</span>
+                <div class="home-stat-info">
+                  <span id="homeBusyTablesText" class="home-stat-value">0</span>
+                  <span class="home-stat-label">Mesas Ocupadas</span>
+                </div>
+              </div>
+              <div class="home-stat-card home-stat-orders">
+                <span class="material-symbols-outlined">receipt_long</span>
+                <div class="home-stat-info">
+                  <span class="home-stat-value">24</span>
+                  <span class="home-stat-label">Ordenes Hoy</span>
+                </div>
+              </div>
+              <div class="home-stat-card home-stat-revenue">
+                <span class="material-symbols-outlined">attach_money</span>
+                <div class="home-stat-info">
+                  <span class="home-stat-value">Q 15,420</span>
+                  <span class="home-stat-label">Ventas Hoy</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section id="tablesView" class="panel tables-panel">
-        <div class="view-header">
-          <h2>Mesas</h2>
-          <button id="backHomeFromTablesBtn" type="button">Inicio</button>
+      <section id="tablesView" class="panel tables-panel tables-lounge">
+        <div class="tables-topbar">
+          <div class="tables-topbar-left">
+            <button type="button" class="tables-icon-btn" aria-label="Menu">
+              <span class="material-symbols-outlined">menu</span>
+            </button>
+            <div class="tables-brand">
+              <span class="material-symbols-outlined">restaurant</span>
+              Baruch POS
+            </div>
+          </div>
+          <nav class="tables-topbar-nav">
+            <button id="backHomeFromTablesBtn" type="button" class="tables-nav-link is-active">
+              <span class="material-symbols-outlined">home</span>
+              Inicio
+            </button>
+            <button type="button" class="tables-nav-link">
+              <span class="material-symbols-outlined">table_restaurant</span>
+              Mesas
+            </button>
+            <button type="button" class="tables-nav-link">
+              <span class="material-symbols-outlined">receipt_long</span>
+              Pedidos
+            </button>
+            <button type="button" class="tables-icon-btn" aria-label="Buscar">
+              <span class="material-symbols-outlined">search</span>
+            </button>
+          </nav>
         </div>
-        <div id="tablesGrid" class="tables-grid"></div>
+        <div class="tables-lounge-shell">
+          <aside class="tables-lounge-sectors">
+            <div class="tables-lounge-sectors-head">
+              <span class="material-symbols-outlined">grid_view</span>
+              Sectores
+            </div>
+            <div id="tablesSectorsNav" class="tables-sectors-nav"></div>
+            <div class="tables-shift-panel">
+              <p><span class="material-symbols-outlined">timer</span> Servicio Activo</p>
+              <div class="tables-shift-row">
+                <span class="tables-shift-pulse"></span>
+                <span id="tablesShiftNameText">Turno en curso</span>
+              </div>
+            </div>
+          </aside>
+          <div class="tables-lounge-main">
+            <div class="view-header tables-view-header">
+              <div class="tables-header-title">
+                <h2 id="tablesAreaTitle">Mapa de Mesas</h2>
+                <span id="tablesAreaSubtitle">Estado actual de la sala en tiempo real</span>
+              </div>
+              <div class="tables-header-actions">
+                <div class="tables-stat-chip tables-stat-chip-free">
+                  <span class="tables-stat-dot"></span>
+                  <span id="tablesFreeCountText">0 Libres</span>
+                </div>
+                <div class="tables-stat-chip tables-stat-chip-busy">
+                  <span class="tables-stat-dot"></span>
+                  <span id="tablesBusyCountText">0 Ocupadas</span>
+                </div>
+              </div>
+            </div>
+            <div id="tablesGrid" class="tables-grid"></div>
+          </div>
+        </div>
+        <button id="tablesAddFab" type="button" class="tables-fab" title="Acciones de mesas">
+          <span class="material-symbols-outlined">add</span>
+        </button>
       </section>
 
       <section id="accountPickerView" class="panel hidden">
-        <div class="view-header">
-          <h2 id="accountPickerTitle">Selecciona una cuenta</h2>
-          <button id="createAccountFromPickerBtn" type="button">Nueva Cuenta</button>
+        <div class="account-picker-header">
+          <button id="backToTablesFromPickerBtn" type="button" class="back-btn">
+            <span class="material-symbols-outlined">arrow_back</span>
+            Volver a Mesas
+          </button>
+          <div class="account-picker-title">
+            <span class="material-symbols-outlined">assignment</span>
+            <h2 id="accountPickerTitle">Selecciona una cuenta</h2>
+          </div>
         </div>
-        <div id="accountPickerCards" class="tabs"></div>
+        <button id="createAccountFromPickerBtn" type="button" class="new-account-btn">
+          <span class="material-symbols-outlined">add_circle</span>
+          Nueva Cuenta
+        </button>
+        <div id="accountPickerCards" class="account-cards-grid"></div>
       </section>
 
       <section id="serviceView" class="service-view hidden">
         <section class="panel order-panel">
           <div class="view-header">
-            <button id="backToTablesBtn" type="button">Volver a Mesas</button>
+            <button id="backToTablesBtn" type="button" class="back-btn">
+              <span class="material-symbols-outlined">arrow_back</span>
+              Volver a Mesas
+            </button>
             <div class="order-title-stack">
-              <h2 id="orderTitle">Cuenta</h2>
-              <div id="orderWaiterText" class="order-waiter-text">Mesero: -</div>
+              <h2 id="orderTitle">
+                <span class="material-symbols-outlined">receipt</span>
+                Cuenta
+              </h2>
+              <div id="orderWaiterText" class="order-waiter-text">
+                <span class="material-symbols-outlined">person</span>
+                Mesero: -
+              </div>
             </div>
           </div>
           <div id="orderList" class="order-list"></div>
           <div class="totals">
-            <div>Subtotal: <strong id="subtotalText">$0.00</strong></div>
-            <div>Descuento: <strong id="discountText">$0.00</strong></div>
-            <div>Propina: <strong id="tipText">$0.00</strong></div>
-            <div>Total: <strong id="totalText">$0.00</strong></div>
-            <div>Pagado: <strong id="paidText">$0.00</strong></div>
-            <div>Pendiente: <strong id="pendingText">$0.00</strong></div>
+            <div><span class="totals-label"><span class="material-symbols-outlined">payments</span> Subtotal</span> <strong id="subtotalText">Q 0.00</strong></div>
+            <div><span class="totals-label"><span class="material-symbols-outlined">sell</span> Descuento</span> <strong id="discountText">Q 0.00</strong></div>
+            <div><span class="totals-label"><span class="material-symbols-outlined">volunteer_activism</span> Propina</span> <strong id="tipText">Q 0.00</strong></div>
+            <div class="totals-total"><span class="totals-label"><span class="material-symbols-outlined">account_balance_wallet</span> Total</span> <strong id="totalText">Q 0.00</strong></div>
+            <div><span class="totals-label"><span class="material-symbols-outlined">check_circle</span> Pagado</span> <strong id="paidText">Q 0.00</strong></div>
+            <div class="totals-pending"><span class="totals-label"><span class="material-symbols-outlined">pending</span> Pendiente</span> <strong id="pendingText">Q 0.00</strong></div>
           </div>
         </section>
 
         <section class="panel menu-panel">
-          <h2>Menu</h2>
-          <div id="categoriesRow" class="row-wrap"></div>
-          <div id="productsRow" class="row-wrap"></div>
+          <div class="menu-header">
+            <h2><span class="material-symbols-outlined">restaurant_menu</span> Menú</h2>
+          </div>
+          <div id="categoriesRow" class="categories-row"></div>
+          <div id="productsRow" class="products-grid"></div>
           <div id="productBuilder" class="product-builder hidden"></div>
           <div id="menuQuickActions" class="menu-quick-actions">
-            <button id="menuFunctionsBtn" type="button" class="menu-functions-btn">Funciones</button>
-            <button id="menuPrecheckBtn" type="button" class="menu-precheck-btn">Pre Cuenta</button>
-            <button id="menuPayTableBtn" type="button" class="menu-pay-btn">Pagar Mesa</button>
-            <button id="menuSendOrderBtn" type="button" class="menu-send-btn">Enviar Pedido</button>
+            <button id="menuFunctionsBtn" type="button" class="menu-action-btn">
+              <span class="material-symbols-outlined">tune</span>
+              <span>Funciones</span>
+            </button>
+            <button id="menuPrecheckBtn" type="button" class="menu-action-btn">
+              <span class="material-symbols-outlined">preview</span>
+              <span>Pre Cuenta</span>
+            </button>
+            <button id="menuPayTableBtn" type="button" class="menu-action-btn menu-pay-btn">
+              <span class="material-symbols-outlined">payments</span>
+              <span>Pagar Mesa</span>
+            </button>
+            <button id="menuSendOrderBtn" type="button" class="menu-action-btn menu-send-btn">
+              <span class="material-symbols-outlined">send</span>
+              <span>Enviar Pedido</span>
+            </button>
           </div>
         </section>
       </section>
 
       <section id="settingsView" class="panel hidden">
-        <div class="view-header">
-          <h2>Configuraciones</h2>
-          <button id="backFromSettingsBtn" type="button">Volver</button>
+        <div class="settings-header">
+          <button id="backFromSettingsBtn" type="button" class="back-btn">
+            <span class="material-symbols-outlined">arrow_back</span>
+            Volver al Inicio
+          </button>
+          <div class="settings-title">
+            <span class="material-symbols-outlined">settings</span>
+            <h2>Configuraciones</h2>
+          </div>
         </div>
 
-        <div class="line">
-          <button id="cfgNavProductsBtn" type="button">Platillos</button>
-          <button id="cfgNavModifiersBtn" type="button">Guarniciones y Pasos</button>
-          <button id="cfgNavDiscountsBtn" type="button">Tipos de Descuento</button>
-          <button id="cfgNavOpsBtn" type="button">Mesas y Pagos</button>
+        <div class="settings-nav-tabs">
+          <button id="cfgNavProductsBtn" type="button" class="settings-nav-tab tab-active">
+            <span class="material-symbols-outlined">restaurant</span>
+            Platillos
+          </button>
+          <button id="cfgNavModifiersBtn" type="button" class="settings-nav-tab">
+            <span class="material-symbols-outlined">tune</span>
+            Guarniciones y Pasos
+          </button>
+          <button id="cfgNavDiscountsBtn" type="button" class="settings-nav-tab">
+            <span class="material-symbols-outlined">discount</span>
+            Tipos de Descuento
+          </button>
+          <button id="cfgNavOpsBtn" type="button" class="settings-nav-tab">
+            <span class="material-symbols-outlined">meeting_room</span>
+            Mesas y Pagos
+          </button>
         </div>
 
         <div class="settings-grid">
           <section id="cfgOpsSection" class="settings-block cfg-section">
-            <h3>Categorias de Platillos</h3>
-            <div class="line">
-              <input id="cfgCategoryNameInput" type="text" placeholder="Nombre categoria (Ej: Bebidas Calientes)" />
-              <label><input id="cfgCategoryActiveInput" type="checkbox" checked /> Activa</label>
-              <input id="cfgCategorySortInput" type="number" min="0" value="1" />
-              <button id="cfgAddCategoryBtn" type="button">Crear Categoria</button>
+            <div class="settings-section-header">
+              <span class="material-symbols-outlined">category</span>
+              <h3>Categorías de Platillos</h3>
             </div>
-            <div id="cfgCategoriesList" class="order-list cfg-list"></div>
-
-            <h3>Areas</h3>
-            <div class="line">
-              <input id="cfgAreaNameInput" type="text" placeholder="Nombre area (Ej: Terraza)" />
-              <label><input id="cfgAreaActiveInput" type="checkbox" checked /> Activa</label>
-              <input id="cfgAreaSortInput" type="number" min="0" value="1" />
-              <button id="cfgAddAreaBtn" type="button">Crear Area</button>
+            <div class="cfg-form-row">
+              <input id="cfgCategoryNameInput" type="text" placeholder="Nombre categoría (Ej: Bebidas Calientes)" />
+              <label class="cfg-checkbox-label"><input id="cfgCategoryActiveInput" type="checkbox" checked /> Activa</label>
+              <input id="cfgCategorySortInput" type="number" min="0" value="1" class="cfg-sort-input" />
+              <button id="cfgAddCategoryBtn" type="button" class="cfg-add-btn">
+                <span class="material-symbols-outlined">add</span>
+                Crear
+              </button>
             </div>
-            <div id="cfgAreasList" class="order-list cfg-list"></div>
+            <div id="cfgCategoriesList" class="cfg-list"></div>
 
-            <h3>Centro de Operacion</h3>
-            <div class="line">
+            <div class="settings-section-header">
+              <span class="material-symbols-outlined">grid_view</span>
+              <h3>Áreas</h3>
+            </div>
+            <div class="cfg-form-row">
+              <input id="cfgAreaNameInput" type="text" placeholder="Nombre área (Ej: Terraza)" />
+              <label class="cfg-checkbox-label"><input id="cfgAreaActiveInput" type="checkbox" checked /> Activa</label>
+              <input id="cfgAreaSortInput" type="number" min="0" value="1" class="cfg-sort-input" />
+              <button id="cfgAddAreaBtn" type="button" class="cfg-add-btn">
+                <span class="material-symbols-outlined">add</span>
+                Crear
+              </button>
+            </div>
+            <div id="cfgAreasList" class="cfg-list"></div>
+
+            <div class="settings-section-header">
+              <span class="material-symbols-outlined">business</span>
+              <h3>Centro de Operación</h3>
+            </div>
+            <div class="cfg-form-row">
               <input id="cfgCenterNameInput" type="text" placeholder="Nombre centro (Ej: Sucursal Zona 10)" />
               <select id="cfgCenterAreaSelect"></select>
-              <input id="cfgCenterTableCountInput" type="number" min="0" value="0" placeholder="No. mesas" />
-              <input id="cfgCenterTablePrefixInput" type="text" value="M" placeholder="Prefijo" />
-              <button id="cfgAddCenterBtn" type="button">Crear Centro</button>
+              <input id="cfgCenterTableCountInput" type="number" min="0" value="0" placeholder="No. mesas" class="cfg-small-input" />
+              <input id="cfgCenterTablePrefixInput" type="text" value="M" placeholder="Prefijo" class="cfg-small-input" />
+              <button id="cfgAddCenterBtn" type="button" class="cfg-add-btn">
+                <span class="material-symbols-outlined">add</span>
+                Crear
+              </button>
             </div>
-            <div id="cfgCentersList" class="order-list cfg-list"></div>
-            <div class="line">
+            <div id="cfgCentersList" class="cfg-list"></div>
+            <div class="cfg-form-row">
               <select id="cfgTerminalCenterSelect"></select>
               <input id="cfgTerminalLabelInput" type="text" placeholder="Etiqueta PC (opcional)" />
-              <button id="cfgBindThisPcBtn" type="button">Asignar Esta PC al Centro</button>
+              <button id="cfgBindThisPcBtn" type="button" class="cfg-action-btn">
+                <span class="material-symbols-outlined">computer</span>
+                Asignar PC
+              </button>
             </div>
-            <div id="cfgTerminalBindingsList" class="order-list cfg-list"></div>
+            <div id="cfgTerminalBindingsList" class="cfg-list"></div>
 
-            <h3>Productos por Centro</h3>
-            <div class="line">
+            <div class="settings-section-header">
+              <span class="material-symbols-outlined">admin_panel_settings</span>
+              <h3>Permisos de Módulos</h3>
+            </div>
+            <div class="cfg-form-row">
+              <select id="cfgModuleUserSelect"></select>
+              <button id="cfgSaveUserModulesBtn" type="button" class="cfg-action-btn">
+                <span class="material-symbols-outlined">save</span>
+                Guardar Módulos Usuario
+              </button>
+            </div>
+            <div id="cfgUserModulesList" class="cfg-list"></div>
+            <div class="cfg-form-row">
+              <input id="cfgModuleDeviceIpInput" type="text" placeholder="IP de esta PC" readonly />
+              <button id="cfgSaveDeviceModulesBtn" type="button" class="cfg-action-btn">
+                <span class="material-symbols-outlined">save</span>
+                Guardar Módulos PC
+              </button>
+            </div>
+            <div id="cfgDeviceModulesList" class="cfg-list"></div>
+
+            <div class="settings-section-header">
+              <span class="material-symbols-outlined">inventory_2</span>
+              <h3>Productos por Centro</h3>
+            </div>
+            <div class="cfg-form-row">
               <select id="cfgCenterProductCenterSelect"></select>
               <select id="cfgCenterProductSelect"></select>
-              <label><input id="cfgCenterProductEnabledInput" type="checkbox" checked /> Habilitado</label>
-              <button id="cfgSaveCenterProductBtn" type="button">Guardar Producto/Centro</button>
+              <label class="cfg-checkbox-label"><input id="cfgCenterProductEnabledInput" type="checkbox" checked /> Habilitado</label>
+              <button id="cfgSaveCenterProductBtn" type="button" class="cfg-action-btn">
+                <span class="material-symbols-outlined">save</span>
+                Guardar
+              </button>
             </div>
-            <div id="cfgCenterProductsList" class="order-list cfg-list"></div>
+            <div id="cfgCenterProductsList" class="cfg-list"></div>
 
-            <h3>Mesas</h3>
-            <div class="line">
+            <div class="settings-section-header">
+              <span class="material-symbols-outlined">table_restaurant</span>
+              <h3>Mesas</h3>
+            </div>
+            <div class="cfg-form-row">
               <select id="cfgAreaSelect"></select>
               <select id="cfgTableCenterSelect"></select>
-              <input id="cfgTableCodeInput" type="text" placeholder="Codigo mesa (M10)" />
-              <input id="cfgTableSeatsInput" type="number" min="1" value="4" />
-              <button id="cfgAddTableBtn" type="button">Crear Mesa</button>
+              <input id="cfgTableCodeInput" type="text" placeholder="Código mesa (M10)" />
+              <input id="cfgTableSeatsInput" type="number" min="1" value="4" class="cfg-small-input" />
+              <button id="cfgAddTableBtn" type="button" class="cfg-add-btn">
+                <span class="material-symbols-outlined">add</span>
+                Crear Mesa
+              </button>
             </div>
-            <div id="cfgTablesList" class="order-list cfg-list"></div>
+            <div id="cfgTablesList" class="cfg-list"></div>
           </section>
 
           <section class="settings-block">
-            <h3>Formas de Pago</h3>
-            <div class="line">
-              <input id="cfgPaymentCodeInput" type="text" placeholder="Codigo (ej: cash, visa, cxc_empresa)" />
-              <input id="cfgPaymentLabelInput" type="text" placeholder="Nombre visible" />
-              <label><input id="cfgPaymentActiveInput" type="checkbox" checked /> Activo</label>
-              <input id="cfgPaymentSortInput" type="number" min="0" value="1" />
-              <button id="cfgSavePaymentBtn" type="button">Guardar</button>
+            <div class="settings-section-header">
+              <span class="material-symbols-outlined">payment</span>
+              <h3>Formas de Pago</h3>
             </div>
-            <div id="cfgPaymentsList" class="order-list cfg-list"></div>
+            <div class="cfg-form-row">
+              <input id="cfgPaymentCodeInput" type="text" placeholder="Código (ej: cash, visa)" />
+              <input id="cfgPaymentLabelInput" type="text" placeholder="Nombre visible" />
+              <label class="cfg-checkbox-label"><input id="cfgPaymentActiveInput" type="checkbox" checked /> Activo</label>
+              <input id="cfgPaymentSortInput" type="number" min="0" value="1" class="cfg-sort-input" />
+              <button id="cfgSavePaymentBtn" type="button" class="cfg-add-btn">
+                <span class="material-symbols-outlined">save</span>
+                Guardar
+              </button>
+            </div>
+            <div id="cfgPaymentsList" class="cfg-list"></div>
 
-            <h3>Propina</h3>
-            <div class="line">
-              <input id="cfgTipPercentInput" type="number" min="0" max="100" step="0.01" placeholder="Porcentaje propina" />
-              <button id="cfgSaveTipBtn" type="button">Guardar Propina</button>
+            <div class="settings-section-header">
+              <span class="material-symbols-outlined">volunteer_activism</span>
+              <h3>Propina</h3>
+            </div>
+            <div class="cfg-form-row">
+              <input id="cfgTipPercentInput" type="number" min="0" max="100" step="0.01" placeholder="Porcentaje" />
+              <button id="cfgSaveTipBtn" type="button" class="cfg-action-btn">
+                <span class="material-symbols-outlined">save</span>
+                Guardar Propina
+              </button>
+            </div>
+
+            <div class="settings-section-header">
+              <span class="material-symbols-outlined">wallpaper</span>
+              <h3>Pantalla de Login</h3>
+            </div>
+            <div id="cfgLoginBgOptions" class="login-bg-options">
+              <button type="button" class="login-bg-option" data-login-bg="amber" aria-label="Fondo ámbar"></button>
+              <button type="button" class="login-bg-option" data-login-bg="night" aria-label="Fondo noche"></button>
+              <button type="button" class="login-bg-option" data-login-bg="emerald" aria-label="Fondo esmeralda"></button>
+              <button type="button" class="login-bg-option" data-login-bg="violet" aria-label="Fondo violeta"></button>
+            </div>
+            <div class="login-bg-custom">
+              <input id="cfgLoginBgUrlInput" type="url" placeholder="URL imagen (https://...)" />
+              <button id="cfgLoginBgApplyBtn" type="button" class="cfg-action-btn">
+                <span class="material-symbols-outlined">image</span>
+                Aplicar
+              </button>
+            </div>
+            <div class="login-bg-file-row">
+              <input id="cfgLoginBgFileInput" type="file" accept="image/*" class="hidden" />
+              <button id="cfgLoginBgBrowseBtn" type="button" class="cfg-action-btn">
+                <span class="material-symbols-outlined">folder_open</span>
+                Buscar
+              </button>
+              <button id="cfgLoginBgRemoveBtn" type="button" class="cfg-action-btn cfg-danger-btn">
+                <span class="material-symbols-outlined">delete</span>
+                Quitar
+              </button>
+            </div>
+            <div class="login-bg-tint">
+              <label for="cfgLoginTintColorInput">Color</label>
+              <input id="cfgLoginTintColorInput" type="color" value="#0a1119" />
+              <label for="cfgLoginTintOpacityInput">Transparencia</label>
+              <input id="cfgLoginTintOpacityInput" type="range" min="0" max="85" step="1" value="38" />
             </div>
           </section>
 
@@ -358,53 +737,128 @@
       </section>
 
       <section id="cashierView" class="panel hidden">
-        <div class="view-header">
-          <h2>Caja y Cobros</h2>
-          <button id="backFromCashierBtn" type="button">Volver</button>
+        <div class="cashier-header">
+          <button id="backFromCashierBtn" type="button" class="back-btn">
+            <span class="material-symbols-outlined">arrow_back</span>
+            Volver
+          </button>
+          <div class="cashier-title">
+            <span class="material-symbols-outlined">point_of_sale</span>
+            <h2>Caja y Cobros</h2>
+          </div>
         </div>
-        <div class="line">
-          <input id="cashierCheckInput" type="text" placeholder="Numero de check (ej: CHK-123...)" />
-          <button id="findByCheckBtn" type="button">Buscar por Check</button>
-          <input id="cashierAccountIdInput" type="number" min="1" placeholder="ID Cuenta" />
-          <button id="findByAccountIdBtn" type="button">Buscar por ID</button>
+        <div class="cashier-search-row">
+          <div class="cashier-search-box">
+            <span class="material-symbols-outlined">receipt_long</span>
+            <input id="cashierCheckInput" type="text" placeholder="Numero de check (ej: CHK-123...)" />
+          </div>
+          <button id="findByCheckBtn" type="button" class="cashier-search-btn">
+            <span class="material-symbols-outlined">search</span>
+            Buscar por Check
+          </button>
+          <div class="cashier-search-box">
+            <span class="material-symbols-outlined">tag</span>
+            <input id="cashierAccountIdInput" type="number" min="1" placeholder="ID Cuenta" />
+          </div>
+          <button id="findByAccountIdBtn" type="button" class="cashier-search-btn">
+            <span class="material-symbols-outlined">search</span>
+            Buscar por ID
+          </button>
         </div>
-        <h3 id="cashierAccountTitle">Cuenta no cargada</h3>
+        <h3 id="cashierAccountTitle">
+          <span class="material-symbols-outlined">info</span>
+          Cuenta no cargada
+        </h3>
         <div id="cashierOrderList" class="order-list"></div>
         <div class="totals">
-          <div>Subtotal: <strong id="cashSubtotalText">Q 0.00</strong></div>
-          <div>Descuento: <strong id="cashDiscountText">Q 0.00</strong></div>
-          <div>Propina: <strong id="cashTipText">Q 0.00</strong></div>
-          <div>Total: <strong id="cashTotalText">Q 0.00</strong></div>
-          <div>Pagado: <strong id="cashPaidText">Q 0.00</strong></div>
-          <div>Pendiente: <strong id="cashPendingText">Q 0.00</strong></div>
+          <div><span class="totals-label"><span class="material-symbols-outlined">payments</span> Subtotal</span> <strong id="cashSubtotalText">Q 0.00</strong></div>
+          <div><span class="totals-label"><span class="material-symbols-outlined">sell</span> Descuento</span> <strong id="cashDiscountText">Q 0.00</strong></div>
+          <div><span class="totals-label"><span class="material-symbols-outlined">volunteer_activism</span> Propina</span> <strong id="cashTipText">Q 0.00</strong></div>
+          <div class="totals-total"><span class="totals-label"><span class="material-symbols-outlined">account_balance_wallet</span> Total</span> <strong id="cashTotalText">Q 0.00</strong></div>
+          <div><span class="totals-label"><span class="material-symbols-outlined">check_circle</span> Pagado</span> <strong id="cashPaidText">Q 0.00</strong></div>
+          <div class="totals-pending"><span class="totals-label"><span class="material-symbols-outlined">pending</span> Pendiente</span> <strong id="cashPendingText">Q 0.00</strong></div>
         </div>
-        <div class="line">
-          <select id="cashDiscountType">
-            <option value="percent">Descuento %</option>
-            <option value="fixed">Descuento fijo</option>
-          </select>
-          <input id="cashDiscountValue" type="number" min="0" step="0.01" placeholder="Valor descuento" />
-          <button id="cashAddDiscountBtn" type="button">Aplicar Descuento</button>
+        <div class="cashier-actions-row">
+          <div class="cashier-action-group">
+            <select id="cashDiscountType">
+              <option value="percent">Descuento %</option>
+              <option value="fixed">Descuento fijo</option>
+            </select>
+            <input id="cashDiscountValue" type="number" min="0" step="0.01" placeholder="Valor" />
+            <button id="cashAddDiscountBtn" type="button" class="cashier-action-btn">
+              <span class="material-symbols-outlined">sell</span>
+              Aplicar Descuento
+            </button>
+          </div>
+          <div class="cashier-action-group">
+            <select id="cashPaymentMethod"></select>
+            <input id="cashPaymentAmount" type="number" min="0" step="0.01" placeholder="Monto" />
+            <button id="cashAddPaymentBtn" type="button" class="cashier-action-btn">
+              <span class="material-symbols-outlined">add_card</span>
+              Agregar Pago
+            </button>
+          </div>
         </div>
-        <div class="line">
-          <select id="cashPaymentMethod"></select>
-          <input id="cashPaymentAmount" type="number" min="0" step="0.01" placeholder="Monto pago" />
-          <button id="cashAddPaymentBtn" type="button">Agregar Pago</button>
-          <button id="cashCloseAccountBtn" type="button">Cerrar Cuenta</button>
-          <button id="cashCloseShiftBtn" type="button">Cerrar Turno</button>
+        <div class="cashier-final-actions">
+          <button id="cashCloseAccountBtn" type="button" class="cashier-close-btn">
+            <span class="material-symbols-outlined">check_circle</span>
+            Cerrar Cuenta
+          </button>
+          <button id="cashCloseShiftBtn" type="button" class="cashier-shift-btn">
+            <span class="material-symbols-outlined">schedule</span>
+            Cerrar Turno
+          </button>
         </div>
       </section>
 
       <section id="opsView" class="panel hidden">
-        <div class="view-header">
-          <h2>Operaciones</h2>
-          <button id="closeOpsBtn" type="button">Volver</button>
+        <div class="ops-header">
+          <button id="closeOpsBtn" type="button" class="back-btn">
+            <span class="material-symbols-outlined">arrow_back</span>
+            Volver
+          </button>
+          <div class="ops-title">
+            <span class="material-symbols-outlined">admin_panel_settings</span>
+            <h2>Operaciones</h2>
+          </div>
         </div>
-        <div class="line">
-          <button id="openShiftBtn">Abrir Turno</button>
-          <button id="closeShiftBtn">Cerrar Turno</button>
-          <button id="openCashierBtn" type="button">Caja</button>
-          <button id="openSettingsBtn" type="button">Configuraciones</button>
+        <div class="ops-actions-grid">
+          <button id="openShiftBtn" type="button" class="ops-action-card">
+            <div class="ops-action-icon ops-icon-green">
+              <span class="material-symbols-outlined">play_arrow</span>
+            </div>
+            <div class="ops-action-content">
+              <span class="ops-action-title">Abrir Turno</span>
+              <span class="ops-action-desc">Iniciar sesión de trabajo</span>
+            </div>
+          </button>
+          <button id="closeShiftBtn" type="button" class="ops-action-card">
+            <div class="ops-action-icon ops-icon-red">
+              <span class="material-symbols-outlined">stop</span>
+            </div>
+            <div class="ops-action-content">
+              <span class="ops-action-title">Cerrar Turno</span>
+              <span class="ops-action-desc">Finalizar sesión de trabajo</span>
+            </div>
+          </button>
+          <button id="openCashierBtn" type="button" class="ops-action-card">
+            <div class="ops-action-icon ops-icon-blue">
+              <span class="material-symbols-outlined">point_of_sale</span>
+            </div>
+            <div class="ops-action-content">
+              <span class="ops-action-title">Caja</span>
+              <span class="ops-action-desc">Gestionar cobros y pagos</span>
+            </div>
+          </button>
+          <button id="openSettingsBtn" type="button" class="ops-action-card">
+            <div class="ops-action-icon ops-icon-yellow">
+              <span class="material-symbols-outlined">settings</span>
+            </div>
+            <div class="ops-action-content">
+              <span class="ops-action-title">Configuraciones</span>
+              <span class="ops-action-desc">Administrar sistema</span>
+            </div>
+          </button>
         </div>
       </section>
     </main>
@@ -479,7 +933,7 @@
           <div class="functions-grid">
             <button id="functionsMoveSeatBtn" type="button">Cambiar Silla de Platillo</button>
             <button id="functionsSeatSummaryBtn" type="button">Cuenta por Silla</button>
-            <button id="functionsSplitAccountsBtn" type="button">Separar Cuentas</button>
+            <button id="functionsSplitAccountsBtn" type="button">Dividir Cuentas</button>
           </div>
           <div class="modal-actions">
             <button id="functionsCloseBtn" type="button">Cerrar</button>
@@ -512,22 +966,29 @@
         </div>
 
         <div id="functionsSplitAccountsSection" class="hidden">
-          <div class="functions-split-top">
-            <label for="functionsSplitSourceAccountSelect">Cuenta Origen</label>
-            <select id="functionsSplitSourceAccountSelect"></select>
-            <button id="functionsSplitAddAccountBtn" type="button">Nueva Cuenta Vacia</button>
-            <button id="functionsSplitRefreshBtn" type="button">Refrescar</button>
+          <h4 class="functions-split-main-title">Dividir Cuentas</h4>
+          <div class="functions-split-top functions-split-top-clean split-legacy-top">
+            <div class="functions-split-source-wrap">
+              <label for="functionsSplitSourceAccountSelect">Cuenta Origen</label>
+              <select id="functionsSplitSourceAccountSelect"></select>
+            </div>
+            <div class="functions-split-top-actions">
+              <button id="functionsSplitRefreshBtn" type="button">Refrescar</button>
+            </div>
           </div>
-          <div id="functionsSplitAccountsBoard" class="functions-split-board"></div>
-          <div class="functions-split-move">
-            <h4>Mover por Silla</h4>
-            <label for="functionsSplitSeatSelect">Silla</label>
+          <p id="functionsSplitSelectionText" class="functions-split-selection-text">
+            Selecciona items/silla en columna origen y luego la cuenta destino.
+          </p>
+          <div id="functionsSplitAccountsBoard" class="functions-split-board functions-split-board-clean split-legacy-board"></div>
+          <div class="functions-split-actions-clean">
+            <label for="functionsSplitSeatSelect">Silla seleccionada</label>
             <select id="functionsSplitSeatSelect"></select>
-            <label for="functionsSplitSeatTargetSelect">Cuenta Destino</label>
+            <label for="functionsSplitSeatTargetSelect">Cuenta destino</label>
             <select id="functionsSplitSeatTargetSelect"></select>
-            <button id="functionsSplitMoveSeatBtn" type="button">Mover Silla</button>
+            <button id="functionsSplitMoveSeatBtn" type="button">Dividir Silla</button>
+            <button id="functionsSplitClearSelectionBtn" type="button">Limpiar</button>
           </div>
-          <div class="functions-split-move">
+          <div class="functions-split-move functions-split-move-advanced hidden">
             <h4>Mover Platillo</h4>
             <label for="functionsSplitItemSelect">Platillo</label>
             <select id="functionsSplitItemSelect"></select>
@@ -537,13 +998,15 @@
             <select id="functionsSplitItemTargetSelect"></select>
             <button id="functionsSplitMoveItemBtn" type="button">Mover Platillo</button>
           </div>
-          <div class="functions-split-share">
-            <button id="functionsSplitShareEqualBtn" type="button">Compartir 1/N entre cuentas</button>
-            <span>N = numero de cuentas abiertas en esta mesa</span>
+          <div class="functions-split-share split-legacy-share">
+            <span>N = cuentas abiertas en la mesa</span>
           </div>
-          <div class="modal-actions">
-            <button id="functionsSplitBackBtn" type="button">Atras</button>
-            <button id="functionsSplitCloseBtn" type="button">Cerrar</button>
+          <div class="modal-actions split-legacy-actions">
+            <button id="functionsSplitAddAccountBtn" type="button">Nueva</button>
+            <button id="functionsSplitRemoveAccountBtn" type="button">Quitar cuenta</button>
+            <button id="functionsSplitShareEqualBtn" type="button">Dividir Equitativo</button>
+            <button id="functionsSplitBackBtn" type="button">Volver</button>
+            <button id="functionsSplitCloseBtn" type="button">Cancelar</button>
           </div>
         </div>
       </div>

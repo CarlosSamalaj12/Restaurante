@@ -202,6 +202,30 @@ CREATE TABLE IF NOT EXISTS app_settings (
   setting_value VARCHAR(255) NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS app_modules (
+  code VARCHAR(30) PRIMARY KEY,
+  label VARCHAR(80) NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS user_module_permissions (
+  user_id INT NOT NULL,
+  module_code VARCHAR(30) NOT NULL,
+  is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, module_code),
+  CONSTRAINT fk_user_module_user FOREIGN KEY (user_id) REFERENCES staff_users(id),
+  CONSTRAINT fk_user_module_code FOREIGN KEY (module_code) REFERENCES app_modules(code)
+);
+
+CREATE TABLE IF NOT EXISTS terminal_module_bindings (
+  ip_address VARCHAR(64) NOT NULL,
+  module_code VARCHAR(30) NOT NULL,
+  is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (ip_address, module_code),
+  CONSTRAINT fk_terminal_module_code FOREIGN KEY (module_code) REFERENCES app_modules(code)
+);
+
 INSERT INTO dining_areas (name) VALUES ('Salon Principal'), ('Terraza');
 INSERT INTO staff_users (full_name, role, pin_code) VALUES
 ('Mesero 1', 'waiter', '1111'),
@@ -216,6 +240,16 @@ INSERT INTO product_categories (name, sort_order) VALUES
 
 INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES
 ('tip_percent', '0');
+
+INSERT INTO app_modules (code, label, is_active, sort_order) VALUES
+('restaurant', 'Modulo Restaurante', 1, 1),
+('pms', 'Modulo PMS', 1, 2),
+('crm', 'Modulo CRM', 1, 3),
+('erp', 'Modulo ERP', 1, 4)
+ON DUPLICATE KEY UPDATE
+label = VALUES(label),
+is_active = VALUES(is_active),
+sort_order = VALUES(sort_order);
 
 INSERT INTO production_centers (name, printer_name) VALUES
 ('Cocina', 'KITCHEN_1'),

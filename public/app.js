@@ -15,6 +15,11 @@ const state = {
   centers: [],
   selectedCenterId: null,
   terminalIp: "",
+  authUser: null,
+  authToken: "",
+  loginPin: "",
+  allowedModules: [],
+  selectedModuleUserId: null,
   lastSeatSelectionByAccount: {},
   payTableModal: {
     lines: [],
@@ -22,9 +27,16 @@ const state = {
   splitAccounts: {
     accounts: [],
     sourceAccountId: null,
+    selectedSeatNo: null,
+    selectedItemId: null,
+    targetAccountId: null,
+    targetTouched: false,
+    autoTransferBusy: false,
   },
   editingProductId: null,
   activeModule: null,
+  tablesCache: [],
+  tableAreaFilter: "all",
   wizardData: {
     categoryId: null,
     productTypeId: "plato_fuerte",
@@ -86,8 +98,13 @@ const MODIFIER_TEMPLATE_PRESETS = {
 };
 
 async function api(url, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {}),
+  };
+  if (state.authToken) headers["x-auth-token"] = String(state.authToken);
   const r = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...options,
   });
   if (!r.ok) {
@@ -123,6 +140,14 @@ function tableElapsedLabel(value) {
   return remHours ? `Hace ${days}d ${remHours}h` : `Hace ${days}d`;
 }
 
+function formatCheckCompact(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+  const digits = (raw.match(/\d+/g) || []).join("");
+  if (!digits) return raw;
+  return `CHK-${digits.slice(-4).padStart(4, "0")}`;
+}
+
 function refreshTablesElapsedTimes() {
   document.querySelectorAll("#tablesGrid .table-time[data-activity]").forEach((el) => {
     el.textContent = tableElapsedLabel(el.dataset.activity);
@@ -149,13 +174,218 @@ function toast(message, type = "info", timeout = 2600) {
   }, timeout);
 }
 
-const AMBIENCE_OPTIONS = ["default", "warm", "cool"];
+const LOGIN_BG_OPTIONS = ["amber", "night", "emerald", "violet"];
+const MODULE_REGISTRY = [
+  { code: "restaurant", buttonId: "moduleRestaurantBtn", title: "Modulo Restaurante", ready: true },
+  { code: "pms", buttonId: "modulePmsBtn", title: "Modulo PMS", ready: false },
+  { code: "crm", buttonId: "moduleCrmBtn", title: "Modulo CRM", ready: false },
+  { code: "erp", buttonId: "moduleErpBtn", title: "Modulo ERP", ready: false },
+];
 
-function applyAmbience(mode = "default") {
-  const nextMode = AMBIENCE_OPTIONS.includes(mode) ? mode : "default";
-  document.body.classList.remove("ambience-default", "ambience-warm", "ambience-cool");
-  document.body.classList.add(`ambience-${nextMode}`);
-  localStorage.setItem("restaurantAmbience", nextMode);
+function allowedModuleCodes() {
+  return new Set((state.allowedModules || []).map((m) => String(m.code || "").trim()));
+}
+
+function canUseModule(code) {
+  return allowedModuleCodes().has(String(code || "").trim());
+}
+
+function renderModuleLauncher() {
+  const allowed = allowedModuleCodes();
+  let visibleCount = 0;
+  MODULE_REGISTRY.forEach((mod) => {
+    const btn = document.getElementById(mod.buttonId);
+    if (!btn) return;
+    const visible = allowed.has(mod.code);
+    btn.classList.toggle("hidden", !visible);
+    if (visible) visibleCount += 1;
+  });
+  const info = document.getElementById("moduleLauncherInfo");
+  if (!info) return;
+  if (!visibleCount) {
+    info.textContent = "Tu usuario o esta PC no tienen modulos habilitados. Pide a un admin que los active.";
+    info.classList.remove("hidden");
+    return;
+  }
+  info.classList.add("hidden");
+}
+
+function launchModule(code) {
+  const moduleCode = String(code || "").trim();
+  if (!canUseModule(moduleCode)) {
+    toast("Este modulo no esta habilitado para tu usuario o esta PC", "error");
+    return;
+  }
+  if (moduleCode === "restaurant") {
+    enterRestaurantModule();
+    return;
+  }
+  const mod = MODULE_REGISTRY.find((m) => m.code === moduleCode);
+  toast(`${mod?.title || "Este modulo"} estara disponible proximamente.`, "info");
+}
+
+function applyLoginBackground(mode = "amber") {
+  const nextMode = LOGIN_BG_OPTIONS.includes(mode) ? mode : "amber";
+  document.body.classList.remove("login-bg-amber", "login-bg-night", "login-bg-emerald", "login-bg-violet");
+  document.body.classList.add(`login-bg-${nextMode}`);
+  localStorage.setItem("loginScreenBackground", nextMode);
+  document.querySelectorAll("[data-login-bg]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.loginBg === nextMode);
+  });
+}
+
+function toLoginSafeUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+    return parsed.href;
+  } catch (_e) {
+    return "";
+  }
+}
+
+function normalizeLoginBackgroundSource(rawValue = "") {
+  const value = String(rawValue || "").trim();
+  if (!value) return "";
+  if (/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(value)) return value;
+  return toLoginSafeUrl(value);
+}
+
+function applyLoginBackgroundImage(rawValue = "") {
+  const safeUrl = normalizeLoginBackgroundSource(rawValue);
+  const loginInput = document.getElementById("loginBgUrlInput");
+  const cfgInput = document.getElementById("cfgLoginBgUrlInput");
+  if (loginInput && document.activeElement !== loginInput) loginInput.value = /^https?:\/\//.test(safeUrl) ? safeUrl : "";
+  if (cfgInput && document.activeElement !== cfgInput) cfgInput.value = /^https?:\/\//.test(safeUrl) ? safeUrl : "";
+  if (!safeUrl) {
+    document.body.style.setProperty("--login-bg-custom-image", "none");
+    localStorage.removeItem("loginBackgroundImageSrc");
+    localStorage.removeItem("loginBackgroundImageUrl");
+    return;
+  }
+  document.body.style.setProperty("--login-bg-custom-image", `url("${safeUrl}")`);
+  localStorage.setItem("loginBackgroundImageSrc", safeUrl);
+}
+
+function applyLoginBackgroundFromFile(file) {
+  if (!file) return;
+  if (!String(file.type || "").startsWith("image/")) {
+    toast("Selecciona un archivo de imagen válido", "error");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = String(reader.result || "");
+    if (!result.startsWith("data:image/")) {
+      toast("No se pudo leer la imagen", "error");
+      return;
+    }
+    try {
+      applyLoginBackgroundImage(result);
+      toast("Imagen local aplicada", "success");
+    } catch (_e) {
+      toast("No se pudo guardar la imagen. Prueba con una más liviana.", "error");
+    }
+  };
+  reader.onerror = () => toast("No se pudo leer la imagen", "error");
+  reader.readAsDataURL(file);
+}
+
+function hexToRgba(hex, alpha = 0.38) {
+  const normalized = String(hex || "").trim().replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return `rgba(8, 12, 18, ${alpha})`;
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  const a = Number.isFinite(alpha) ? Math.min(0.85, Math.max(0, alpha)) : 0.38;
+  return `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`;
+}
+
+function applyLoginTint(color = "#0a1119", opacityPercent = 38) {
+  const alpha = Number(opacityPercent) / 100;
+  const tintValue = hexToRgba(color, alpha);
+  document.body.style.setProperty("--login-tint-color", tintValue);
+  localStorage.setItem("loginTintColor", color);
+  localStorage.setItem("loginTintOpacity", String(Math.max(0, Math.min(85, Number(opacityPercent) || 0))));
+  const colorInput = document.getElementById("loginTintColorInput");
+  const opacityInput = document.getElementById("loginTintOpacityInput");
+  const cfgColorInput = document.getElementById("cfgLoginTintColorInput");
+  const cfgOpacityInput = document.getElementById("cfgLoginTintOpacityInput");
+  if (colorInput && document.activeElement !== colorInput) colorInput.value = color;
+  if (opacityInput && document.activeElement !== opacityInput) opacityInput.value = String(opacityPercent);
+  if (cfgColorInput && document.activeElement !== cfgColorInput) cfgColorInput.value = color;
+  if (cfgOpacityInput && document.activeElement !== cfgOpacityInput) cfgOpacityInput.value = String(opacityPercent);
+}
+
+function renderLoginPinDisplay() {
+  const display = document.getElementById("loginPinDisplay");
+  if (!display) return;
+  const pin = String(state.loginPin || "");
+  display.textContent = pin ? "\u2022".repeat(pin.length) : "";
+  display.classList.remove("pulse");
+  void display.offsetWidth;
+  display.classList.add("pulse");
+}
+
+function forceTransparentLoginPadButtons() {
+  // Removed to avoid conflict with CSS glassmorphism styles
+}
+
+function resetLoginPin() {
+  state.loginPin = "";
+  renderLoginPinDisplay();
+}
+
+function showLoginView() {
+  document.getElementById("loginView")?.classList.remove("hidden");
+  document.getElementById("moduleLauncher")?.classList.add("hidden");
+  document.getElementById("restaurantHeader")?.classList.add("hidden");
+  document.getElementById("restaurantMain")?.classList.add("hidden");
+  forceTransparentLoginPadButtons();
+  resetLoginPin();
+}
+
+async function submitLoginPin() {
+  const pin = String(state.loginPin || "").trim();
+  if (!/^\d{6,}$/.test(pin)) {
+    toast("Ingresa una contraseña numérica de mínimo 6 dígitos", "error");
+    return;
+  }
+  const result = await api("/api/auth/pin-login", {
+    method: "POST",
+    body: JSON.stringify({ pin }),
+  });
+  state.authUser = result.user || null;
+  state.authToken = String(result.authToken || "");
+  state.allowedModules = Array.isArray(result.allowedModules) ? result.allowedModules : [];
+  resetLoginPin();
+  document.getElementById("loginView")?.classList.add("hidden");
+  showModuleLauncher();
+  const waiterSelect = document.getElementById("waiterSelect");
+  const cashierSelect = document.getElementById("cashierSelect");
+  const authId = Number(result.user?.id || 0);
+  if (waiterSelect?.querySelector(`option[value="${authId}"]`)) waiterSelect.value = String(authId);
+  if (cashierSelect?.querySelector(`option[value="${authId}"]`)) cashierSelect.value = String(authId);
+  toast(`Bienvenido ${result.user?.full_name || ""}`.trim(), "success");
+}
+
+function handleLoginPadKey(key) {
+  if (!key) return;
+  if (key === "clear") {
+    resetLoginPin();
+    return;
+  }
+  if (key === "submit") {
+    submitLoginPin().catch((e) => toast(e.message, "error"));
+    return;
+  }
+  if (!/^\d$/.test(String(key))) return;
+  const current = String(state.loginPin || "");
+  if (current.length >= 12) return;
+  state.loginPin = `${current}${String(key)}`;
+  renderLoginPinDisplay();
 }
 
 const modalState = { resolve: null };
@@ -578,17 +808,22 @@ function openFunctionsModal() {
   state.splitAccounts.sourceAccountId = Number(state.selectedAccountId);
   const summary = document.getElementById("functionsSummaryText");
   if (summary) {
-    summary.textContent = `Mesa ${state.selectedTableCode || "-"} | ${state.accountDetail.account?.check_number || "Cuenta"}`;
+    summary.textContent = `Mesa ${state.selectedTableCode || "-"} | ${formatCheckCompact(
+      state.accountDetail.account?.check_number || "Cuenta"
+    )}`;
   }
   showFunctionsMenu();
   document.getElementById("functionsModal")?.classList.remove("hidden");
 }
 
 function closeFunctionsModal() {
+  const modal = document.getElementById("functionsModal");
+  modal?.classList.remove("split-fullscreen");
   document.getElementById("functionsModal")?.classList.add("hidden");
 }
 
 function showFunctionsMenu() {
+  document.getElementById("functionsModal")?.classList.remove("split-fullscreen");
   document.getElementById("functionsMenuSection")?.classList.remove("hidden");
   document.getElementById("functionsMoveSeatSection")?.classList.add("hidden");
   document.getElementById("functionsSeatSummarySection")?.classList.add("hidden");
@@ -619,6 +854,7 @@ function showFunctionsMoveSeat() {
     const initialSeat = Number(items[0]?.seat_no || 1);
     moveInput.value = String(Math.min(Math.max(1, initialSeat), guestCount));
   }
+  document.getElementById("functionsModal")?.classList.remove("split-fullscreen");
   document.getElementById("functionsMenuSection")?.classList.add("hidden");
   document.getElementById("functionsMoveSeatSection")?.classList.remove("hidden");
   document.getElementById("functionsSeatSummarySection")?.classList.add("hidden");
@@ -684,6 +920,7 @@ function showFunctionsSeatSummary() {
   }
   const totalText = document.getElementById("functionsSeatSummaryTotal");
   if (totalText) totalText.textContent = money(detail?.totals?.total || 0);
+  document.getElementById("functionsModal")?.classList.remove("split-fullscreen");
   document.getElementById("functionsMenuSection")?.classList.add("hidden");
   document.getElementById("functionsMoveSeatSection")?.classList.add("hidden");
   document.getElementById("functionsSeatSummarySection")?.classList.remove("hidden");
@@ -701,6 +938,13 @@ async function loadSplitAccountsData() {
   if (!sourceExists) {
     state.splitAccounts.sourceAccountId = Number(state.splitAccounts.accounts[0]?.id || 0);
   }
+  const targets = state.splitAccounts.accounts
+    .map((a) => Number(a.id))
+    .filter((id) => id !== Number(state.splitAccounts.sourceAccountId || 0));
+  if (!targets.includes(Number(state.splitAccounts.targetAccountId || 0))) {
+    state.splitAccounts.targetAccountId = null;
+    state.splitAccounts.targetTouched = false;
+  }
 }
 
 function renderSplitAccountsSection() {
@@ -711,28 +955,53 @@ function renderSplitAccountsSection() {
   const itemSelect = document.getElementById("functionsSplitItemSelect");
   const itemTargetSelect = document.getElementById("functionsSplitItemTargetSelect");
   const board = document.getElementById("functionsSplitAccountsBoard");
+  const selectionText = document.getElementById("functionsSplitSelectionText");
   const sourceAccountId = Number(state.splitAccounts.sourceAccountId || 0);
 
   if (sourceSelect) {
     sourceSelect.innerHTML = accounts
-      .map((a) => `<option value="${a.id}" ${Number(a.id) === sourceAccountId ? "selected" : ""}>${escapeHtml(a.check_number)}</option>`)
+      .map(
+        (a) =>
+          `<option value="${a.id}" ${Number(a.id) === sourceAccountId ? "selected" : ""}>${escapeHtml(
+            formatCheckCompact(a.check_number)
+          )}</option>`
+      )
       .join("");
   }
-  const currentItems = (state.accountDetail?.items || []).filter((i) => Number(i.account_id || sourceAccountId) === sourceAccountId);
   const sourceItems = state.selectedAccountId === sourceAccountId ? state.accountDetail?.items || [] : [];
-  const effectiveItems = sourceItems.length
-    ? sourceItems
-    : (state.splitAccounts.cachedItemsByAccount?.[sourceAccountId] || []);
+  const cachedByAccount = state.splitAccounts.cachedItemsByAccount || {};
+  const effectiveItems = sourceItems.length ? sourceItems : cachedByAccount[sourceAccountId] || [];
+  const itemIdsInSource = new Set(effectiveItems.map((i) => Number(i.id)));
+  if (!itemIdsInSource.has(Number(state.splitAccounts.selectedItemId || 0))) {
+    state.splitAccounts.selectedItemId = null;
+  }
   const seats = [...new Set(effectiveItems.map((i) => Number(i.seat_no || 1)))].sort((a, b) => a - b);
+  const currentSelectedSeatNo = Number(state.splitAccounts.selectedSeatNo || 0);
+  const nextSeatNo = seats.includes(currentSelectedSeatNo) ? currentSelectedSeatNo : 0;
+  state.splitAccounts.selectedSeatNo = nextSeatNo || null;
+
+  const selectableTargets = accounts.filter((a) => Number(a.id) !== sourceAccountId).map((a) => Number(a.id));
+  const currentTargetId = Number(state.splitAccounts.targetAccountId || 0);
+  const nextTargetId = selectableTargets.includes(currentTargetId) ? currentTargetId : 0;
+  state.splitAccounts.targetAccountId = nextTargetId || null;
+
   if (seatSelect) {
-    seatSelect.innerHTML = seats.map((s) => `<option value="${s}">Silla ${s}</option>`).join("");
+    seatSelect.innerHTML =
+      `<option value="">Selecciona silla</option>` + seats.map((s) => `<option value="${s}">Silla ${s}</option>`).join("");
+    seatSelect.value = nextSeatNo ? String(nextSeatNo) : "";
   }
   const targetOptions = accounts
     .filter((a) => Number(a.id) !== sourceAccountId)
-    .map((a) => `<option value="${a.id}">${escapeHtml(a.check_number)}</option>`)
+    .map((a) => `<option value="${a.id}">${escapeHtml(formatCheckCompact(a.check_number))}</option>`)
     .join("");
-  if (seatTargetSelect) seatTargetSelect.innerHTML = targetOptions;
-  if (itemTargetSelect) itemTargetSelect.innerHTML = targetOptions;
+  if (seatTargetSelect) {
+    seatTargetSelect.innerHTML = `<option value="">Selecciona cuenta destino</option>${targetOptions}`;
+    seatTargetSelect.value = nextTargetId ? String(nextTargetId) : "";
+  }
+  if (itemTargetSelect) {
+    itemTargetSelect.innerHTML = targetOptions;
+    if (nextTargetId) itemTargetSelect.value = String(nextTargetId);
+  }
   if (itemSelect) {
     itemSelect.innerHTML = effectiveItems
       .map(
@@ -743,28 +1012,129 @@ function renderSplitAccountsSection() {
       )
       .join("");
   }
+
   if (board) {
-    board.innerHTML = accounts
-      .map((a) => {
-        const isSource = Number(a.id) === sourceAccountId;
-        const label = `${escapeHtml(a.check_number)}${isSource ? " (Origen)" : ""}`;
-        const pending = money(Number(a.totals?.pending || 0));
-        const guest = Number(a.guest_count || 1);
+    const sourceAccount = accounts.find((a) => Number(a.id) === sourceAccountId) || null;
+    const targetAccounts = accounts.filter((a) => Number(a.id) !== sourceAccountId);
+    const boardAccounts = [sourceAccount, ...targetAccounts].filter(Boolean);
+
+    const columnsHtml = boardAccounts
+      .map((a, idx) => {
+        const accountId = Number(a.id);
+        const isSource = accountId === sourceAccountId;
+        const isTarget = accountId === Number(nextTargetId || 0);
+        const accountItems = isSource ? effectiveItems : cachedByAccount[accountId] || [];
+        const subtotal = accountItems.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
+
+        const groupedBySeat = accountItems.reduce((acc, item) => {
+          const seatNo = Number(item.seat_no || 1);
+          if (!acc[seatNo]) acc[seatNo] = [];
+          acc[seatNo].push(item);
+          return acc;
+        }, {});
+
+        const seatContent = Object.keys(groupedBySeat)
+          .map((seatKey) => Number(seatKey))
+          .sort((aSeat, bSeat) => aSeat - bSeat)
+          .map((seatNo) => {
+            const seatItems = groupedBySeat[seatNo] || [];
+            const seatAttr = `data-split-seat="${seatNo}" data-split-account="${accountId}"`;
+            const seatSelectedClass = isSource && Number(state.splitAccounts.selectedItemId || 0) === 0 && seatNo === nextSeatNo ? "is-selected" : "";
+            return `
+              <div class="functions-split-seat-block ${seatSelectedClass}" ${seatAttr}>
+                <div class="functions-split-seat-title is-clickable" ${seatAttr}>Silla ${seatNo}</div>
+                ${seatItems
+                  .map((item) => {
+                    const rowAttr = `data-split-seat="${seatNo}" data-split-account="${accountId}" data-split-item="${Number(
+                      item.id
+                    )}" data-split-item-qty="${Number(item.qty || 0)}"`;
+                    const itemSelectedClass = isSource && Number(state.splitAccounts.selectedItemId || 0) === Number(item.id) ? "is-selected" : "";
+                    return `
+                      <div class="functions-split-item-row ${itemSelectedClass}" ${rowAttr}>
+                        <span class="functions-split-item-qty">${Number(item.qty || 0)}</span>
+                        <span class="functions-split-item-name">${escapeHtml(item.product_name)}</span>
+                        <span class="functions-split-item-price">${money(item.line_total || 0)}</span>
+                        <span class="functions-split-item-seat">${seatNo}</span>
+                      </div>
+                    `;
+                  })
+                  .join("")}
+              </div>
+            `;
+          })
+          .join("");
+
+        const columnContent = seatContent || `<div class="functions-split-empty"><span class="material-symbols-outlined">move_to_inbox</span><p>Arrastra aqui los platillos para esta cuenta</p></div>`;
         return `
-          <div class="functions-split-account">
-            <strong>${label}</strong>
-            <span>Personas: ${guest}</span>
-            <span>Pendiente: ${pending}</span>
+          <div class="functions-split-column functions-split-column-classic ${isSource ? "is-source" : ""} ${
+            isTarget ? "is-target" : ""
+          }" data-split-account="${accountId}" ${isSource ? "" : `data-split-target="${accountId}"`}>
+            <div class="functions-split-column-head" data-split-account-switch="${accountId}">
+              <div class="functions-split-column-title">${isSource ? "Cuenta Original" : `Nueva Cuenta #${idx + 1}`}</div>
+              <div class="functions-split-column-total">${money(subtotal)}</div>
+              ${
+                !isSource
+                  ? `<button type="button" class="functions-split-remove-mini" title="Quitar cuenta" aria-label="Quitar cuenta" data-split-remove-account="${accountId}">x</button>`
+                  : ""
+              }
+            </div>
+            <div class="functions-split-column-body">
+              <div class="functions-split-item-list">
+                ${columnContent}
+              </div>
+            </div>
+            <div class="functions-split-column-foot" data-split-account-switch="${accountId}">${escapeHtml(
+          formatCheckCompact(a.check_number)
+        )}</div>
           </div>
         `;
       })
       .join("");
+    const addCanvas = `
+      <button type="button" class="functions-split-add-canvas" data-split-add-account>
+        <span class="material-symbols-outlined">add</span>
+        <strong>Crear Nueva Cuenta</strong>
+        <small>Anade otro canvas para dividir pago</small>
+      </button>
+    `;
+    board.innerHTML = `${columnsHtml}${addCanvas}`;
   }
+
+  if (selectionText) {
+    const selectedItem = effectiveItems.find((i) => Number(i.id) === Number(state.splitAccounts.selectedItemId || 0)) || null;
+    const origin = selectedItem
+      ? `Platillo ${selectedItem.product_name} (Silla ${Number(selectedItem.seat_no || 1)})`
+      : nextSeatNo
+        ? `Silla ${nextSeatNo}`
+        : "Sin silla seleccionada";
+    const targetCheck = formatCheckCompact(accounts.find((a) => Number(a.id) === nextTargetId)?.check_number || "Sin destino");
+    selectionText.textContent = `${origin} -> ${targetCheck}`;
+  }
+}
+
+async function setSplitSourceAccount(nextSourceAccountId) {
+  const nextId = Number(nextSourceAccountId || 0);
+  const currentSourceId = Number(state.splitAccounts.sourceAccountId || 0);
+  if (!nextId || nextId === currentSourceId) return;
+  state.splitAccounts.sourceAccountId = nextId;
+  state.splitAccounts.selectedSeatNo = null;
+  state.splitAccounts.selectedItemId = null;
+  if (currentSourceId && currentSourceId !== nextId) {
+    state.splitAccounts.targetAccountId = currentSourceId;
+    state.splitAccounts.targetTouched = true;
+  } else {
+    state.splitAccounts.targetTouched = false;
+  }
+  await refreshSplitSourceAccountDetail();
+  renderSplitAccountsSection();
 }
 
 async function showFunctionsSplitAccounts() {
   if (!state.selectedTableId) return;
+  const title = document.getElementById("functionsTitle");
+  if (title) title.textContent = "Dividir Cuentas";
   await loadSplitAccountsData();
+  document.getElementById("functionsModal")?.classList.add("split-fullscreen");
   document.getElementById("functionsMenuSection")?.classList.add("hidden");
   document.getElementById("functionsMoveSeatSection")?.classList.add("hidden");
   document.getElementById("functionsSeatSummarySection")?.classList.add("hidden");
@@ -774,11 +1144,18 @@ async function showFunctionsSplitAccounts() {
 }
 
 async function refreshSplitSourceAccountDetail() {
-  const sourceAccountId = Number(state.splitAccounts.sourceAccountId || 0);
-  if (!sourceAccountId) return;
-  const data = await api(`/api/accounts/${sourceAccountId}`);
+  const accountIds = (state.splitAccounts.accounts || []).map((a) => Number(a.id)).filter((id) => id > 0);
+  if (!accountIds.length) return;
+  const detailByAccount = await Promise.all(
+    accountIds.map(async (id) => {
+      const data = await api(`/api/accounts/${id}`);
+      return { id, items: data.items || [] };
+    })
+  );
   state.splitAccounts.cachedItemsByAccount = state.splitAccounts.cachedItemsByAccount || {};
-  state.splitAccounts.cachedItemsByAccount[sourceAccountId] = data.items || [];
+  detailByAccount.forEach((row) => {
+    state.splitAccounts.cachedItemsByAccount[row.id] = row.items;
+  });
 }
 
 async function addEmptyAccountFromFunctions() {
@@ -793,12 +1170,44 @@ async function addEmptyAccountFromFunctions() {
   toast("Cuenta vacia creada", "success");
 }
 
-async function moveSeatBetweenAccountsFromFunctions() {
+async function removeEmptyAccountFromFunctions(accountIdOverride = null) {
   const sourceAccountId = Number(state.splitAccounts.sourceAccountId || 0);
-  const seatNo = Number(document.getElementById("functionsSplitSeatSelect")?.value || "0");
-  const toAccountId = Number(document.getElementById("functionsSplitSeatTargetSelect")?.value || "0");
+  const selectedTargetId = Number(
+    accountIdOverride ||
+      document.getElementById("functionsSplitSeatTargetSelect")?.value ||
+      state.splitAccounts.targetAccountId ||
+      "0"
+  );
+  if (!selectedTargetId) {
+    toast("Selecciona la cuenta destino que deseas quitar", "error");
+    return;
+  }
+  if (selectedTargetId === sourceAccountId) {
+    toast("No puedes quitar la cuenta origen", "error");
+    return;
+  }
+  await api(`/api/accounts/${selectedTargetId}`, { method: "DELETE" });
+  await loadSplitAccountsData();
+  await refreshSplitSourceAccountDetail();
+  renderSplitAccountsSection();
+  await loadTables();
+  toast("Cuenta vacia eliminada", "success");
+}
+
+async function moveSeatBetweenAccountsFromFunctions(options = {}) {
+  const quietIfIncomplete = Boolean(options.quietIfIncomplete);
+  const successMessage = options.successMessage || null;
+  const sourceAccountId = Number(state.splitAccounts.sourceAccountId || 0);
+  const seatNo = Number(document.getElementById("functionsSplitSeatSelect")?.value || state.splitAccounts.selectedSeatNo || "0");
+  const toAccountId = Number(
+    options.toAccountId || document.getElementById("functionsSplitSeatTargetSelect")?.value || state.splitAccounts.targetAccountId || "0"
+  );
   if (!sourceAccountId || !seatNo || !toAccountId) {
-    toast("Selecciona cuenta origen, silla y cuenta destino", "error");
+    if (!quietIfIncomplete) toast("Selecciona cuenta origen, silla y cuenta destino", "error");
+    return;
+  }
+  if (sourceAccountId === toAccountId) {
+    if (!quietIfIncomplete) toast("La cuenta destino debe ser diferente al origen", "error");
     return;
   }
   await api(`/api/accounts/${sourceAccountId}/transfer-seat`, {
@@ -809,16 +1218,61 @@ async function moveSeatBetweenAccountsFromFunctions() {
   await loadSplitAccountsData();
   await refreshSplitSourceAccountDetail();
   renderSplitAccountsSection();
-  toast(`Silla ${seatNo} movida`, "success");
+  toast(successMessage || `Silla ${seatNo} movida`, "success");
 }
 
-async function moveItemBetweenAccountsFromFunctions() {
+async function moveSelectedSplitSelectionToAccount(toAccountId) {
+  const targetId = Number(toAccountId || 0);
+  const sourceId = Number(state.splitAccounts.sourceAccountId || 0);
+  if (!targetId || !sourceId || targetId === sourceId) return;
+  const selectedItemId = Number(state.splitAccounts.selectedItemId || 0);
+  const selectedSeatNo = Number(state.splitAccounts.selectedSeatNo || 0);
+  if (selectedItemId) {
+    await moveItemBetweenAccountsFromFunctions({
+      toAccountId: targetId,
+      itemId: selectedItemId,
+      quietIfIncomplete: false,
+      successMessage: "Platillo movido",
+    });
+    return;
+  }
+  if (selectedSeatNo) {
+    await moveSeatBetweenAccountsFromFunctions({
+      toAccountId: targetId,
+      quietIfIncomplete: false,
+      successMessage: `Silla ${selectedSeatNo} movida`,
+    });
+  }
+}
+
+async function moveItemBetweenAccountsFromFunctions(options = {}) {
+  const quietIfIncomplete = Boolean(options.quietIfIncomplete);
+  const successMessage = options.successMessage || "Platillo movido a otra cuenta";
   const sourceAccountId = Number(state.splitAccounts.sourceAccountId || 0);
-  const itemId = Number(document.getElementById("functionsSplitItemSelect")?.value || "0");
-  const qty = Number(document.getElementById("functionsSplitItemQtyInput")?.value || "0");
-  const toAccountId = Number(document.getElementById("functionsSplitItemTargetSelect")?.value || "0");
+  const itemId = Number(
+    options.itemId ||
+      state.splitAccounts.selectedItemId ||
+      document.getElementById("functionsSplitItemSelect")?.value ||
+      "0"
+  );
+  const selectedItem = (state.splitAccounts.cachedItemsByAccount?.[sourceAccountId] || []).find(
+    (item) => Number(item.id) === itemId
+  );
+  const qtyFromUi = Number(document.getElementById("functionsSplitItemQtyInput")?.value || "0");
+  const qty = Number(options.qty || (qtyFromUi > 0 ? qtyFromUi : Number(selectedItem?.qty || 0)));
+  const toAccountId = Number(
+    options.toAccountId ||
+      document.getElementById("functionsSplitItemTargetSelect")?.value ||
+      document.getElementById("functionsSplitSeatTargetSelect")?.value ||
+      state.splitAccounts.targetAccountId ||
+      "0"
+  );
   if (!sourceAccountId || !itemId || !toAccountId || !qty || qty <= 0) {
-    toast("Selecciona platillo, cantidad y cuenta destino", "error");
+    if (!quietIfIncomplete) toast("Selecciona platillo y cuenta destino", "error");
+    return;
+  }
+  if (sourceAccountId === toAccountId) {
+    if (!quietIfIncomplete) toast("La cuenta destino debe ser diferente al origen", "error");
     return;
   }
   await api(`/api/accounts/${sourceAccountId}/move-item`, {
@@ -828,8 +1282,9 @@ async function moveItemBetweenAccountsFromFunctions() {
   if (Number(state.selectedAccountId) === sourceAccountId) await loadAccountDetail();
   await loadSplitAccountsData();
   await refreshSplitSourceAccountDetail();
+  state.splitAccounts.selectedItemId = null;
   renderSplitAccountsSection();
-  toast("Platillo movido a otra cuenta", "success");
+  toast(successMessage, "success");
 }
 
 async function splitEqualAcrossAccountsFromFunctions() {
@@ -1024,10 +1479,15 @@ function updateMenuQuickActionsState() {
   const sendBtn = document.getElementById("menuSendOrderBtn");
   const payBtn = document.getElementById("menuPayTableBtn");
   const precheckBtn = document.getElementById("menuPrecheckBtn");
+  const settingsBtn = document.getElementById("openSettingsBtn");
+  const settingsHomeBtn = document.getElementById("openSettingsFromHomeBtn");
+  const isAdmin = state.authUser?.role === "admin";
   const disabled = !state.selectedAccountId;
   if (sendBtn) sendBtn.disabled = disabled;
   if (payBtn) payBtn.disabled = disabled;
   if (precheckBtn) precheckBtn.disabled = disabled;
+  if (settingsBtn) settingsBtn.style.display = isAdmin ? "" : "none";
+  if (settingsHomeBtn) settingsHomeBtn.style.display = isAdmin ? "" : "none";
 }
 
 function selectedCashierId() {
@@ -1171,42 +1631,189 @@ function renderPaymentMethodSelect() {
 
 async function loadTables() {
   const tables = await api(`/api/tables?centerId=${selectedCenterId() || 0}`);
+  state.tablesCache = Array.isArray(tables) ? tables : [];
+  renderHomeQuickStats();
+  renderTablesMap();
+}
+
+function renderHomeQuickStats() {
+  const allTables = Array.isArray(state.tablesCache) ? state.tablesCache : [];
+  const busyCount = allTables.filter((t) => Number(t.open_accounts) > 0).length;
+  const freeCount = Math.max(0, allTables.length - busyCount);
+  const freeEl = document.getElementById("homeFreeTablesText");
+  const busyEl = document.getElementById("homeBusyTablesText");
+  if (freeEl) freeEl.textContent = String(freeCount);
+  if (busyEl) busyEl.textContent = String(busyCount);
+}
+
+function renderTablesMap() {
+  const allTables = Array.isArray(state.tablesCache) ? state.tablesCache : [];
+  const sectorNav = document.getElementById("tablesSectorsNav");
+  const areaTitle = document.getElementById("tablesAreaTitle");
+  const areaSubtitle = document.getElementById("tablesAreaSubtitle");
+  const freeCountText = document.getElementById("tablesFreeCountText");
+  const busyCountText = document.getElementById("tablesBusyCountText");
+  const shiftNameText = document.getElementById("tablesShiftNameText");
   const grid = document.getElementById("tablesGrid");
+  if (!grid) return;
+
+  const areas = [...new Set(allTables.map((t) => String(t.area_name || "").trim()).filter(Boolean))];
+  if (!state.tableAreaFilter || (state.tableAreaFilter !== "all" && !areas.includes(state.tableAreaFilter))) {
+    state.tableAreaFilter = "all";
+  }
+
+  const iconForArea = (name = "") => {
+    const area = String(name || "").toLowerCase();
+    if (area.includes("terraza")) return "deck";
+    if (area.includes("bar")) return "local_bar";
+    if (area.includes("priv")) return "door_back";
+    if (area.includes("sal")) return "chair";
+    return "table_restaurant";
+  };
+
+  if (sectorNav) {
+    const items = [{ key: "all", label: "Todas" }, ...areas.map((name) => ({ key: name, label: name }))];
+    sectorNav.innerHTML = items
+      .map((item) => {
+        const isActive = item.key === state.tableAreaFilter;
+        return `
+          <button type="button" class="table-sector-btn ${isActive ? "is-active" : ""}" data-table-sector="${escapeHtml(item.key)}">
+            <span class="material-symbols-outlined">${iconForArea(item.label)}</span>
+            <span>${escapeHtml(item.label)}</span>
+          </button>
+        `;
+      })
+      .join("");
+    sectorNav.querySelectorAll("[data-table-sector]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.tableAreaFilter = btn.getAttribute("data-table-sector") || "";
+        renderTablesMap();
+      });
+    });
+  }
+
+  const filteredTables =
+    state.tableAreaFilter === "all"
+      ? allTables
+      : allTables.filter((t) => String(t.area_name || "").trim() === state.tableAreaFilter);
+
+  const busyCount = filteredTables.filter((t) => Number(t.open_accounts) > 0).length;
+  const freeCount = Math.max(0, filteredTables.length - busyCount);
+
+  if (areaTitle) areaTitle.textContent = state.tableAreaFilter === "all" ? "Mapa de Mesas" : state.tableAreaFilter || "Mapa de Mesas";
+  const selectedCenter = state.centers.find((x) => Number(x.id) === selectedCenterId());
+  if (areaSubtitle) {
+    areaSubtitle.textContent = selectedCenter
+      ? `Estado actual de la sala en tiempo real · ${selectedCenter.name}`
+      : "Estado actual de la sala en tiempo real";
+  }
+  if (shiftNameText) {
+    shiftNameText.textContent = selectedCenter ? `Centro: ${selectedCenter.name}` : "Turno en curso";
+  }
+  if (freeCountText) freeCountText.textContent = `${freeCount} Libres`;
+  if (busyCountText) busyCountText.textContent = `${busyCount} Ocupadas`;
+
   grid.innerHTML = "";
-  for (const t of tables) {
+  for (const t of filteredTables) {
     const isBusy = Number(t.open_accounts) > 0;
     const activityText = tableElapsedLabel(t.last_activity_at);
     const btn = document.createElement("button");
+    btn.type = "button";
     btn.className = `table-btn ${isBusy ? "table-busy" : "table-free"}`;
     btn.innerHTML = `
-      <div class="table-visual-wrap">
-        <div class="table-visual-top"></div>
-        <div class="table-visual-leg table-leg-1"></div>
-        <div class="table-visual-leg table-leg-2"></div>
-        <div class="table-visual-leg table-leg-3"></div>
-        <div class="table-visual-leg table-leg-4"></div>
-      </div>
       <div class="table-headline">
-        <div class="table-code">${escapeHtml(t.code)}</div>
-        <div class="table-status ${isBusy ? "status-busy" : "status-free"}">${isBusy ? "Ocupada" : "Libre"}</div>
+        <div class="table-code ${isBusy ? "table-code-busy" : "table-code-free"}">${escapeHtml(t.code)}</div>
+        <div class="table-status ${isBusy ? "status-busy" : "status-free"}">
+          <span class="material-symbols-outlined">${isBusy ? "event_busy" : "check_circle"}</span>
+          ${isBusy ? "Ocupada" : "Libre"}
+        </div>
       </div>
-      <div class="table-area">${escapeHtml(t.area_name)}</div>
+      <div class="table-visual ${isBusy ? "table-visual-busy" : "table-visual-free"}">
+        <span class="material-symbols-outlined">${isBusy ? "table_restaurant" : "meeting_room"}</span>
+      </div>
+      <div class="table-body">
+        ${
+          isBusy
+            ? `
+          <div class="table-info-row">
+            <span class="material-symbols-outlined">schedule</span>
+            <span>Permanencia</span>
+          </div>
+          <div class="table-value table-time" ${t.last_activity_at ? `data-activity="${escapeHtml(t.last_activity_at)}"` : ""}>${activityText}</div>
+          <div class="table-info-row">
+            <span class="material-symbols-outlined">assignment</span>
+            <span>Cuentas abiertas</span>
+          </div>
+          <div class="table-value">${Number(t.open_accounts || 0)}</div>
+        `
+            : `
+          <div class="table-info-row">
+            <span class="material-symbols-outlined">people</span>
+            <span>Capacidad</span>
+          </div>
+          <div class="table-value">${Number(t.seats || 0)} Personas</div>
+          <div class="table-info-row">
+            <span class="material-symbols-outlined">check_circle</span>
+            <span>Estado</span>
+          </div>
+          <div class="table-value table-available">Disponible</div>
+        `
+        }
+      </div>
       <div class="table-footer">
-        <div class="table-accounts">${Number(t.open_accounts || 0)} cuenta(s)</div>
-        <div class="table-time" ${t.last_activity_at ? `data-activity="${escapeHtml(t.last_activity_at)}"` : ""}>${activityText}</div>
+        ${isBusy ? `
+          <button type="button" class="table-quick-btn table-precheck-btn" data-quick-action="precheck" data-table-id="${t.id}">
+            <span class="material-symbols-outlined">receipt_long</span>
+            Pre Cuenta
+          </button>
+        ` : ""}
+        <div class="table-action">${isBusy ? "Gestionar Mesa" : "Abrir Mesa"}</div>
       </div>
     `;
     btn.onclick = () => openTable(t.id, t.code).catch((e) => toast(e.message, "error"));
+
+    btn.querySelectorAll("[data-quick-action]").forEach((quickBtn) => {
+      quickBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const tableId = Number(quickBtn.getAttribute("data-table-id"));
+        const action = quickBtn.getAttribute("data-quick-action");
+        if (action === "precheck") {
+          await openTableForPrecheck(tableId);
+        }
+      });
+    });
+
     grid.appendChild(btn);
   }
+
+  if (!filteredTables.length) {
+    grid.innerHTML = `<div class="tables-empty-state"><span class="material-symbols-outlined">table_restaurant</span>No hay mesas para este sector</div>`;
+  }
+
   refreshTablesElapsedTimes();
 }
 
 function showTablesView() {
   hideRestaurantViews();
+  setRestaurantViewMode("tables");
   document.getElementById("tablesView").classList.remove("hidden");
-  document.getElementById("restaurantHeader")?.classList.add("hidden");
+  document.getElementById("restaurantHeader")?.classList.remove("hidden");
+  document.getElementById("restaurantHeader")?.classList.remove("header-hide-pickers");
   updateMenuQuickActionsState();
+}
+
+function setRestaurantViewMode(mode) {
+  document.body.classList.remove(
+    "view-home",
+    "view-tables",
+    "view-account-picker",
+    "view-service",
+    "view-settings",
+    "view-cashier",
+    "view-ops",
+    "view-modules"
+  );
+  if (mode) document.body.classList.add(`view-${mode}`);
 }
 
 function hideRestaurantViews() {
@@ -1221,6 +1828,7 @@ function hideRestaurantViews() {
 
 function showRestaurantHomeView() {
   hideRestaurantViews();
+  setRestaurantViewMode("home");
   document.getElementById("restaurantHomeView")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("header-hide-pickers");
@@ -1230,6 +1838,9 @@ function showRestaurantHomeView() {
 function showModuleLauncher() {
   state.activeModule = null;
   backToTables();
+  setRestaurantViewMode("modules");
+  document.getElementById("loginView")?.classList.add("hidden");
+  renderModuleLauncher();
   document.getElementById("moduleLauncher")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.add("hidden");
   document.getElementById("restaurantMain")?.classList.add("hidden");
@@ -1245,6 +1856,7 @@ function enterRestaurantModule() {
 
 function showAccountPickerView() {
   hideRestaurantViews();
+  setRestaurantViewMode("account-picker");
   document.getElementById("accountPickerView").classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.add("header-hide-pickers");
@@ -1253,6 +1865,7 @@ function showAccountPickerView() {
 
 function showServiceView() {
   hideRestaurantViews();
+  setRestaurantViewMode("service");
   document.getElementById("serviceView").classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.add("header-hide-pickers");
@@ -1261,6 +1874,7 @@ function showServiceView() {
 
 function showSettingsView() {
   hideRestaurantViews();
+  setRestaurantViewMode("settings");
   document.getElementById("settingsView").classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("header-hide-pickers");
@@ -1269,6 +1883,7 @@ function showSettingsView() {
 
 function showCashierView() {
   hideRestaurantViews();
+  setRestaurantViewMode("cashier");
   document.getElementById("cashierView").classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("header-hide-pickers");
@@ -1277,10 +1892,30 @@ function showCashierView() {
 
 function showOpsView() {
   hideRestaurantViews();
+  setRestaurantViewMode("ops");
   document.getElementById("opsView").classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("header-hide-pickers");
   updateMenuQuickActionsState();
+}
+
+async function openTableForPrecheck(tableId) {
+  try {
+    const accounts = await api(`/api/tables/${tableId}/accounts`);
+    if (!accounts || !accounts.length) {
+      toast("No hay cuentas abiertas para esta mesa", "info");
+      return;
+    }
+    state.selectedAccountId = accounts[0].id;
+    state.selectedTableId = tableId;
+    showServiceView();
+    const accountTitle = document.getElementById("orderTitle");
+    if (accountTitle) accountTitle.textContent = `Mesa ${state.selectedTableCode || tableId} | Pre Cuenta`;
+    await loadAccountDetail();
+    setTimeout(() => openPayTableModal(), 300);
+  } catch (e) {
+    toast("Error al cargar pre-cuenta: " + e.message, "error");
+  }
 }
 
 async function openTable(tableId, tableCode) {
@@ -1384,7 +2019,7 @@ function renderCategories() {
   row.innerHTML = "";
   for (const c of state.categories) {
     const b = document.createElement("button");
-    b.textContent = c.name;
+    b.innerHTML = `<span class="material-symbols-outlined">restaurant</span>${escapeHtml(c.name)}`;
     if (Number(state.selectedCategoryId) === Number(c.id)) b.classList.add("tab-active");
     b.onclick = () => {
       state.selectedCategoryId = Number(c.id);
@@ -1403,7 +2038,15 @@ async function loadProducts(categoryId) {
   row.innerHTML = "";
   for (const p of state.products) {
     const b = document.createElement("button");
-    b.textContent = `${p.name} ${money(p.base_price)}`;
+    b.innerHTML = `
+      <div class="product-card-visual">
+        <span class="material-symbols-outlined">restaurant</span>
+      </div>
+      <div class="product-card-content">
+        <span class="product-card-name">${escapeHtml(p.name)}</span>
+        <span class="product-card-price">${money(p.base_price)}</span>
+      </div>
+    `;
     if (Number(state.selectedProductId) === Number(p.id)) b.classList.add("tab-active");
     b.onclick = () => {
       state.selectedProductId = Number(p.id);
@@ -1518,29 +2161,29 @@ function renderOrderList(items, pendingBuilderItem = null) {
       : "";
     if (isDraft) {
       div.innerHTML = `
-        <div><strong>Silla ${i.seat_no}</strong> - ${i.product_name} x${i.qty}</div>
-        ${mods}
-        <div>${i.notes || ""}</div>
+        <div class="item-line-head"><strong>Silla ${i.seat_no}</strong> - ${i.product_name} <span class="item-line-qty">x${i.qty}</span></div>
+        ${mods ? `<div class="item-line-mods">${mods}</div>` : ""}
+        <div class="item-line-notes">${i.notes || ""}</div>
         <div class="item-draft-badge">En armado (tiempo real)</div>
-        <div>${money(i.line_total)}</div>
+        <div class="item-line-total">${money(i.line_total)}</div>
       `;
       list.appendChild(div);
       continue;
     }
 
     div.innerHTML = `
-      <div><strong>Silla ${i.seat_no}</strong> - ${i.product_name} x${i.qty}</div>
-      ${mods}
-      <div>${i.notes || ""}</div>
+      <div class="item-line-head"><strong>Silla ${i.seat_no}</strong> - ${i.product_name} <span class="item-line-qty">x${i.qty}</span></div>
+      ${mods ? `<div class="item-line-mods">${mods}</div>` : ""}
+      <div class="item-line-notes">${i.notes || ""}</div>
       <div class="item-actions">
-        <button type="button" data-item-action="dec" data-item-id="${i.id}" data-item-qty="${qtyNum}" ${isSent ? "disabled" : ""}>-</button>
-        <button type="button" data-item-action="inc" data-item-id="${i.id}" data-item-qty="${qtyNum}" ${isSent ? "disabled" : ""}>+</button>
-        <button type="button" data-item-action="remove" data-item-id="${i.id}" data-item-sent="${isSent ? 1 : 0}">${
+        <button type="button" class="item-action-btn item-action-dec" data-item-action="dec" data-item-id="${i.id}" data-item-qty="${qtyNum}" ${isSent ? "disabled" : ""}>-</button>
+        <button type="button" class="item-action-btn item-action-inc" data-item-action="inc" data-item-id="${i.id}" data-item-qty="${qtyNum}" ${isSent ? "disabled" : ""}>+</button>
+        <button type="button" class="item-action-btn item-action-remove" data-item-action="remove" data-item-id="${i.id}" data-item-sent="${isSent ? 1 : 0}">${
           isSent ? "Revertir" : "Quitar"
         }</button>
       </div>
       ${isSent ? '<div class="item-sent-badge">Enviado</div>' : ""}
-      <div>${money(i.line_total)}</div>
+      <div class="item-line-total">${money(i.line_total)}</div>
     `;
     div.querySelector('[data-item-action="dec"]')?.addEventListener("click", () => {
       changeItemQty(i.id, qtyNum - 1).catch((e) => toast(e.message, "error"));
@@ -1588,9 +2231,34 @@ function shortLabel(text, maxChars = 18) {
   return `${raw.slice(0, maxChars - 1)}...`;
 }
 
-function builderThemeClass(groupIndex) {
-  const themes = ["builder-theme-1", "builder-theme-2", "builder-theme-3", "builder-theme-4"];
-  return themes[groupIndex % themes.length];
+function builderThemeClass(group) {
+  const type = String(group.groupType || group.group_type || "other").toLowerCase().trim();
+  const themeMap = {
+    garnish: "theme-garnish",
+    preparation: "theme-preparation",
+    sauce: "theme-sauce",
+    meat_term: "theme-meat",
+    milk_type: "theme-milk",
+    beverage_temp: "theme-beverage",
+    ice: "theme-ice",
+    other: "theme-other"
+  };
+  return themeMap[type] || "theme-other";
+}
+
+function getModifierIcon(groupType) {
+  const type = String(groupType || "other").toLowerCase().trim();
+  const iconMap = {
+    garnish: "rice_bowl",
+    preparation: "outdoor_grill",
+    sauce: "water_drop",
+    meat_term: "local_fire_department",
+    milk_type: "water_drop",
+    beverage_temp: "thermostat",
+    ice: "ac_unit",
+    other: "tune"
+  };
+  return iconMap[type] || "tune";
 }
 
 function interactiveModifierIndexes(product) {
@@ -1610,24 +2278,26 @@ function renderProductBuilder() {
     return;
   }
 
-  const group = builder.product.modifiers[builder.groupIndex];
+const group = builder.product.modifiers[builder.groupIndex];
   const selectedByOption = builder.selections[group.groupId] || {};
-  const themeClass = builderThemeClass(builder.groupIndex);
+  const themeClass = builderThemeClass(group);
   const count = selectedCount(selectedByOption);
   const isLast = findInteractiveGroupIndex(builder.product, builder.groupIndex + 1, 1) === -1;
   const rule = selectionRuleLabel(group);
   const steps = interactiveModifierIndexes(builder.product);
   const stepNumber = Math.max(1, steps.indexOf(builder.groupIndex) + 1);
   const stepTotal = Math.max(1, steps.length);
-  const optionsHtml = group.options
+const optionsHtml = group.options
     .map((o) => {
       const qty = Number(selectedByOption[o.id] || 0);
-      const delta = Number(o.price_delta) ? ` (+${money(o.price_delta)})` : "";
-      const name = shortLabel(o.name, 18);
+      const delta = Number(o.price_delta) ? `<span class="builder-delta-value">+${money(o.price_delta)}</span>` : "";
+      const name = shortLabel(o.name, 20);
+      const icon = getModifierIcon(group.groupType || group.group_type);
       return `
-        <div class="builder-choice-btn ${qty > 0 ? "builder-option-selected" : ""}" title="${escapeHtml(o.name)}">
+        <div class="builder-choice-btn ${qty > 0 ? "builder-option-selected" : ""} ${themeClass}" title="${escapeHtml(o.name)}">
+          <span class="material-symbols-outlined builder-option-icon">${icon}</span>
           <span class="builder-choice-name">${escapeHtml(name)}</span>
-          <span class="builder-choice-delta">${escapeHtml(delta || " ")}</span>
+          <span class="builder-choice-delta">${delta}</span>
           <div class="builder-choice-controls">
             <button type="button" class="builder-qty-btn" data-option-action="dec" data-option-id="${o.id}">-</button>
             <span class="builder-choice-qty">x${qty}</span>
@@ -1638,18 +2308,33 @@ function renderProductBuilder() {
     })
     .join("");
 
-  host.className = `product-builder ${themeClass}`;
+host.className = `product-builder ${themeClass}`;
   host.innerHTML = `
     <div class="builder-product-head">
-      <div class="builder-product-title">${escapeHtml(builder.product.name)}</div>
+      <div class="builder-product-title">
+        <span class="material-symbols-outlined">restaurant</span>
+        ${escapeHtml(builder.product.name)}
+      </div>
       <div class="builder-product-price">${money(builder.product.base_price || 0)}</div>
     </div>
-    <div class="builder-only-title">${escapeHtml(group.name)}</div>
-    <div class="builder-step-rule">Paso ${stepNumber}/${stepTotal} | ${escapeHtml(rule)} | Seleccionadas: ${count}</div>
+    <div class="builder-step-indicator">
+      <span class="builder-step-badge ${themeClass}">Paso ${stepNumber}/${stepTotal}</span>
+      <span class="builder-step-rule">${escapeHtml(rule)}</span>
+    </div>
+    <div class="builder-only-title">
+      <span class="material-symbols-outlined builder-type-icon ${themeClass}">${getModifierIcon(group.groupType || group.group_type)}</span>
+      ${escapeHtml(group.name)}
+    </div>
+    <div class="builder-step-progress">
+      <div class="builder-progress-bar ${themeClass}" style="width: ${(count / Math.max(Number(group.maxSelect) || 1, 1)) * 100}%"></div>
+    </div>
+    <div class="builder-info-row">
+      <span class="builder-info-text">Seleccionadas: <strong>${count}</strong> de <strong>${Number(group.maxSelect) || 1}</strong></span>
+    </div>
     <div class="builder-options">${optionsHtml}</div>
     <div class="builder-actions">
-      ${builder.groupIndex > 0 ? '<button type="button" data-builder-action="prev">Atras</button>' : ""}
-      ${!isLast ? '<button type="button" data-builder-action="next" class="btn-primary">Siguiente</button>' : ""}
+      ${builder.groupIndex > 0 ? '<button type="button" data-builder-action="prev" class="btn-secondary"><span class="material-symbols-outlined">chevron_left</span> Anterior</button>' : ""}
+      ${!isLast ? '<button type="button" data-builder-action="next" class="btn-primary">Siguiente <span class="material-symbols-outlined">chevron_right</span></button>' : '<button type="button" data-builder-action="next" class="btn-success"><span class="material-symbols-outlined">add</span> Agregar</button>'}
     </div>
   `;
   host.classList.remove("hidden");
@@ -2141,6 +2826,30 @@ async function removeTipForCurrentAccount() {
   toast("Propina removida para esta cuenta", "success");
 }
 
+function renderModulePermissionChecklist(containerId, modules, enabledSet, prefix) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = (modules || [])
+    .map((m) => {
+      const code = String(m.code || "").trim();
+      const checked = enabledSet.has(code) ? "checked" : "";
+      return `
+        <label class="line" style="justify-content:flex-start; gap:10px;">
+          <input type="checkbox" ${checked} data-module-perm="${prefix}" data-module-code="${escapeHtml(code)}" />
+          <span>${escapeHtml(m.label || code)} <small>(${escapeHtml(code)})</small></span>
+        </label>
+      `;
+    })
+    .join("");
+}
+
+function selectedModuleCodes(prefix) {
+  return Array.from(document.querySelectorAll(`input[type="checkbox"][data-module-perm="${prefix}"][data-module-code]`))
+    .filter((el) => el.checked)
+    .map((el) => String(el.getAttribute("data-module-code") || "").trim())
+    .filter(Boolean);
+}
+
 function renderSettings() {
   const cfg = state.settings;
   if (!cfg) return;
@@ -2171,12 +2880,12 @@ function renderSettings() {
           </div>
         </div>
         <div class="cfg-entity-actions">
-          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-category-action="edit" data-category-id="${cat.id}">✎</button>
+          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-category-action="edit" data-category-id="${cat.id}">âœŽ</button>
           <button type="button" class="cfg-icon-btn ${Number(cat.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
             Number(cat.is_active) ? "Inhabilitar" : "Habilitar"
           }" aria-label="${Number(cat.is_active) ? "Inhabilitar" : "Habilitar"}" data-category-action="toggle" data-category-id="${
             cat.id
-          }" data-next-active="${Number(cat.is_active) ? 0 : 1}">${Number(cat.is_active) ? "✕" : "✓"}</button>
+          }" data-next-active="${Number(cat.is_active) ? 0 : 1}">${Number(cat.is_active) ? "âœ•" : "âœ“"}</button>
         </div>
       </div>
     `
@@ -2195,12 +2904,12 @@ function renderSettings() {
           </div>
         </div>
         <div class="cfg-entity-actions">
-          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-area-action="edit" data-area-id="${a.id}">✎</button>
+          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-area-action="edit" data-area-id="${a.id}">âœŽ</button>
           <button type="button" class="cfg-icon-btn ${Number(a.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
             Number(a.is_active) ? "Inhabilitar" : "Habilitar"
           }" aria-label="${Number(a.is_active) ? "Inhabilitar" : "Habilitar"}" data-area-action="toggle" data-area-id="${
             a.id
-          }" data-next-active="${Number(a.is_active) ? 0 : 1}">${Number(a.is_active) ? "✕" : "✓"}</button>
+          }" data-next-active="${Number(a.is_active) ? 0 : 1}">${Number(a.is_active) ? "âœ•" : "âœ“"}</button>
         </div>
       </div>
     `
@@ -2222,12 +2931,12 @@ function renderSettings() {
           </div>
         </div>
         <div class="cfg-entity-actions">
-          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-center-action="edit" data-center-id="${c.id}">✎</button>
+          <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-center-action="edit" data-center-id="${c.id}">âœŽ</button>
           <button type="button" class="cfg-icon-btn ${Number(c.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
             Number(c.is_active) ? "Inhabilitar" : "Habilitar"
           }" aria-label="${Number(c.is_active) ? "Inhabilitar" : "Habilitar"}" data-center-action="toggle" data-center-id="${
             c.id
-          }" data-next-active="${Number(c.is_active) ? 0 : 1}">${Number(c.is_active) ? "✕" : "✓"}</button>
+          }" data-next-active="${Number(c.is_active) ? 0 : 1}">${Number(c.is_active) ? "âœ•" : "âœ“"}</button>
         </div>
       </div>
     `
@@ -2250,12 +2959,12 @@ function renderSettings() {
             </div>
           </div>
           <div class="cfg-entity-actions">
-            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-table-action="edit" data-table-id="${t.id}">✎</button>
+            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-table-action="edit" data-table-id="${t.id}">âœŽ</button>
             <button type="button" class="cfg-icon-btn ${Number(t.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
               Number(t.is_active) ? "Inhabilitar" : "Habilitar"
             }" aria-label="${Number(t.is_active) ? "Inhabilitar" : "Habilitar"}" data-table-action="toggle" data-table-id="${
               t.id
-            }" data-next-active="${Number(t.is_active) ? 0 : 1}">${Number(t.is_active) ? "✕" : "✓"}</button>
+            }" data-next-active="${Number(t.is_active) ? 0 : 1}">${Number(t.is_active) ? "âœ•" : "âœ“"}</button>
           </div>
         </div>
       `;
@@ -2309,12 +3018,12 @@ function renderSettings() {
           <div class="cfg-entity-actions">
             <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-payment-action="edit" data-payment-code="${escapeHtml(
               p.code
-            )}">✎</button>
+            )}">âœŽ</button>
             <button type="button" class="cfg-icon-btn ${Number(p.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
               Number(p.is_active) ? "Inhabilitar" : "Habilitar"
             }" aria-label="${Number(p.is_active) ? "Inhabilitar" : "Habilitar"}" data-payment-action="toggle" data-payment-code="${escapeHtml(
               p.code
-            )}" data-next-active="${Number(p.is_active) ? 0 : 1}">${Number(p.is_active) ? "✕" : "✓"}</button>
+            )}" data-next-active="${Number(p.is_active) ? 0 : 1}">${Number(p.is_active) ? "âœ•" : "âœ“"}</button>
           </div>
         </div>
       `
@@ -2371,12 +3080,12 @@ function renderSettings() {
                     </div>
                   </div>
                   <div class="cfg-entity-actions">
-                    <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-option-action="edit" data-option-id="${o.id}">✎</button>
+                    <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-option-action="edit" data-option-id="${o.id}">âœŽ</button>
                     <button type="button" class="cfg-icon-btn ${Number(o.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
                       Number(o.is_active) ? "Inhabilitar" : "Habilitar"
                     }" aria-label="${Number(o.is_active) ? "Inhabilitar" : "Habilitar"}" data-option-action="toggle" data-option-id="${
                       o.id
-                    }" data-next-active="${Number(o.is_active) ? 0 : 1}">${Number(o.is_active) ? "✕" : "✓"}</button>
+                    }" data-next-active="${Number(o.is_active) ? 0 : 1}">${Number(o.is_active) ? "âœ•" : "âœ“"}</button>
                   </div>
                 </div>
               `
@@ -2399,12 +3108,12 @@ function renderSettings() {
             <div class="cfg-entity-meta"><span>Asignado: ${escapeHtml(used || "No asignado")}</span></div>
           </div>
           <div class="cfg-entity-actions">
-            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-group-action="edit" data-group-id="${g.id}">✎</button>
+            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-group-action="edit" data-group-id="${g.id}">âœŽ</button>
             <button type="button" class="cfg-icon-btn ${Number(g.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
               Number(g.is_active) ? "Inhabilitar" : "Habilitar"
             }" aria-label="${Number(g.is_active) ? "Inhabilitar" : "Habilitar"}" data-group-action="toggle" data-group-id="${
               g.id
-            }" data-next-active="${Number(g.is_active) ? 0 : 1}">${Number(g.is_active) ? "✕" : "✓"}</button>
+            }" data-next-active="${Number(g.is_active) ? 0 : 1}">${Number(g.is_active) ? "âœ•" : "âœ“"}</button>
           </div>
         </div>
         <div class="cfg-sublist">${optionRows}</div>
@@ -2430,12 +3139,12 @@ function renderSettings() {
             </div>
           </div>
           <div class="cfg-entity-actions">
-            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-discount-action="edit" data-discount-id="${d.id}">✎</button>
+            <button type="button" class="cfg-icon-btn cfg-icon-edit" title="Editar" aria-label="Editar" data-discount-action="edit" data-discount-id="${d.id}">âœŽ</button>
             <button type="button" class="cfg-icon-btn ${Number(d.is_active) ? "cfg-icon-disable" : "cfg-icon-enable"}" title="${
               Number(d.is_active) ? "Inhabilitar" : "Habilitar"
             }" aria-label="${Number(d.is_active) ? "Inhabilitar" : "Habilitar"}" data-discount-action="toggle" data-discount-id="${
               d.id
-            }" data-next-active="${Number(d.is_active) ? 0 : 1}">${Number(d.is_active) ? "✕" : "✓"}</button>
+            }" data-next-active="${Number(d.is_active) ? 0 : 1}">${Number(d.is_active) ? "âœ•" : "âœ“"}</button>
           </div>
         </div>
       `;
@@ -2462,6 +3171,34 @@ function renderSettings() {
       }</div>`;
     })
     .join("");
+
+  const moduleUserSelect = document.getElementById("cfgModuleUserSelect");
+  const moduleDeviceIpInput = document.getElementById("cfgModuleDeviceIpInput");
+  const activeModules = (cfg.modules || []).filter((m) => Number(m.is_active) === 1);
+  const staffUsers = cfg.staffUsers || [];
+  if (moduleUserSelect) {
+    moduleUserSelect.innerHTML = staffUsers
+      .map((u) => `<option value="${u.id}">${escapeHtml(u.full_name)} (${escapeHtml(u.role)})</option>`)
+      .join("");
+    if (!state.selectedModuleUserId && staffUsers.length) {
+      state.selectedModuleUserId = Number(staffUsers[0].id);
+    }
+    if (state.selectedModuleUserId) moduleUserSelect.value = String(state.selectedModuleUserId);
+  }
+  if (moduleDeviceIpInput) moduleDeviceIpInput.value = String(cfg.currentIp || state.terminalIp || "");
+  const selectedUserId = Number(state.selectedModuleUserId || moduleUserSelect?.value || "0");
+  const userEnabled = new Set(
+    (cfg.userModulePermissions || [])
+      .filter((p) => Number(p.user_id) === selectedUserId && Number(p.is_enabled) === 1)
+      .map((p) => String(p.module_code || "").trim())
+  );
+  const deviceEnabled = new Set(
+    (cfg.deviceModulePermissions || [])
+      .filter((p) => Number(p.is_enabled) === 1)
+      .map((p) => String(p.module_code || "").trim())
+  );
+  renderModulePermissionChecklist("cfgUserModulesList", activeModules, userEnabled, "user");
+  renderModulePermissionChecklist("cfgDeviceModulesList", activeModules, deviceEnabled, "device");
 
   centersList.querySelectorAll("[data-center-action][data-center-id]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -3522,6 +4259,37 @@ async function createProductFromWizard() {
   toast("Platillo creado con atributos", "success");
 }
 
+async function saveUserModulePermissions() {
+  const userId = Number(document.getElementById("cfgModuleUserSelect")?.value || "0");
+  if (!userId) {
+    toast("Selecciona un usuario", "error");
+    return;
+  }
+  const moduleCodes = selectedModuleCodes("user");
+  await api("/api/settings/user-modules", {
+    method: "POST",
+    body: JSON.stringify({ userId, moduleCodes }),
+  });
+  await loadSettings();
+  toast("Permisos de usuario guardados", "success");
+}
+
+async function saveDeviceModulePermissions() {
+  const ipAddress = String(document.getElementById("cfgModuleDeviceIpInput")?.value || "").trim();
+  if (!ipAddress) {
+    toast("No se detecto la IP de esta PC", "error");
+    return;
+  }
+  const moduleCodes = selectedModuleCodes("device");
+  await api("/api/settings/device-modules", {
+    method: "POST",
+    body: JSON.stringify({ ipAddress, moduleCodes }),
+  });
+  await loadSettings();
+  renderModuleLauncher();
+  toast("Permisos de esta PC guardados", "success");
+}
+
 async function loadSettings() {
   state.settings = await api("/api/settings");
   state.wizardData.modifierTemplates = {};
@@ -3530,6 +4298,10 @@ async function loadSettings() {
 }
 
 async function openSettings() {
+  if (state.authUser?.role !== "admin") {
+    toast("Solo admin puede abrir configuraciones", "error");
+    return;
+  }
   await loadSettings();
   resetProductForm();
   switchSettingsSection("ops");
@@ -4116,19 +4888,140 @@ document.getElementById("functionsModal")?.addEventListener("click", (e) => {
   if (e.target.id === "functionsModal") closeFunctionsModal();
 });
 
-document.getElementById("moduleRestaurantBtn")?.addEventListener("click", enterRestaurantModule);
-document.getElementById("moduleReceptionBtn")?.addEventListener("click", () =>
-  toast("Modulo Recepcion estara disponible proximamente.", "info")
-);
-document.getElementById("moduleCrmBtn")?.addEventListener("click", () =>
-  toast("Modulo CRM estara disponible proximamente.", "info")
-);
+document.getElementById("moduleRestaurantBtn")?.addEventListener("click", () => launchModule("restaurant"));
+document.getElementById("modulePmsBtn")?.addEventListener("click", () => launchModule("pms"));
+document.getElementById("moduleCrmBtn")?.addEventListener("click", () => launchModule("crm"));
+document.getElementById("moduleErpBtn")?.addEventListener("click", () => launchModule("erp"));
 document.getElementById("backToModulesBtn")?.addEventListener("click", showModuleLauncher);
+document.getElementById("loginBgOptions")?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const option = target.closest("[data-login-bg]");
+  if (!(option instanceof HTMLElement)) return;
+  applyLoginBackground(option.dataset.loginBg || "amber");
+});
+document.getElementById("cfgLoginBgOptions")?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const option = target.closest("[data-login-bg]");
+  if (!(option instanceof HTMLElement)) return;
+  applyLoginBackground(option.dataset.loginBg || "amber");
+});
+document.getElementById("loginBgApplyBtn")?.addEventListener("click", () => {
+  const value = document.getElementById("loginBgUrlInput")?.value || "";
+  const safeUrl = toLoginSafeUrl(value);
+  if (value && !safeUrl) {
+    toast("La URL de imagen debe iniciar con http:// o https://", "error");
+    return;
+  }
+  applyLoginBackgroundImage(safeUrl);
+  toast(safeUrl ? "Imagen de fondo aplicada" : "Imagen de fondo removida", "success");
+});
+document.getElementById("cfgLoginBgApplyBtn")?.addEventListener("click", () => {
+  const value = document.getElementById("cfgLoginBgUrlInput")?.value || "";
+  const safeUrl = toLoginSafeUrl(value);
+  if (value && !safeUrl) {
+    toast("La URL de imagen debe iniciar con http:// o https://", "error");
+    return;
+  }
+  applyLoginBackgroundImage(safeUrl);
+  toast(safeUrl ? "Imagen de fondo aplicada" : "Imagen de fondo removida", "success");
+});
+document.getElementById("loginBgBrowseBtn")?.addEventListener("click", () => {
+  document.getElementById("loginBgFileInput")?.click();
+});
+document.getElementById("loginBgFileInput")?.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  const file = target.files?.[0];
+  applyLoginBackgroundFromFile(file);
+  target.value = "";
+});
+document.getElementById("cfgLoginBgBrowseBtn")?.addEventListener("click", () => {
+  document.getElementById("cfgLoginBgFileInput")?.click();
+});
+document.getElementById("cfgLoginBgFileInput")?.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  const file = target.files?.[0];
+  applyLoginBackgroundFromFile(file);
+  target.value = "";
+});
+document.getElementById("loginBgRemoveBtn")?.addEventListener("click", () => {
+  applyLoginBackgroundImage("");
+  toast("Imagen de fondo removida", "info");
+});
+document.getElementById("cfgLoginBgRemoveBtn")?.addEventListener("click", () => {
+  applyLoginBackgroundImage("");
+  toast("Imagen de fondo removida", "info");
+});
+document.getElementById("loginBgUrlInput")?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  document.getElementById("loginBgApplyBtn")?.click();
+});
+document.getElementById("cfgLoginBgUrlInput")?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  document.getElementById("cfgLoginBgApplyBtn")?.click();
+});
+document.getElementById("loginTintColorInput")?.addEventListener("input", () => {
+  const color = document.getElementById("loginTintColorInput")?.value || "#0a1119";
+  const opacity = Number(document.getElementById("loginTintOpacityInput")?.value || "38");
+  applyLoginTint(color, opacity);
+});
+document.getElementById("loginTintOpacityInput")?.addEventListener("input", () => {
+  const color = document.getElementById("loginTintColorInput")?.value || "#0a1119";
+  const opacity = Number(document.getElementById("loginTintOpacityInput")?.value || "38");
+  applyLoginTint(color, opacity);
+});
+document.getElementById("cfgLoginTintColorInput")?.addEventListener("input", () => {
+  const color = document.getElementById("cfgLoginTintColorInput")?.value || "#0a1119";
+  const opacity = Number(document.getElementById("cfgLoginTintOpacityInput")?.value || "38");
+  applyLoginTint(color, opacity);
+});
+document.getElementById("cfgLoginTintOpacityInput")?.addEventListener("input", () => {
+  const color = document.getElementById("cfgLoginTintColorInput")?.value || "#0a1119";
+  const opacity = Number(document.getElementById("cfgLoginTintOpacityInput")?.value || "38");
+  applyLoginTint(color, opacity);
+});
+document.getElementById("loginPinPad")?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const keyButton = target.closest("[data-pin-key]");
+  if (!(keyButton instanceof HTMLElement)) return;
+  handleLoginPadKey(keyButton.dataset.pinKey || "");
+});
+document.addEventListener("keydown", (event) => {
+  const loginView = document.getElementById("loginView");
+  if (!loginView || loginView.classList.contains("hidden")) return;
+  if (/^\d$/.test(event.key)) {
+    handleLoginPadKey(event.key);
+    return;
+  }
+  if (event.key === "Enter") {
+    event.preventDefault();
+    handleLoginPadKey("submit");
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    handleLoginPadKey("clear");
+    return;
+  }
+  if (event.key === "Delete") {
+    event.preventDefault();
+    handleLoginPadKey("clear");
+  }
+});
 document.getElementById("restaurantHomeBtn")?.addEventListener("click", showRestaurantHomeView);
 document.getElementById("openTablesFromHomeBtn")?.addEventListener("click", () =>
   loadTables().then(showTablesView).catch((e) => toast(e.message, "error"))
 );
 document.getElementById("backHomeFromTablesBtn")?.addEventListener("click", showRestaurantHomeView);
+document.getElementById("tablesAddFab")?.addEventListener("click", () =>
+  toast("Tip: toca una mesa libre para abrir cuenta nueva", "info")
+);
 document.getElementById("openCashierFromHomeBtn")?.addEventListener("click", () => {
   showCashierView();
   resetCashierSummary();
@@ -4137,9 +5030,6 @@ document.getElementById("openSettingsFromHomeBtn")?.addEventListener("click", ()
   openSettings().catch((e) => toast(e.message, "error"))
 );
 document.getElementById("openOpsFromHomeBtn")?.addEventListener("click", showOpsView);
-document.getElementById("ambienceDefaultBtn")?.addEventListener("click", () => applyAmbience("default"));
-document.getElementById("ambienceWarmBtn")?.addEventListener("click", () => applyAmbience("warm"));
-document.getElementById("ambienceCoolBtn")?.addEventListener("click", () => applyAmbience("cool"));
 document.getElementById("createAccountFromPickerBtn")?.addEventListener("click", () =>
   createAccount({ withPrompt: true }).catch((e) => toast(e.message, "error"))
 );
@@ -4186,6 +5076,9 @@ document.getElementById("functionsSplitRefreshBtn")?.addEventListener("click", (
 document.getElementById("functionsSplitAddAccountBtn")?.addEventListener("click", () =>
   addEmptyAccountFromFunctions().catch((e) => toast(e.message, "error"))
 );
+document.getElementById("functionsSplitRemoveAccountBtn")?.addEventListener("click", () =>
+  removeEmptyAccountFromFunctions().catch((e) => toast(e.message, "error"))
+);
 document.getElementById("functionsSplitMoveSeatBtn")?.addEventListener("click", () =>
   moveSeatBetweenAccountsFromFunctions().catch((e) => toast(e.message, "error"))
 );
@@ -4195,11 +5088,96 @@ document.getElementById("functionsSplitMoveItemBtn")?.addEventListener("click", 
 document.getElementById("functionsSplitShareEqualBtn")?.addEventListener("click", () =>
   splitEqualAcrossAccountsFromFunctions().catch((e) => toast(e.message, "error"))
 );
+document.getElementById("functionsSplitClearSelectionBtn")?.addEventListener("click", () => {
+  state.splitAccounts.selectedSeatNo = null;
+  state.splitAccounts.selectedItemId = null;
+  state.splitAccounts.targetAccountId = null;
+  state.splitAccounts.targetTouched = false;
+  renderSplitAccountsSection();
+});
+document.getElementById("functionsSplitSeatSelect")?.addEventListener("change", () => {
+  state.splitAccounts.selectedSeatNo = Number(document.getElementById("functionsSplitSeatSelect")?.value || "0") || null;
+  state.splitAccounts.selectedItemId = null;
+  state.splitAccounts.targetTouched = false;
+  renderSplitAccountsSection();
+});
+document.getElementById("functionsSplitSeatTargetSelect")?.addEventListener("change", () => {
+  const toAccountId = Number(document.getElementById("functionsSplitSeatTargetSelect")?.value || "0") || null;
+  state.splitAccounts.targetAccountId = toAccountId;
+  state.splitAccounts.targetTouched = true;
+  renderSplitAccountsSection();
+  moveSelectedSplitSelectionToAccount(toAccountId).catch((e) => toast(e.message, "error"));
+});
 document.getElementById("functionsSplitSourceAccountSelect")?.addEventListener("change", () => {
-  state.splitAccounts.sourceAccountId = Number(document.getElementById("functionsSplitSourceAccountSelect")?.value || "0");
-  refreshSplitSourceAccountDetail()
-    .then(renderSplitAccountsSection)
-    .catch((e) => toast(e.message, "error"));
+  setSplitSourceAccount(Number(document.getElementById("functionsSplitSourceAccountSelect")?.value || "0")).catch((e) =>
+    toast(e.message, "error")
+  );
+});
+document.getElementById("functionsSplitAccountsBoard")?.addEventListener("click", async (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  try {
+    const addCanvasBtn = target.closest("[data-split-add-account]");
+    if (addCanvasBtn instanceof HTMLElement) {
+      await addEmptyAccountFromFunctions();
+      return;
+    }
+    const removeBtn = target.closest("[data-split-remove-account]");
+    if (removeBtn instanceof HTMLElement) {
+      const removeId = Number(removeBtn.dataset.splitRemoveAccount || "0");
+      await removeEmptyAccountFromFunctions(removeId);
+      return;
+    }
+    const sourceSwitchCard = target.closest("[data-split-account-switch]");
+    if (sourceSwitchCard instanceof HTMLElement) {
+      const sourceId = Number(sourceSwitchCard.dataset.splitAccountSwitch || "0");
+      const sourceAccountId = Number(state.splitAccounts.sourceAccountId || 0);
+      const hasSelection = Number(state.splitAccounts.selectedItemId || 0) > 0 || Number(state.splitAccounts.selectedSeatNo || 0) > 0;
+      if (hasSelection && sourceId && sourceId !== sourceAccountId) {
+        state.splitAccounts.targetAccountId = sourceId;
+        state.splitAccounts.targetTouched = true;
+        renderSplitAccountsSection();
+        await moveSelectedSplitSelectionToAccount(sourceId);
+      } else {
+        await setSplitSourceAccount(sourceId);
+      }
+      return;
+    }
+    const itemCard = target.closest("[data-split-item]");
+    if (itemCard instanceof HTMLElement) {
+      const fromAccountId = Number(itemCard.dataset.splitAccount || "0");
+      if (fromAccountId && fromAccountId !== Number(state.splitAccounts.sourceAccountId || 0)) {
+        await setSplitSourceAccount(fromAccountId);
+      }
+      state.splitAccounts.selectedItemId = Number(itemCard.dataset.splitItem || "0") || null;
+      state.splitAccounts.selectedSeatNo = null;
+      state.splitAccounts.targetTouched = false;
+      renderSplitAccountsSection();
+      return;
+    }
+    const seatCard = target.closest("[data-split-seat]");
+    if (seatCard instanceof HTMLElement) {
+      const fromAccountId = Number(seatCard.dataset.splitAccount || "0");
+      if (fromAccountId && fromAccountId !== Number(state.splitAccounts.sourceAccountId || 0)) {
+        await setSplitSourceAccount(fromAccountId);
+      }
+      state.splitAccounts.selectedSeatNo = Number(seatCard.dataset.splitSeat || "0") || null;
+      state.splitAccounts.selectedItemId = null;
+      state.splitAccounts.targetTouched = false;
+      renderSplitAccountsSection();
+      return;
+    }
+    const targetCard = target.closest("[data-split-target]");
+    if (targetCard instanceof HTMLElement) {
+      const toAccountId = Number(targetCard.dataset.splitTarget || "0") || null;
+      state.splitAccounts.targetAccountId = toAccountId;
+      state.splitAccounts.targetTouched = true;
+      renderSplitAccountsSection();
+      await moveSelectedSplitSelectionToAccount(toAccountId);
+    }
+  } catch (e) {
+    toast(e.message, "error");
+  }
 });
 
 document.getElementById("centerSelect")?.addEventListener("change", () => {
@@ -4246,6 +5224,16 @@ document.getElementById("cfgAddCenterBtn")?.addEventListener("click", () =>
 );
 document.getElementById("cfgBindThisPcBtn")?.addEventListener("click", () =>
   bindThisPcToCenter().catch((e) => toast(e.message, "error"))
+);
+document.getElementById("cfgModuleUserSelect")?.addEventListener("change", () => {
+  state.selectedModuleUserId = Number(document.getElementById("cfgModuleUserSelect")?.value || "0");
+  renderSettings();
+});
+document.getElementById("cfgSaveUserModulesBtn")?.addEventListener("click", () =>
+  saveUserModulePermissions().catch((e) => toast(e.message, "error"))
+);
+document.getElementById("cfgSaveDeviceModulesBtn")?.addEventListener("click", () =>
+  saveDeviceModulePermissions().catch((e) => toast(e.message, "error"))
 );
 document.getElementById("cfgSaveCenterProductBtn")?.addEventListener("click", () =>
   saveCenterProductConfig().catch((e) => toast(e.message, "error"))
@@ -4296,13 +5284,19 @@ document.getElementById("cfgAddDiscountPresetBtn")?.addEventListener("click", ()
 switchProductsManagerView("list");
 showWizardStep(1);
 applyModifierTemplatePreset();
-applyAmbience(localStorage.getItem("restaurantAmbience") || "default");
+applyLoginBackground(localStorage.getItem("loginScreenBackground") || "amber");
+applyLoginBackgroundImage(localStorage.getItem("loginBackgroundImageSrc") || localStorage.getItem("loginBackgroundImageUrl") || "");
+applyLoginTint(localStorage.getItem("loginTintColor") || "#0a1119", Number(localStorage.getItem("loginTintOpacity") || "38"));
+forceTransparentLoginPadButtons();
+renderLoginPinDisplay();
 setInterval(refreshTablesElapsedTimes, 30000);
 updateMenuQuickActionsState();
 
 loadBootstrap()
   .then(() => {
-    if (!state.activeModule) showModuleLauncher();
+    if (!state.activeModule) showLoginView();
   })
   .catch((e) => toast(e.message, "error", 4000));
+
+
 

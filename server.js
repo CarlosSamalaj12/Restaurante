@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const path = require("path");
+const crypto = require("crypto");
 const { pool, query } = require("./src/db");
 
 const app = express();
@@ -14,6 +15,16 @@ const PAYMENT_METHOD_DEFAULTS = [
   { code: "credit_folio", label: "Folio (CxC)" },
   { code: "other", label: "Otro" },
 ];
+
+const MODULE_DEFAULTS = [
+  { code: "restaurant", label: "Modulo Restaurante", sortOrder: 1 },
+  { code: "pms", label: "Modulo PMS", sortOrder: 2 },
+  { code: "crm", label: "Modulo CRM", sortOrder: 3 },
+  { code: "erp", label: "Modulo ERP", sortOrder: 4 },
+];
+
+const AUTH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const authSessions = new Map();
 
 const MODIFIER_GROUP_DEFAULTS = {
   garnish: { displayMethod: "checkbox", isMandatory: 1 },
@@ -51,6 +62,102 @@ function money(n) {
 function clientIp(req) {
   const raw = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim();
   return raw.replace("::ffff:", "");
+}
+
+function createAuthSession(user) {
+  const token = crypto.randomUUID();
+  authSessions.set(token, {
+    userId: Number(user.id),
+    role: String(user.role || ""),
+    expiresAt: Date.now() + AUTH_SESSION_TTL_MS,
+  });
+  return token;
+}
+
+function getAuthSession(req) {
+  const token = String(req.headers["x-auth-token"] || "").trim();
+  if (!token) return null;
+  const session = authSessions.get(token);
+  if (!session) return null;
+  if (Date.now() > Number(session.expiresAt || 0)) {
+    authSessions.delete(token);
+    return null;
+  }
+  return session;
+}
+
+async function requireAdmin(req, res, next) {
+  try {
+    const session = getAuthSession(req);
+    if (!session) return res.status(401).json({ error: "Sesion invalida o vencida" });
+    const [rows] = await query(
+      `SELECT id, full_name, role
+       FROM staff_users
+       WHERE id = ?
+       LIMIT 1`,
+      [Number(session.userId)]
+    );
+    if (!rows.length) return res.status(401).json({ error: "Usuario no encontrado" });
+    if (String(rows[0].role || "") !== "admin") {
+      return res.status(403).json({ error: "Solo admin puede usar esta seccion" });
+    }
+    req.authUser = rows[0];
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getActiveModules() {
+  const [rows] = await query(
+    `SELECT code, label, is_active, sort_order
+     FROM app_modules
+     WHERE is_active = 1
+     ORDER BY sort_order, code`
+  );
+  return rows;
+}
+
+async function getUserEnabledModuleCodes(userId, role, activeCodes) {
+  const [rows] = await query(
+    `SELECT module_code, is_enabled
+     FROM user_module_permissions
+     WHERE user_id = ?`,
+    [Number(userId)]
+  );
+  if (rows.length) {
+    const enabled = new Set(
+      rows.filter((r) => Number(r.is_enabled) === 1).map((r) => String(r.module_code || "").trim())
+    );
+    return activeCodes.filter((code) => enabled.has(code));
+  }
+  if (String(role || "") === "admin") return [...activeCodes];
+  return activeCodes.includes("restaurant") ? ["restaurant"] : [];
+}
+
+async function getDeviceEnabledModuleCodes(ip, activeCodes) {
+  const [rows] = await query(
+    `SELECT module_code, is_enabled
+     FROM terminal_module_bindings
+     WHERE ip_address = ?`,
+    [String(ip || "").trim()]
+  );
+  if (rows.length) {
+    const enabled = new Set(
+      rows.filter((r) => Number(r.is_enabled) === 1).map((r) => String(r.module_code || "").trim())
+    );
+    return activeCodes.filter((code) => enabled.has(code));
+  }
+  return activeCodes.includes("restaurant") ? ["restaurant"] : [];
+}
+
+async function getAllowedModulesForContext(user, ip) {
+  const activeModules = await getActiveModules();
+  const activeCodes = activeModules.map((m) => String(m.code));
+  const userAllowed = await getUserEnabledModuleCodes(user.id, user.role, activeCodes);
+  const deviceAllowed = await getDeviceEnabledModuleCodes(ip, activeCodes);
+  const finalSet = new Set(deviceAllowed);
+  return activeModules.filter((m) => userAllowed.includes(String(m.code)) && finalSet.has(String(m.code)));
 }
 
 async function safeExec(sql, params = []) {
@@ -131,10 +238,43 @@ async function ensureConfigTables() {
     )`
   );
   await query(
+    `CREATE TABLE IF NOT EXISTS app_modules (
+      code VARCHAR(30) PRIMARY KEY,
+      label VARCHAR(80) NOT NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      sort_order INT NOT NULL DEFAULT 0
+    )`
+  );
+  await query(
+    `CREATE TABLE IF NOT EXISTS user_module_permissions (
+      user_id INT NOT NULL,
+      module_code VARCHAR(30) NOT NULL,
+      is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, module_code)
+    )`
+  );
+  await query(
+    `CREATE TABLE IF NOT EXISTS terminal_module_bindings (
+      ip_address VARCHAR(64) NOT NULL,
+      module_code VARCHAR(30) NOT NULL,
+      is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+      PRIMARY KEY (ip_address, module_code)
+    )`
+  );
+  await query(
     `INSERT INTO app_settings (setting_key, setting_value)
      VALUES ('tip_percent', '0')
      ON DUPLICATE KEY UPDATE setting_value = setting_value`
   );
+
+  for (const mod of MODULE_DEFAULTS) {
+    await query(
+      `INSERT INTO app_modules (code, label, is_active, sort_order)
+       VALUES (?, ?, 1, ?)
+       ON DUPLICATE KEY UPDATE label = VALUES(label), sort_order = VALUES(sort_order)`,
+      [mod.code, mod.label, Number(mod.sortOrder || 0)]
+    );
+  }
 
   await safeExec(`ALTER TABLE restaurant_tables ADD COLUMN operation_center_id INT NULL`);
   await safeExec(`ALTER TABLE shifts ADD COLUMN operation_center_id INT NULL`);
@@ -164,6 +304,17 @@ async function ensureConfigTables() {
 
   await query(`UPDATE restaurant_tables SET operation_center_id = ? WHERE operation_center_id IS NULL`, [defaultCenterId]);
   await query(`UPDATE shifts SET operation_center_id = ? WHERE operation_center_id IS NULL`, [defaultCenterId]);
+
+  const [admins] = await query(`SELECT id FROM staff_users WHERE role = 'admin' LIMIT 1`);
+  if (!admins.length) {
+    await query(
+      `UPDATE staff_users
+       SET role = 'admin'
+       WHERE role = 'manager'
+       ORDER BY id
+       LIMIT 1`
+    );
+  }
 }
 
 async function getTipPercent() {
@@ -352,6 +503,28 @@ app.get("/api/bootstrap", async (_req, res) => {
   res.json({ tables, waiters, cashiers, categories, paymentMethods, customers, centers, defaultCenterId, autoCenterId, terminalIp: ip });
 });
 
+app.post("/api/auth/pin-login", async (req, res) => {
+  const pin = String(req.body?.pin || "").trim();
+  if (!/^\d{6,}$/.test(pin)) {
+    return res.status(400).json({ error: "La contraseña debe tener al menos 6 dígitos numéricos" });
+  }
+  const [rows] = await query(
+    `SELECT id, full_name, role
+     FROM staff_users
+     WHERE pin_code = ?
+     LIMIT 1`,
+    [pin]
+  );
+  if (!rows.length) {
+    return res.status(403).json({ error: "Contraseña inválida" });
+  }
+  const user = rows[0];
+  const ip = clientIp(req);
+  const allowedModules = await getAllowedModulesForContext(user, ip);
+  const authToken = createAuthSession(user);
+  res.json({ ok: true, user, allowedModules, authToken });
+});
+
 app.get("/api/tables", async (req, res) => {
   const centerId = Number(req.query.centerId || "0");
   const [rows] = await query(
@@ -371,7 +544,10 @@ app.get("/api/tables", async (req, res) => {
   res.json(rows);
 });
 
+app.use("/api/settings", requireAdmin);
+
 app.get("/api/settings", async (_req, res) => {
+  const currentIp = clientIp(_req);
   const [operationCenters] = await query(`SELECT id, name, is_active FROM operation_centers ORDER BY id`);
   const [areas] = await query(
     `SELECT id, name, is_active, sort_order
@@ -429,6 +605,26 @@ app.get("/api/settings", async (_req, res) => {
      FROM discount_presets
      ORDER BY sort_order, name`
   );
+  const [modules] = await query(
+    `SELECT code, label, is_active, sort_order
+     FROM app_modules
+     ORDER BY sort_order, code`
+  );
+  const [staffUsers] = await query(
+    `SELECT id, full_name, role
+     FROM staff_users
+     ORDER BY full_name`
+  );
+  const [userModulePermissions] = await query(
+    `SELECT user_id, module_code, is_enabled
+     FROM user_module_permissions`
+  );
+  const [deviceModulePermissions] = await query(
+    `SELECT ip_address, module_code, is_enabled
+     FROM terminal_module_bindings
+     WHERE ip_address = ?`,
+    [currentIp]
+  );
   const tipPercent = await getTipPercent();
   res.json({
     operationCenters,
@@ -443,6 +639,11 @@ app.get("/api/settings", async (_req, res) => {
     options,
     productSteps,
     discountPresets,
+    modules,
+    staffUsers,
+    userModulePermissions,
+    deviceModulePermissions,
+    currentIp,
     tipPercent,
   });
 });
@@ -460,6 +661,53 @@ app.post("/api/settings/tip-config", async (req, res) => {
     [String(Number(pct.toFixed(2)))]
   );
   res.json({ ok: true, tipPercent: Number(pct.toFixed(2)) });
+});
+
+app.post("/api/settings/user-modules", async (req, res) => {
+  const userId = Number(req.body?.userId || 0);
+  const requestedCodes = Array.isArray(req.body?.moduleCodes) ? req.body.moduleCodes : [];
+  if (!userId) return res.status(400).json({ error: "userId es requerido" });
+
+  const [userRows] = await query(`SELECT id FROM staff_users WHERE id = ? LIMIT 1`, [userId]);
+  if (!userRows.length) return res.status(404).json({ error: "Usuario no encontrado" });
+
+  const [modules] = await query(`SELECT code FROM app_modules WHERE is_active = 1 ORDER BY sort_order, code`);
+  const validCodes = modules.map((m) => String(m.code || "").trim());
+  const selectedSet = new Set(
+    requestedCodes.map((c) => String(c || "").trim()).filter((c) => validCodes.includes(c))
+  );
+
+  for (const code of validCodes) {
+    await query(
+      `INSERT INTO user_module_permissions (user_id, module_code, is_enabled)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE is_enabled = VALUES(is_enabled)`,
+      [userId, code, selectedSet.has(code) ? 1 : 0]
+    );
+  }
+  res.json({ ok: true, userId, enabledCount: selectedSet.size });
+});
+
+app.post("/api/settings/device-modules", async (req, res) => {
+  const targetIp = String(req.body?.ipAddress || clientIp(req) || "").trim();
+  const requestedCodes = Array.isArray(req.body?.moduleCodes) ? req.body.moduleCodes : [];
+  if (!targetIp) return res.status(400).json({ error: "ipAddress es requerido" });
+
+  const [modules] = await query(`SELECT code FROM app_modules WHERE is_active = 1 ORDER BY sort_order, code`);
+  const validCodes = modules.map((m) => String(m.code || "").trim());
+  const selectedSet = new Set(
+    requestedCodes.map((c) => String(c || "").trim()).filter((c) => validCodes.includes(c))
+  );
+
+  for (const code of validCodes) {
+    await query(
+      `INSERT INTO terminal_module_bindings (ip_address, module_code, is_enabled)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE is_enabled = VALUES(is_enabled)`,
+      [targetIp, code, selectedSet.has(code) ? 1 : 0]
+    );
+  }
+  res.json({ ok: true, ipAddress: targetIp, enabledCount: selectedSet.size });
 });
 
 app.post("/api/accounts/:accountId/remove-tip", async (req, res) => {
@@ -897,13 +1145,18 @@ app.post("/api/tables/:tableId/accounts", async (req, res) => {
     [finalCenterId]
   );
   const shiftId = openShift.length ? openShift[0].id : null;
-  const checkNumber = `CHK-${Date.now()}`;
+  // check_number is VARCHAR(20), keep temporary value short.
+  const tempCheckNumber = `TMP-${Date.now().toString().slice(-8)}-${Math.floor(Math.random() * 1000)
+    .toString()
+    .padStart(3, "0")}`;
 
   const [result] = await query(
     `INSERT INTO accounts (table_id, waiter_id, shift_id, customer_id, status, guest_count, check_number, opened_at)
      VALUES (?, ?, ?, ?, 'open', ?, ?, ?)`,
-    [tableId, waiterId, shiftId, customerId, guestCount, checkNumber, nowSql()]
+    [tableId, waiterId, shiftId, customerId, guestCount, tempCheckNumber, nowSql()]
   );
+  const checkNumber = `CHK-${String(Number(result.insertId || 0)).padStart(4, "0")}`;
+  await query(`UPDATE accounts SET check_number = ? WHERE id = ?`, [checkNumber, Number(result.insertId)]);
   await addAccountEvent(result.insertId, "account_opened", { guestCount }, waiterId);
   res.status(201).json({ accountId: result.insertId, checkNumber });
 });
@@ -1207,6 +1460,61 @@ app.post("/api/accounts/:accountId/close", async (req, res) => {
 
   await query(`UPDATE accounts SET status = 'paid', closed_at = ? WHERE id = ?`, [nowSql(), accountId]);
   await addAccountEvent(accountId, "account_closed", totals, null);
+  res.json({ ok: true });
+});
+
+app.delete("/api/accounts/:accountId", async (req, res) => {
+  const accountId = Number(req.params.accountId || 0);
+  if (!accountId) return res.status(400).json({ error: "accountId invalido" });
+
+  const [accountRows] = await query(
+    `SELECT id, status
+     FROM accounts
+     WHERE id = ?
+     LIMIT 1`,
+    [accountId]
+  );
+  if (!accountRows.length) return res.status(404).json({ error: "Cuenta no encontrada" });
+  if (String(accountRows[0].status) !== "open") {
+    return res.status(400).json({ error: "Solo puedes eliminar cuentas abiertas" });
+  }
+
+  const [[itemCountRow]] = await query(
+    `SELECT COUNT(*) AS c
+     FROM order_items
+     WHERE account_id = ? AND status = 'active'`,
+    [accountId]
+  );
+  const [[paymentCountRow]] = await query(
+    `SELECT COUNT(*) AS c
+     FROM account_payments
+     WHERE account_id = ?`,
+    [accountId]
+  );
+  const [[discountCountRow]] = await query(
+    `SELECT COUNT(*) AS c
+     FROM account_discounts
+     WHERE account_id = ?`,
+    [accountId]
+  );
+  const [[folioCountRow]] = await query(
+    `SELECT COUNT(*) AS c
+     FROM folio_charges
+     WHERE account_id = ?`,
+    [accountId]
+  );
+
+  const hasActivity =
+    Number(itemCountRow?.c || 0) > 0 ||
+    Number(paymentCountRow?.c || 0) > 0 ||
+    Number(discountCountRow?.c || 0) > 0 ||
+    Number(folioCountRow?.c || 0) > 0;
+  if (hasActivity) {
+    return res.status(400).json({ error: "Solo puedes eliminar cuentas vacias" });
+  }
+
+  await query(`DELETE FROM account_events WHERE account_id = ?`, [accountId]);
+  await query(`DELETE FROM accounts WHERE id = ?`, [accountId]);
   res.json({ ok: true });
 });
 
@@ -1743,3 +2051,4 @@ app.listen(port, async () => {
     console.error("No se pudo conectar a MariaDB. Revisa variables en .env", e.message);
   }
 });
+
