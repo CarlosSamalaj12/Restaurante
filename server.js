@@ -12,7 +12,7 @@ const PAYMENT_METHOD_DEFAULTS = [
   { code: "cash", label: "Efectivo" },
   { code: "card", label: "Tarjeta" },
   { code: "transfer", label: "Transferencia" },
-  { code: "credit_folio", label: "Folio (CxC)" },
+  { code: "cxc", label: "Cuentas por Cobrar" },
   { code: "other", label: "Otro" },
 ];
 
@@ -1994,6 +1994,301 @@ app.post("/api/items/:itemId/void", async (req, res) => {
 
   await addAccountEvent(accountId, "item_voided", { itemId, reason, isSent, reversedAt }, finalAuthorizedBy);
   res.json({ ok: true, reversalTicket });
+});
+
+// =============================================
+// CXC - Cuentas por Cobrar
+// =============================================
+
+// Áreas CXC
+app.get("/api/cxc/areas", async (_req, res) => {
+  try {
+    const [rows] = await query(`SELECT id, name, is_active, created_at FROM cxc_areas WHERE is_active = 1 ORDER BY name`);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/cxc/areas", async (req, res) => {
+  try {
+    const { name, is_active = 1 } = req.body || {};
+    if (!name) return res.status(400).json({ error: "Nombre requerido" });
+    const [result] = await query(`INSERT INTO cxc_areas (name, is_active) VALUES (?, ?)`, [name, is_active]);
+    res.json({ ok: true, id: result.insertId });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/cxc/areas/:areaId", async (req, res) => {
+  try {
+    const { areaId } = req.params;
+    const { name, is_active } = req.body || {};
+    await query(`UPDATE cxc_areas SET name = COALESCE(?, name), is_active = COALESCE(?, is_active) WHERE id = ?`, [name, is_active, areaId]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/cxc/areas/:areaId", async (req, res) => {
+  try {
+    const { areaId } = req.params;
+    await query(`UPDATE cxc_areas SET is_active = 0 WHERE id = ?`, [areaId]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Clientes CXC
+app.get("/api/cxc/clients", async (_req, res) => {
+  try {
+    const [rows] = await query(`
+      SELECT c.*, ca.name as area_name
+      FROM customers c
+      LEFT JOIN cxc_areas ca ON c.cxc_area_id = ca.id
+      WHERE c.cxc_enabled = 1 AND c.is_active = 1
+      ORDER BY c.full_name
+    `);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/cxc/clients", async (req, res) => {
+  try {
+    const { full_name, phone, credit_limit = 0, cxc_area_id, default_discount_percent = 0, is_active = 1 } = req.body || {};
+    if (!full_name) return res.status(400).json({ error: "Nombre requerido" });
+    const [result] = await query(
+      `INSERT INTO customers (full_name, phone, cxc_enabled, credit_limit, cxc_area_id, default_discount_percent, is_active) VALUES (?, ?, 1, ?, ?, ?, ?)`,
+      [full_name, phone, credit_limit, cxc_area_id, default_discount_percent, is_active]
+    );
+    res.json({ ok: true, id: result.insertId });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/cxc/clients/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const { full_name, phone, credit_limit, cxc_area_id, default_discount_percent, is_active } = req.body || {};
+    await query(
+      `UPDATE customers SET 
+        full_name = COALESCE(?, full_name),
+        phone = COALESCE(?, phone),
+        credit_limit = COALESCE(?, credit_limit),
+        cxc_area_id = COALESCE(?, cxc_area_id),
+        default_discount_percent = COALESCE(?, default_discount_percent),
+        is_active = COALESCE(?, is_active)
+      WHERE id = ? AND cxc_enabled = 1`,
+      [full_name, phone, credit_limit, cxc_area_id, default_discount_percent, is_active, clientId]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Categorías permitidas por cliente
+app.get("/api/cxc/clients/:clientId/categories", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const [rows] = await query(`
+      SELECT cc.id, cc.category_id, pc.name as category_name, cc.allow_discount
+      FROM cxc_client_categories cc
+      JOIN product_categories pc ON cc.category_id = pc.id
+      WHERE cc.client_id = ?
+    `, [clientId]);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/cxc/clients/:clientId/categories", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const { category_id, allow_discount = 1 } = req.body || {};
+    if (!category_id) return res.status(400).json({ error: "Categoría requerida" });
+    await query(
+      `INSERT INTO cxc_client_categories (client_id, category_id, allow_discount) VALUES (?, ?, ?) 
+       ON DUPLICATE KEY UPDATE allow_discount = VALUES(allow_discount)`,
+      [clientId, category_id, allow_discount]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/cxc/clients/:clientId/categories/:categoryId", async (req, res) => {
+  try {
+    const { clientId, categoryId } = req.params;
+    await query(`DELETE FROM cxc_client_categories WHERE client_id = ? AND category_id = ?`, [clientId, categoryId]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Obtener todas las categorías con opción de是否能 aplicar descuento a cliente específico
+app.get("/api/cxc/categories", async (req, res) => {
+  try {
+    const clientId = req.query.client_id;
+    let sql = `SELECT id, name, discount_blocked, sort_order FROM product_categories ORDER BY sort_order`;
+    const [rows] = await query(sql);
+    if (clientId) {
+      const [allowed] = await query(`SELECT category_id, allow_discount FROM cxc_client_categories WHERE client_id = ?`, [clientId]);
+      const allowedMap = new Map(allowed.map(a => [a.category_id, a.allow_discount]));
+      rows.forEach(r => {
+        r.client_can_discount = allowedMap.has(r.id) ? allowedMap.get(r.id) : 0;
+      });
+    }
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Crear cuenta CXC (al pagar con CXC)
+app.post("/api/cxc/accounts", async (req, res) => {
+  try {
+    const { client_id, account_id, shift_id, amount, reference = "", notes = "" } = req.body || {};
+    if (!client_id || !amount) return res.status(400).json({ error: "client_id y amount requeridos" });
+
+    const [client] = await query(`SELECT credit_limit, current_balance FROM customers WHERE id = ? AND cxc_enabled = 1`, [client_id]);
+    if (!client.length) return res.status(400).json({ error: "Cliente CXC no encontrado" });
+
+    const newBalance = Number(client[0].current_balance) + Number(amount);
+    if (newBalance > Number(client[0].credit_limit)) {
+      return res.status(400).json({ error: "Excede el límite de crédito", available: Number(client[0].credit_limit) - Number(client[0].current_balance) });
+    }
+
+    const [result] = await query(
+      `INSERT INTO cxc_accounts (client_id, account_id, shift_id, amount, balance, reference, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      [client_id, account_id, shift_id, amount, newBalance, reference, notes]
+    );
+
+    await query(`UPDATE customers SET current_balance = ? WHERE id = ?`, [newBalance, client_id]);
+
+    res.json({ ok: true, id: result.insertId, new_balance: newBalance });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Pagos a cuenta CXC
+app.post("/api/cxc/accounts/:cxcAccountId/payments", async (req, res) => {
+  try {
+    const { cxcAccountId } = req.params;
+    const { amount, payment_method, reference = "", notes = "" } = req.body || {};
+    if (!amount) return res.status(400).json({ error: "Monto requerido" });
+
+    const [cxc] = await query(`SELECT client_id, balance, status FROM cxc_accounts WHERE id = ?`, [cxcAccountId]);
+    if (!cxc.length) return res.status(400).json({ error: "Cuenta CXC no encontrada" });
+
+    const newBalance = Number(cxc[0].balance) - Number(amount);
+    const newStatus = newBalance <= 0 ? 'paid' : newBalance < Number(cxc[0].balance) ? 'partial' : 'pending';
+
+    await query(
+      `INSERT INTO cxc_payments (cxc_account_id, amount, payment_method, reference, notes) VALUES (?, ?, ?, ?, ?)`,
+      [cxcAccountId, amount, payment_method, reference, notes]
+    );
+
+    await query(`UPDATE cxc_accounts SET balance = ?, status = ?, paid_at = ? WHERE id = ?`, 
+      [newBalance > 0 ? newBalance : 0, newStatus, newBalance <= 0 ? nowSql() : null, cxcAccountId]);
+
+    await query(`UPDATE customers SET current_balance = current_balance - ? WHERE id = ?`, [amount, cxc[0].client_id]);
+
+    res.json({ ok: true, new_balance: newBalance, status: newStatus });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Historial de cuenta CXC
+app.get("/api/cxc/accounts/:cxcAccountId", async (req, res) => {
+  try {
+    const { cxcAccountId } = req.params;
+    const [cxc] = await query(`
+      SELECT cxa.*, c.full_name as client_name, c.credit_limit, c.current_balance
+      FROM cxc_accounts cxa
+      JOIN customers c ON cxa.client_id = c.id
+      WHERE cxa.id = ?
+    `, [cxcAccountId]);
+    if (!cxc.length) return res.status(404).json({ error: "No encontrada" });
+
+    const [payments] = await query(`SELECT * FROM cxc_payments WHERE cxc_account_id = ? ORDER BY created_at DESC`, [cxcAccountId]);
+    res.json({ ...cxc[0], payments });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Todas las cuentas CXC de un cliente
+app.get("/api/cxc/clients/:clientId/accounts", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const [rows] = await query(`
+      SELECT cxa.*, a.check_number
+      FROM cxc_accounts cxa
+      LEFT JOIN accounts a ON cxa.account_id = a.id
+      WHERE cxa.client_id = ?
+      ORDER BY cxa.created_at DESC
+    `, [clientId]);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// CXC por cobrar (resumen)
+app.get("/api/cxc/pending", async (_req, res) => {
+  try {
+    const [rows] = await query(`
+      SELECT c.id as client_id, c.full_name, c.credit_limit, c.current_balance,
+        (c.credit_limit - c.current_balance) as available_credit,
+        COUNT(cxa.id) as pending_accounts,
+        SUM(cxa.balance) as total_pending
+      FROM customers c
+      JOIN cxc_accounts cxa ON c.id = cxa.client_id AND cxa.status IN ('pending', 'partial')
+      WHERE c.cxc_enabled = 1 AND c.is_active = 1
+      GROUP BY c.id
+      ORDER BY c.full_name
+    `);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Aplicar descuento CXC a un producto
+app.get("/api/cxc/check-discount", async (req, res) => {
+  try {
+    const clientId = req.query.client_id;
+    const productId = req.query.product_id;
+    if (!clientId || !productId) return res.status(400).json({ error: "client_id y product_id requeridos" });
+
+    const [client] = await query(`SELECT default_discount_percent, cxc_enabled FROM customers WHERE id = ?`, [clientId]);
+    if (!client.length || !client[0].cxc_enabled) return res.json({ allowed: false, discount: 0 });
+
+    const [product] = await query(`SELECT category_id, allow_discount FROM products WHERE id = ?`, [productId]);
+    if (!product.length || !product[0].allow_discount) return res.json({ allowed: false, discount: 0, reason: "Producto no permite descuento" });
+
+    const [category] = await query(`SELECT discount_blocked FROM product_categories WHERE id = ?`, [product[0].category_id]);
+    if (category.length && category[0].discount_blocked) return res.json({ allowed: false, discount: 0, reason: "Categoría no permite descuento" });
+
+    const [clientCat] = await query(`SELECT allow_discount FROM cxc_client_categories WHERE client_id = ? AND category_id = ?`, [clientId, product[0].category_id]);
+    if (clientCat.length && !clientCat[0].allow_discount) return res.json({ allowed: false, discount: 0, reason: "Cliente tiene descuento bloqueado para esta categoría" });
+
+    res.json({ allowed: true, discount: client[0].default_discount_percent || 0 });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post("/api/shifts/open", async (req, res) => {

@@ -59,47 +59,105 @@
       </div>
     </section>
 
-    <section id="moduleLauncher" class="module-launcher hidden">
-      <div class="module-launcher-card">
-        <p class="module-launcher-tag">Sistema Principal</p>
-        <h1>Selección de Módulo</h1>
-        <p class="module-launcher-subtitle">Elige el área con la que deseas trabajar.</p>
-        <div class="module-grid">
-          <button id="moduleRestaurantBtn" type="button" class="module-btn module-btn-restaurant">
-            <span class="module-btn-title">Módulo Restaurante</span>
-            <span class="module-btn-desc">Tomar órdenes, mesas, caja y operaciones.</span>
+<section id="moduleLauncher" class="module-launcher hidden">
+      <div class="module-launcher-wrapper">
+        <div class="module-launcher-header">
+          <div class="module-launcher-logo">
+            <span class="material-symbols-outlined">restaurant_menu</span>
+          </div>
+          <h1>SamaPos</h1>
+          <p>Selecciona un módulo para comenzar</p>
+        </div>
+        <div class="module-menu">
+          <button id="moduleRestaurantBtn" type="button" class="module-card">
+            <div class="module-card-icon">
+              <span class="material-symbols-outlined">storefront</span>
+            </div>
+            <div class="module-card-content">
+              <h3>Restaurante</h3>
+              <p>Órdenes, mesas, caja y operaciones</p>
+            </div>
+            <div class="module-card-arrow">
+              <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
           </button>
-          <button id="modulePmsBtn" type="button" class="module-btn hidden">
-            <span class="module-btn-title">Módulo PMS</span>
-            <span class="module-btn-desc">Hotelería, recepción y habitaciones.</span>
+          <button id="modulePmsBtn" type="button" class="module-card hidden">
+            <div class="module-card-icon">
+              <span class="material-symbols-outlined">hotel</span>
+            </div>
+            <div class="module-card-content">
+              <h3>Hotelería (PMS)</h3>
+              <p>Habitaciones y recepción</p>
+            </div>
+            <div class="module-card-arrow">
+              <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
           </button>
-          <button id="moduleCrmBtn" type="button" class="module-btn hidden">
-            <span class="module-btn-title">Módulo CRM</span>
-            <span class="module-btn-desc">Clientes, seguimiento y fidelización.</span>
+          <button id="moduleCrmBtn" type="button" class="module-card hidden">
+            <div class="module-card-icon">
+              <span class="material-symbols-outlined">group</span>
+            </div>
+            <div class="module-card-content">
+              <h3>CRM</h3>
+              <p>Clientes y fidelización</p>
+            </div>
+            <div class="module-card-arrow">
+              <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
           </button>
-          <button id="moduleErpBtn" type="button" class="module-btn hidden">
-            <span class="module-btn-title">Módulo ERP</span>
-            <span class="module-btn-desc">Inventario, compras y administración.</span>
+          <button id="moduleErpBtn" type="button" class="module-card hidden">
+            <div class="module-card-icon">
+              <span class="material-symbols-outlined">inventory_2</span>
+            </div>
+            <div class="module-card-content">
+              <h3>ERP</h3>
+              <p>Inventario y administración</p>
+            </div>
+            <div class="module-card-arrow">
+              <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
           </button>
         </div>
-        <p id="moduleLauncherInfo" class="module-launcher-subtitle hidden"></p>
+        <div class="module-launcher-footer">
+          <div class="module-time" id="moduleTimeDisplay"></div>
+          <div class="module-user" id="moduleUserDisplay"></div>
+        </div>
       </div>
     </section>
 
-    <header id="restaurantHeader" class="hidden">
-      <div>
-        <div>
-          <div>
-            <h1 id="headerSystemName">SamaPos</h1>
+<header id="restaurantHeader" class="hidden">
+      <div class="header-inner">
+        <div class="header-left">
+          <div class="header-brand">
+            <div class="header-logo">
+              <span class="material-symbols-outlined">restaurant</span>
+            </div>
+            <div class="header-title">
+              <h1 id="headerSystemName">SamaPos</h1>
+              <span class="header-subtitle">Sistema de Restaurante</span>
+            </div>
           </div>
           <nav class="restaurant-header-nav">
-            <a href="#">Dashboard</a>
-            <a href="#">Mesas</a>
-            <a href="#">Caja</a>
-            <a href="#">Operaciones</a>
+            <button type="button" class="header-nav-btn active" id="navDashboardBtn">
+              <span class="material-symbols-outlined">dashboard</span>
+              <span>Dashboard</span>
+            </button>
+            <button type="button" class="header-nav-btn" id="navMesasBtn">
+              <span class="material-symbols-outlined">table_restaurant</span>
+              <span>Mesas</span>
+            </button>
+            <button type="button" class="header-nav-btn" id="navCajaBtn">
+              <span class="material-symbols-outlined">point_of_sale</span>
+              <span>Caja</span>
+            </button>
+            <button type="button" class="header-nav-btn" id="navOpsBtn">
+              <span class="material-symbols-outlined">inventory_2</span>
+              <span>Operaciones</span>
+            </button>
           </nav>
         </div>
-        <div class="hidden" aria-hidden="true">
+        <div class="header-right">
+          <div class="header-pickers hidden" aria-hidden="true">
             <label class="toolbar-picker">
               Mesero:
               <select id="waiterSelect"></select>
@@ -113,11 +171,17 @@
               <select id="centerSelect"></select>
             </label>
             <span id="terminalIpText"></span>
-            <button id="backToModulesBtn" type="button">Módulos</button>
-            <button id="restaurantHomeBtn" type="button">Inicio</button>
           </div>
-          <button class="material-symbols-outlined" type="button" aria-label="Notificaciones">notifications</button>
-          <button class="material-symbols-outlined" type="button" aria-label="Configuración">settings</button>
+          <button type="button" class="header-icon-btn" id="headerNotificationsBtn" title="Notificaciones">
+            <span class="material-symbols-outlined">notifications</span>
+          </button>
+          <button type="button" class="header-icon-btn" id="headerSettingsBtn" title="Configuración">
+            <span class="material-symbols-outlined">settings</span>
+          </button>
+          <button type="button" class="header-nav-btn header-logout-btn" id="logoutBtn">
+            <span class="material-symbols-outlined">logout</span>
+            <span>Salir</span>
+          </button>
         </div>
       </div>
     </header>
@@ -394,39 +458,120 @@
         </section>
       </section>
 
-      <section id="settingsView" class="panel hidden">
-        <div class="settings-header">
-          <button id="backFromSettingsBtn" type="button" class="back-btn">
-            <span class="material-symbols-outlined">arrow_back</span>
-            Volver al Inicio
-          </button>
-          <div class="settings-title">
-            <span class="material-symbols-outlined">settings</span>
-            <h2>Configuraciones</h2>
-          </div>
-        </div>
+<section id="settingsView" class="panel hidden">
+        <div class="settings-center">
+          <aside class="settings-sidebar">
+            <div class="settings-sidebar-header">
+              <span class="material-symbols-outlined">settings</span>
+              <h2>Configuración</h2>
+            </div>
+            <div class="settings-search-box">
+              <span class="material-symbols-outlined">search</span>
+              <input type="text" id="settingsSearchInput" placeholder="Buscar configuración..." />
+            </div>
+            <nav class="settings-modules-nav">
+              <button type="button" class="settings-module-btn active" data-module="restaurant">
+                <span class="material-symbols-outlined">storefront</span>
+                <span>Restaurante</span>
+              </button>
+              <button type="button" class="settings-module-btn" data-module="catalogs">
+                <span class="material-symbols-outlined">inventory_2</span>
+                <span>Catálogos</span>
+              </button>
+              <button type="button" class="settings-module-btn" data-module="users">
+                <span class="material-symbols-outlined">group</span>
+                <span>Usuarios</span>
+              </button>
+              <button type="button" class="settings-module-btn" data-module="system">
+                <span class="material-symbols-outlined">computer</span>
+                <span>Sistema</span>
+              </button>
+              <button type="button" class="settings-module-btn" data-module="cxc">
+                <span class="material-symbols-outlined">account_balance_wallet</span>
+                <span>CXC</span>
+              </button>
+            </nav>
+          </aside>
 
-        <div class="settings-nav-tabs">
+          <main class="settings-main">
+            <div class="settings-content-header">
+              <h2 id="settingsContentTitle">Configuración del Restaurante</h2>
+              <p id="settingsContentDesc">Administra la configuración de tu restaurante</p>
+            </div>
+
+            <div id="settingsCardsContainer" class="settings-cards-grid"></div>
+
+            <div id="settingsFormContainer" class="settings-form-container hidden">
+              <button type="button" class="settings-back-btn" id="settingsBackToCards">
+                <span class="material-symbols-outlined">arrow_back</span>
+                Volver a Configuración
+              </button>
+              <div id="settingsFormContent"></div>
+            </div>
+          </main>
+        </div>
+      </section>
+
+      <section id="settingsViewOld" class="panel hidden">
+
+<div class="settings-nav-tabs">
           <button id="cfgNavProductsBtn" type="button" class="settings-nav-tab tab-active">
             <span class="material-symbols-outlined">restaurant</span>
             Platillos
           </button>
           <button id="cfgNavModifiersBtn" type="button" class="settings-nav-tab">
             <span class="material-symbols-outlined">tune</span>
-            Guarniciones y Pasos
+            Guarniciones
           </button>
           <button id="cfgNavDiscountsBtn" type="button" class="settings-nav-tab">
-            <span class="material-symbols-outlined">discount</span>
-            Tipos de Descuento
+            <span class="material-symbols-outlined">sell</span>
+            Descuentos
           </button>
           <button id="cfgNavOpsBtn" type="button" class="settings-nav-tab">
             <span class="material-symbols-outlined">meeting_room</span>
-            Mesas y Pagos
+            Mesas
           </button>
+          <button id="cfgNavCxcBtn" type="button" class="settings-nav-tab">
+            <span class="material-symbols-outlined">account_balance_wallet</span>
+            CXC
+          </button>
+        </div>
+        <div class="settings-sub-nav">
+          <div class="settings-tree-section">
+            <button type="button" class="settings-tree-toggle" data-tree="catalog">
+              <span class="material-symbols-outlined">folder</span> Catálogos
+            </button>
+            <div class="settings-tree-content" id="treeCatalog">
+              <button type="button" class="settings-tree-item" data-section="products">Categorías</button>
+              <button type="button" class="settings-tree-item" data-section="products">Productos</button>
+              <button type="button" class="settings-tree-item" data-section="modifiers">Guarniciones</button>
+            </div>
+          </div>
+          <div class="settings-tree-section">
+            <button type="button" class="settings-tree-toggle" data-tree="config">
+              <span class="material-symbols-outlined">settings</span> Configuración
+            </button>
+            <div class="settings-tree-content" id="treeConfig">
+              <button type="button" class="settings-tree-item" data-section="ops">Mesas y Áreas</button>
+              <button type="button" class="settings-tree-item" data-section="ops">Centros de Operación</button>
+              <button type="button" class="settings-tree-item" data-section="ops">Formas de Pago</button>
+              <button type="button" class="settings-tree-item" data-section="ops">Usuarios y Permisos</button>
+            </div>
+          </div>
+          <div class="settings-tree-section">
+            <button type="button" class="settings-tree-toggle" data-tree="cxc">
+              <span class="material-symbols-outlined">account_balance_wallet</span> CXC
+            </button>
+            <div class="settings-tree-content" id="treeCxc">
+              <button type="button" class="settings-tree-item" data-section="cxc">Clientes</button>
+              <button type="button" class="settings-tree-item" data-section="cxc">Áreas/Instituciones</button>
+              <button type="button" class="settings-tree-item" data-section="cxc">Cuentas por Cobrar</button>
+            </div>
+          </div>
         </div>
 
         <div class="settings-grid">
-          <section id="cfgOpsSection" class="settings-block cfg-section">
+          <section id="cfgOpsSection" class="settings-block cfg-section" data-form="restaurant-tables,restaurant-areas">
             <div class="settings-section-header">
               <span class="material-symbols-outlined">category</span>
               <h3>Categorías de Platillos</h3>
@@ -535,7 +680,7 @@
             <div id="cfgTablesList" class="cfg-list"></div>
           </section>
 
-          <section class="settings-block">
+<section class="settings-block" id="cfgIdentitySection" data-form="restaurant-identity">
             <div class="settings-section-header">
               <span class="material-symbols-outlined">badge</span>
               <h3>Identidad</h3>
@@ -612,7 +757,7 @@
             </div>
           </section>
 
-          <section id="cfgProductsSection" class="settings-block cfg-section hidden">
+          <section id="cfgProductsSection" class="settings-block cfg-section hidden" data-form="catalogs-products,catalogs-categories">
             <h3>Gestion de Platillos</h3>
             
             <!-- Modo: Listar/Editar o Crear Nuevo -->
@@ -690,7 +835,7 @@
             </div>
           </section>
 
-          <section id="cfgModifiersSection" class="settings-block cfg-section hidden">
+          <section id="cfgModifiersSection" class="settings-block cfg-section hidden" data-form="catalogs-modifiers">
             <h3>Armar Plato (Paso 1, 2, 3...)</h3>
             <div class="line cfg-mod-row cfg-mod-row-group">
               <select id="cfgGroupTemplateTypeSelect">
@@ -733,7 +878,7 @@
             <div id="cfgGroupsList" class="order-list cfg-list"></div>
           </section>
 
-          <section id="cfgDiscountsSection" class="settings-block cfg-section hidden">
+          <section id="cfgDiscountsSection" class="settings-block cfg-section hidden" data-form="catalogs-discounts">
             <h3>Tipos de Descuento</h3>
             <div class="line">
               <input id="cfgDiscountPresetNameInput" type="text" placeholder="Nombre (Ej: Promo Almuerzo)" />
@@ -746,7 +891,47 @@
               <input id="cfgDiscountPresetSortInput" type="number" min="0" value="1" />
               <button id="cfgAddDiscountPresetBtn" type="button">Guardar Tipo</button>
             </div>
-            <div id="cfgDiscountPresetsList" class="order-list cfg-list"></div>
+<div id="cfgDiscountPresetsList" class="order-list cfg-list"></div>
+          </section>
+
+          <section id="cfgCxcSection" class="settings-block cfg-section hidden" data-form="cxc-clients,cxc-areas,cxc-accounts">
+            <h3>Cuentas por Cobrar (CXC)</h3>
+            
+            <div class="cxc-tabs">
+              <button type="button" class="cxc-tab-btn tab-active" data-cxc-tab="clients">Clientes</button>
+              <button type="button" class="cxc-tab-btn" data-cxc-tab="areas">Áreas/Instituciones</button>
+              <button type="button" class="cxc-tab-btn" data-cxc-tab="pending">Por Cobrar</button>
+            </div>
+
+            <div id="cxcClientsView" class="cxc-tab-content">
+              <div class="cxc-client-form">
+                <input id="cxcClientNameInput" type="text" placeholder="Nombre del cliente" />
+                <input id="cxcClientPhoneInput" type="text" placeholder="Teléfono" />
+                <input id="cxcClientCreditInput" type="number" min="0" step="0.01" placeholder="Límite de crédito" />
+                <select id="cxcClientAreaSelect"></select>
+                <input id="cxcClientDiscountInput" type="number" min="0" max="100" step="0.01" placeholder="% Descuento" />
+                <button id="cxcAddClientBtn" type="button" class="cfg-add-btn">
+                  <span class="material-symbols-outlined">add</span>
+                  Agregar
+                </button>
+              </div>
+              <div id="cxcClientsList" class="cxc-clients-list"></div>
+            </div>
+
+            <div id="cxcAreasView" class="cxc-tab-content hidden">
+              <div class="cxc-area-form">
+                <input id="cxcAreaNameInput" type="text" placeholder="Nombre del área/institución" />
+                <button id="cxcAddAreaBtn" type="button" class="cfg-add-btn">
+                  <span class="material-symbols-outlined">add</span>
+                  Agregar
+                </button>
+              </div>
+              <div id="cxcAreasList" class="cxc-areas-list"></div>
+            </div>
+
+            <div id="cxcPendingView" class="cxc-tab-content hidden">
+              <div id="cxcPendingList" class="cxc-pending-list"></div>
+            </div>
           </section>
         </div>
       </section>
@@ -955,28 +1140,47 @@
           </div>
         </div>
 
-        <div id="functionsMoveSeatSection" class="hidden">
-          <div class="functions-form">
-            <label for="functionsMoveSeatItemSelect">Platillos (puedes seleccionar varios)</label>
-            <select id="functionsMoveSeatItemSelect" multiple size="8"></select>
-            <label for="functionsMoveSeatInput">Nueva silla</label>
-            <input id="functionsMoveSeatInput" type="number" min="1" step="1" />
+<div id="functionsMoveSeatSection" class="hidden">
+          <div class="move-seat-visual">
+            <div class="move-seat-header">
+              <div class="move-seat-header-icon">
+                <span class="material-symbols-outlined">swap_horiz</span>
+              </div>
+              <div class="move-seat-header-text">
+                <h3>Cambiar de Silla</h3>
+                <p>Toca un platillo y luego toca la silla destino</p>
+              </div>
+            </div>
+            <div id="moveSeatChairsGrid" class="move-seat-chairs-grid"></div>
           </div>
           <div class="modal-actions">
-            <button id="functionsMoveSeatBackBtn" type="button">Atras</button>
-            <button id="functionsMoveSeatApplyBtn" type="button">Aplicar Cambio</button>
+            <button id="functionsMoveSeatBackBtn" type="button" class="btn-secondary">
+              <span class="material-symbols-outlined">arrow_back</span>
+              Atrás
+            </button>
+            <button id="functionsMoveSeatApplyBtn" type="button" class="btn-primary" disabled>
+              <span class="material-symbols-outlined">check</span>
+              Confirmar
+            </button>
           </div>
         </div>
 
         <div id="functionsSeatSummarySection" class="hidden">
-          <div class="functions-seat-actions">
-            <button id="functionsSeatSummaryPrintAllBtn" type="button">Imprimir Todas las Sillas (80mm)</button>
+          <div class="seat-simple-header">
+            <span class="material-symbols-outlined">receipt_long</span>
+            <span>Cuenta por Silla</span>
           </div>
-          <div id="functionsSeatSummaryList" class="functions-seat-list"></div>
-          <div class="functions-seat-total">Total de la cuenta: <strong id="functionsSeatSummaryTotal">Q 0.00</strong></div>
+          <div id="functionsSeatSummaryList" class="seat-simple-list"></div>
+          <div class="seat-simple-total">
+            <span>Total</span>
+            <strong id="functionsSeatSummaryTotal">Q 0.00</strong>
+          </div>
           <div class="modal-actions">
-            <button id="functionsSeatSummaryBackBtn" type="button">Atras</button>
-            <button id="functionsSeatSummaryCloseBtn" type="button">Cerrar</button>
+            <button id="functionsSeatSummaryPrintAllBtn" type="button">
+              <span class="material-symbols-outlined">print</span>
+              Imprimir
+            </button>
+            <button id="functionsSeatSummaryBackBtn" type="button">Volver</button>
           </div>
         </div>
 
@@ -1016,7 +1220,11 @@
           <div class="functions-split-share split-legacy-share">
             <span>N = cuentas abiertas en la mesa</span>
           </div>
-          <div class="modal-actions split-legacy-actions">
+<div class="modal-actions split-legacy-actions">
+            <button id="functionsSplitPrintAllBtn" type="button" class="btn-primary">
+              <span class="material-symbols-outlined">print</span>
+              Imprimir Todas
+            </button>
             <button id="functionsSplitAddAccountBtn" type="button">Nueva</button>
             <button id="functionsSplitRemoveAccountBtn" type="button">Quitar cuenta</button>
             <button id="functionsSplitShareEqualBtn" type="button">Dividir Equitativo</button>

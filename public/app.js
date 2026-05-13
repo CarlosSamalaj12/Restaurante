@@ -116,8 +116,32 @@ function applyBranding() {
   const homeNameEl = document.getElementById("homeRestaurantName");
   if (homeNameEl) homeNameEl.textContent = restaurantName;
   const tablesBrandNameEl = document.getElementById("tablesBrandName");
-  if (tablesBrandNameEl) tablesBrandNameEl.textContent = restaurantName;
+if (tablesBrandNameEl) tablesBrandNameEl.textContent = restaurantName;
   document.title = `${SYSTEM_NAME} | ${restaurantName}`;
+}
+
+function saveAppState() {
+  localStorage.setItem("appState", JSON.stringify({
+    authToken: state.authToken,
+    activeModule: state.activeModule,
+    viewMode: state.viewMode,
+    selectedCenterId: state.selectedCenterId,
+    selectedTableId: state.selectedTableId,
+    selectedAccountId: state.selectedAccountId,
+    userId: state.authUser?.id,
+    userRole: state.authUser?.role
+  }));
+}
+
+function restoreAppState() {
+  try {
+    const saved = localStorage.getItem("appState");
+    if (!saved) return null;
+    return JSON.parse(saved);
+  } catch (e) {
+    console.error("Error restoring app state", e);
+    return null;
+  }
 }
 
 async function api(url, options = {}) {
@@ -378,6 +402,16 @@ function showLoginView() {
   document.getElementById("restaurantMain")?.classList.add("hidden");
   forceTransparentLoginPadButtons();
   resetLoginPin();
+localStorage.removeItem("appState");
+}
+
+function logout() {
+  state.authUser = null;
+  state.authToken = "";
+  state.activeModule = null;
+  localStorage.removeItem("appState");
+  showLoginView();
+  toast("Sesión cerrada", "info");
 }
 
 async function submitLoginPin() {
@@ -868,31 +902,119 @@ function showFunctionsMoveSeat() {
   const detail = state.accountDetail;
   const items = Array.isArray(detail?.items) ? detail.items : [];
   if (!items.length) {
-    toast("No hay platillos para mover de silla", "error");
+    toast("No hay platillos en la cuenta", "error");
     return;
   }
-  const select = document.getElementById("functionsMoveSeatItemSelect");
-  if (select) {
-    select.innerHTML = items
-      .map(
-        (i) =>
-          `<option value="${Number(i.id)}">Silla ${Number(i.seat_no || 1)} | ${escapeHtml(i.product_name)} x${Number(i.qty || 0)}</option>`
-      )
-      .join("");
+  const allSeats = [...new Set(items.map((i) => Number(i.seat_no || 1)))];
+  const maxSeatFromItems = Math.max(...allSeats, 0);
+  const tableGuests = Number(detail?.account?.guest_count || 0);
+  const guestCount = Math.max(maxSeatFromItems, tableGuests, 4);
+  state.moveSeatSelected = null;
+  state.moveSeatDestSeat = null;
+  const gridEl = document.getElementById("moveSeatChairsGrid");
+  if (!gridEl) return;
+  let html = "";
+  for (let seat = 1; seat <= guestCount; seat++) {
+    const seatItems = items.filter((i) => Number(i.seat_no || 1) === seat);
+    const seatTotal = seatItems.reduce((sum, i) => sum + Number(i.line_total || 0), 0);
+    const itemsHtml = seatItems.length
+      ? seatItems
+          .map(
+            (i) => `
+          <div class="move-seat-chair-item" data-item-id="${Number(i.id)}" data-seat="${seat}">
+            <span class="move-seat-chair-item-name">${escapeHtml(i.product_name)}</span>
+            <span class="move-seat-chair-item-qty">x${Number(i.qty || 0)}</span>
+          </div>
+        `
+          )
+          .join("")
+      : '<div class="move-seat-chair-empty">Sin productos</div>';
+    html += `
+      <div class="move-seat-chair-card" data-seat="${seat}">
+        <div class="move-seat-chair-header">
+          <div class="move-seat-chair-icon">
+            <span class="material-symbols-outlined">chair</span>
+          </div>
+          <span class="move-seat-chair-label">Silla ${seat}</span>
+          <span class="move-seat-chair-total">${money(seatTotal)}</span>
+        </div>
+        <div class="move-seat-chair-items">${itemsHtml}</div>
+      </div>
+    `;
   }
-  const moveInput = document.getElementById("functionsMoveSeatInput");
-  const guestCount = Math.max(1, Number(detail?.account?.guest_count || 1));
-  if (moveInput) {
-    moveInput.min = "1";
-    moveInput.max = String(guestCount);
-    const initialSeat = Number(items[0]?.seat_no || 1);
-    moveInput.value = String(Math.min(Math.max(1, initialSeat), guestCount));
-  }
+  gridEl.innerHTML = html;
+  gridEl.querySelectorAll(".move-seat-chair-item").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const itemId = Number(el.dataset.itemId);
+      const currentSeat = Number(el.dataset.seat);
+      const prevSelected = state.moveSeatSelected;
+      document.querySelectorAll(".move-seat-chair-item").forEach((i) => i.classList.remove("selected"));
+      el.classList.add("selected");
+      state.moveSeatSelected = itemId;
+      state.moveSeatDestSeat = currentSeat;
+      document.querySelectorAll(".move-seat-chair-card").forEach((c) => c.classList.remove("destination-hover"));
+      gridEl.querySelectorAll(`.move-seat-chair-card[data-seat="${currentSeat}"]`)[0]?.classList.add("destination-hover");
+      updateMoveSeatConfirmButton();
+    });
+  });
+  gridEl.querySelectorAll(".move-seat-chair-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      if (!state.moveSeatSelected) {
+        toast("Primero selecciona un platillo", "info");
+        return;
+      }
+      const destSeat = Number(card.dataset.seat);
+      const itemEl = document.querySelector(`.move-seat-chair-item[data-item-id="${state.moveSeatSelected}"]`);
+      const currentSeat = itemEl ? Number(itemEl.dataset.seat) : null;
+      if (currentSeat === destSeat) {
+        toast("El platillo ya está en esa silla", "info");
+        return;
+      }
+      moveSeatItem(state.moveSeatSelected, destSeat);
+    });
+    card.addEventListener("mouseenter", () => {
+      if (state.moveSeatSelected) {
+        card.classList.add("destination-hover");
+      }
+    });
+    card.addEventListener("mouseleave", () => {
+      card.classList.remove("destination-hover");
+    });
+  });
+  updateMoveSeatConfirmButton();
   document.getElementById("functionsModal")?.classList.remove("split-fullscreen");
   document.getElementById("functionsMenuSection")?.classList.add("hidden");
   document.getElementById("functionsMoveSeatSection")?.classList.remove("hidden");
   document.getElementById("functionsSeatSummarySection")?.classList.add("hidden");
   document.getElementById("functionsSplitAccountsSection")?.classList.add("hidden");
+}
+
+function updateMoveSeatConfirmButton() {
+  const btn = document.getElementById("functionsMoveSeatApplyBtn");
+  if (btn) {
+    btn.disabled = !state.moveSeatSelected;
+    if (state.moveSeatSelected) {
+      btn.innerHTML = '<span class="material-symbols-outlined">check</span> Listo';
+    } else {
+      btn.innerHTML = '<span class="material-symbols-outlined">check</span> Confirmar';
+    }
+  }
+}
+
+async function moveSeatItem(itemId, newSeatNo) {
+  try {
+    await api(`/api/items/${itemId}/move-seat`, {
+      method: "POST",
+      body: JSON.stringify({ newSeatNo }),
+    });
+    toast("Platillo movido a Silla " + newSeatNo, "success");
+    state.moveSeatSelected = null;
+    await loadAccountDetail();
+    showFunctionsMoveSeat();
+  } catch (e) {
+    toast(e.message || "Error al mover platillo", "error");
+  }
 }
 
 async function applyMoveSeatFromFunctions() {
@@ -930,27 +1052,23 @@ function showFunctionsSeatSummary() {
     toast("No hay platillos en la cuenta", "error");
     return;
   }
-  const rows = buildSeatSummaryRows(detail);
+const rows = buildSeatSummaryRows(detail);
 
   const list = document.getElementById("functionsSeatSummaryList");
   if (list) {
     list.innerHTML = rows
       .map(
         (r) => `
-      <div class="functions-seat-row">
-        <span>Silla ${r.seat}</span>
+      <div class="seat-simple-item">
+        <div class="seat-simple-item-left">
+          <span class="material-symbols-outlined">chair</span>
+          <span>Silla ${r.seat}</span>
+        </div>
         <strong>${money(r.subtotal)}</strong>
-        <button type="button" data-seat-print="${r.seat}">Imprimir 80mm</button>
       </div>
     `
       )
       .join("");
-    list.querySelectorAll("[data-seat-print]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const seatNo = Number(btn.getAttribute("data-seat-print") || "0");
-        openSeatPrecheckPrint(seatNo);
-      });
-    });
   }
   const totalText = document.getElementById("functionsSeatSummaryTotal");
   if (totalText) totalText.textContent = money(detail?.totals?.total || 0);
@@ -1477,6 +1595,92 @@ function printAllSeatPrechecks() {
   printWindow.document.open();
   printWindow.document.write(html);
   printWindow.document.close();
+printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+    printWindow.close();
+  }, 250);
+}
+
+async function printAllSplitAccounts() {
+  const accounts = state.splitAccounts.accounts || [];
+  if (!accounts.length) {
+    toast("No hay cuentas para imprimir", "error");
+    return;
+  }
+  const restaurantName = currentRestaurantName();
+  const blocks = [];
+  for (const account of accounts) {
+    const accountId = Number(account.id);
+    try {
+      const detail = await api(`/accounts/${accountId}`);
+      const items = detail.items || [];
+      const subtotal = items.reduce((sum, i) => sum + (Number(i.price) * Number(i.quantity)), 0);
+      const discount = Number(detail.discount || 0);
+      const total = subtotal - discount;
+      const seatInfo = detail.seat ? ` - Silla ${detail.seat}` : "";
+      const accountTitle = `Cuenta ${account.code || accountId}${seatInfo}`;
+      let itemsHtml = items.map(i => `
+        <div class="line-item">
+          <span>${Number(i.quantity)}x ${escapeHtml(i.productName || i.name)}</span>
+          <span class="amount">Q ${(Number(i.price) * Number(i.quantity)).toFixed(2)}</span>
+        </div>
+      `).join("");
+      blocks.push(`
+        <div class="precheck-block">
+          <div class="center">
+            <h2>${escapeHtml(restaurantName)}</h2>
+            <p>${accountTitle}</p>
+            <p class="sp">${new Date().toLocaleString("es-GT", { dateStyle: "short", timeStyle: "short" })}</p>
+          </div>
+          <div class="sep"></div>
+          ${itemsHtml}
+          <div class="sep"></div>
+          <div class="row"><span>Subtotal:</span><span class="amount">Q ${subtotal.toFixed(2)}</span></div>
+          ${discount > 0 ? `<div class="row"><span>Descuento:</span><span class="amount">-Q ${discount.toFixed(2)}</span></div>` : ""}
+          <div class="row total"><span>TOTAL:</span><span class="amount">Q ${total.toFixed(2)}</span></div>
+        </div>
+        <div class="page-break"></div>
+      `);
+    } catch (e) {
+      console.error("Error loading account", accountId, e);
+    }
+  }
+  if (!blocks.length) {
+    toast("No se pudieron cargar las cuentas", "error");
+    return;
+  }
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Cuentas Divididas</title>
+        <style>
+          @page { size: 80mm auto; margin: 4mm; }
+          body { font-family: "Courier New", monospace; width: 72mm; margin: 0 auto; color: #111; font-size: 12px; }
+          h1, h2, p { margin: 0; }
+          .center { text-align: center; }
+          .sp { margin-top: 6px; }
+          .sep { border-top: 1px dashed #333; margin: 6px 0; }
+          .line-item { margin-bottom: 6px; }
+          .amount { text-align: right; }
+          .total { font-size: 14px; font-weight: bold; margin-top: 8px; }
+          .row { display: flex; justify-content: space-between; gap: 8px; }
+          .page-break { page-break-after: always; }
+        </style>
+      </head>
+      <body>${blocks.join("")}</body>
+    </html>
+  `;
+  const printWindow = window.open("", "_blank", "width=420,height=760");
+  if (!printWindow) {
+    toast("Habilita popups para imprimir las cuentas", "error");
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
   printWindow.focus();
   setTimeout(() => {
     printWindow.print();
@@ -1839,6 +2043,7 @@ function showTablesView() {
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("header-hide-pickers");
   updateMenuQuickActionsState();
+  saveAppState();
 }
 
 function setRestaurantViewMode(mode) {
@@ -1871,7 +2076,9 @@ function showRestaurantHomeView() {
   document.getElementById("restaurantHomeView")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("header-hide-pickers");
+  document.body.classList.add("restaurant-view");
   updateMenuQuickActionsState();
+  saveAppState();
 }
 
 function showModuleLauncher() {
@@ -1883,6 +2090,15 @@ function showModuleLauncher() {
   document.getElementById("moduleLauncher")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.add("hidden");
   document.getElementById("restaurantMain")?.classList.add("hidden");
+  const timeEl = document.getElementById("moduleTimeDisplay");
+  if (timeEl) {
+    const now = new Date();
+    timeEl.textContent = now.toLocaleDateString("es-GT", { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+  const userEl = document.getElementById("moduleUserDisplay");
+  if (userEl && state.authUser) {
+    userEl.textContent = state.authUser.full_name || "Usuario";
+  }
 }
 
 function enterRestaurantModule() {
@@ -1900,6 +2116,7 @@ function showAccountPickerView() {
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.add("header-hide-pickers");
   updateMenuQuickActionsState();
+  saveAppState();
 }
 
 function showServiceView() {
@@ -1909,6 +2126,7 @@ function showServiceView() {
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.add("header-hide-pickers");
   updateMenuQuickActionsState();
+  saveAppState();
 }
 
 function showSettingsView() {
@@ -1918,6 +2136,336 @@ function showSettingsView() {
   document.getElementById("restaurantHeader")?.classList.remove("hidden");
   document.getElementById("restaurantHeader")?.classList.remove("header-hide-pickers");
   updateMenuQuickActionsState();
+  saveAppState();
+  initSettingsCenter();
+}
+
+const settingsModulesData = {
+  restaurant: {
+    title: "Configuración del Restaurante",
+    desc: "Administra la configuración de tu restaurante",
+    cards: [
+      { id: "restaurant-identity", icon: "badge", title: "Identidad del Restaurante", desc: "Nombre, logo y marca", color: "linear-gradient(135deg, #f59e0b, #d97706)" },
+      { id: "restaurant-tables", icon: "table_restaurant", title: "Mesas y Áreas", desc: "Configurar mesas, sectores", color: "linear-gradient(135deg, #3b82f6, #2563eb)" },
+      { id: "restaurant-areas", icon: "grid_view", title: "Centros de Operación", desc: "Cocina, bar, sucursales", color: "linear-gradient(135deg, #8b5cf6, #7c3aed)" },
+      { id: "restaurant-payments", icon: "payment", title: "Formas de Pago", desc: "Métodos de pago aceptados", color: "linear-gradient(135deg, #10b981, #059669)" },
+      { id: "restaurant-tip", icon: "volunteer_activism", title: "Propina", desc: "Configurar porcentaje de propina", color: "linear-gradient(135deg, #ec4899, #db2777)" },
+      { id: "restaurant-login", icon: "wallpaper", title: "Pantalla de Login", desc: "Imagen y diseño del login", color: "linear-gradient(135deg, #6366f1, #4f46e5)" }
+    ]
+  },
+  catalogs: {
+    title: "Catálogos",
+    desc: "Administra productos, categorías y más",
+    cards: [
+      { id: "catalogs-categories", icon: "category", title: "Categorías", desc: "Categorías de platillos", color: "linear-gradient(135deg, #f97316, #ea580c)" },
+      { id: "catalogs-products", icon: "restaurant_menu", title: "Platillos", desc: "Menú y productos", color: "linear-gradient(135deg, #84cc16, #65a30d)" },
+      { id: "catalogs-modifiers", icon: "tune", title: "Guarniciones", desc: "Modificadores y extras", color: "linear-gradient(135deg, #06b6d4, #0891b2)" },
+      { id: "catalogs-discounts", icon: "sell", title: "Descuentos", desc: "Promociones y descuentos", color: "linear-gradient(135deg, #eab308, #ca8a04)" }
+    ]
+  },
+  users: {
+    title: "Usuarios y Permisos",
+    desc: "Administra usuarios y roles",
+    cards: [
+      { id: "users-list", icon: "group", title: "Usuarios", desc: "Crear y gestionar usuarios", color: "linear-gradient(135deg, #14b8a6, #0d9488)" },
+      { id: "users-roles", icon: "admin_panel_settings", title: "Roles y Permisos", desc: "Permisos por rol", color: "linear-gradient(135deg, #a855f7, #9333ea)" }
+    ]
+  },
+  system: {
+    title: "Sistema",
+    desc: "Configuración general del sistema",
+    cards: [
+      { id: "system-print", icon: "print", title: "Impresión", desc: "Configurar impresoras", color: "linear-gradient(135deg, #64748b, #475569)" },
+      { id: "system-backup", icon: "backup", title: "Respaldo", desc: "Backup y restauración", color: "linear-gradient(135deg, #0ea5e9, #0284c7)" },
+      { id: "system-license", icon: "key", title: "Licencia", desc: "Información de licencia", color: "linear-gradient(135deg, #f43f5e, #e11d48)" }
+    ]
+  },
+  cxc: {
+    title: "Cuentas por Cobrar",
+    desc: "Administra CXC y clientes",
+    cards: [
+      { id: "cxc-clients", icon: "people", title: "Clientes", desc: "Gestionar clientes", color: "linear-gradient(135deg, #22c55e, #16a34a)" },
+      { id: "cxc-areas", icon: "domain", title: "Áreas/Instituciones", desc: "Categorías de clientes", color: "linear-gradient(135deg, #8b5cf6, #7c3aed)" },
+      { id: "cxc-accounts", icon: "receipt_long", title: "Cuentas", desc: "Ver cuentas por cobrar", color: "linear-gradient(135deg, #f59e0b, #d97706)" }
+    ]
+  }
+};
+
+let currentSettingsModule = "restaurant";
+
+function initSettingsCenter() {
+  renderSettingsCards(currentSettingsModule);
+  setupSettingsCenterEvents();
+}
+
+function renderSettingsCards(module) {
+  const container = document.getElementById("settingsCardsContainer");
+  if (!container) return;
+
+  const data = settingsModulesData[module];
+  if (!data) return;
+
+  document.getElementById("settingsContentTitle").textContent = data.title;
+  document.getElementById("settingsContentDesc").textContent = data.desc;
+
+  container.innerHTML = data.cards.map(card => `
+    <div class="settings-card" data-settings="${card.id}">
+      <div class="settings-card-icon" style="background: ${card.color};">
+        <span class="material-symbols-outlined">${card.icon}</span>
+      </div>
+      <div class="settings-card-info">
+        <h3>${card.title}</h3>
+        <p>${card.desc}</p>
+      </div>
+      <span class="material-symbols-outlined arrow">chevron_right</span>
+    </div>
+  `).join("");
+}
+
+function setupSettingsCenterEvents() {
+  document.querySelectorAll(".settings-module-btn").forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll(".settings-module-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentSettingsModule = btn.dataset.module;
+      renderSettingsCards(currentSettingsModule);
+      document.getElementById("settingsFormContainer").classList.add("hidden");
+      document.getElementById("settingsCardsContainer").classList.remove("hidden");
+    };
+  });
+
+  document.getElementById("settingsCardsContainer").onclick = (e) => {
+    const card = e.target.closest(".settings-card");
+    if (card) {
+      openSettingsForm(card.dataset.settings);
+    }
+  };
+
+  document.getElementById("settingsBackToCards")?.addEventListener("click", () => {
+    document.getElementById("settingsFormContainer").classList.add("hidden");
+    document.getElementById("settingsCardsContainer").classList.remove("hidden");
+  });
+
+  const searchInput = document.getElementById("settingsSearchInput");
+  if (searchInput) {
+    searchInput.oninput = (e) => filterSettingsCards(e.target.value);
+  }
+}
+
+function filterSettingsCards(query) {
+  const container = document.getElementById("settingsCardsContainer");
+  const cards = container.querySelectorAll(".settings-card");
+  const q = query.toLowerCase();
+
+  cards.forEach(card => {
+    const title = card.querySelector("h3").textContent.toLowerCase();
+    const desc = card.querySelector("p").textContent.toLowerCase();
+    card.style.display = (title.includes(q) || desc.includes(q)) ? "" : "none";
+  });
+}
+
+function openSettingsForm(settingId) {
+  const settingConfig = {
+    "restaurant-identity": { title: "Identidad del Restaurante", tab: "cfgNavOpsBtn", section: null, desc: "Nombre, logo y marca" },
+    "restaurant-tables": { title: "Mesas y Áreas", tab: "cfgNavOpsBtn", section: "cfgOpsSection", desc: "Mesas, áreas, sectores" },
+    "restaurant-areas": { title: "Centros de Operación", tab: "cfgNavOpsBtn", section: "cfgOpsSection", desc: "Cocina, bar, sucursales" },
+    "restaurant-payments": { title: "Formas de Pago", tab: "cfgNavOpsBtn", section: null, desc: "Métodos de pago" },
+    "restaurant-tip": { title: "Propina", tab: "cfgNavOpsBtn", section: null, desc: "Porcentaje de propina" },
+    "restaurant-login": { title: "Pantalla de Login", tab: "cfgNavOpsBtn", section: null, desc: "Diseño del login" },
+    "catalogs-categories": { title: "Categorías", tab: "cfgNavProductsBtn", section: "cfgOpsSection", desc: "Categorías del menú" },
+    "catalogs-products": { title: "Platillos", tab: "cfgNavProductsBtn", section: "cfgProductsSection", desc: "Gestionar productos" },
+    "catalogs-modifiers": { title: "Guarniciones", tab: "cfgNavModifiersBtn", section: "cfgModifiersSection", desc: "Modificadores y extras" },
+    "catalogs-discounts": { title: "Descuentos", tab: "cfgNavDiscountsBtn", section: "cfgDiscountsSection", desc: "Promociones" },
+    "users-list": { title: "Usuarios", tab: "cfgNavOpsBtn", section: null, desc: "Gestionar usuarios" },
+    "users-roles": { title: "Roles y Permisos", tab: "cfgNavOpsBtn", section: null, desc: "Permisos por rol" },
+    "cxc-clients": { title: "Clientes CXC", tab: "cfgNavCxcBtn", section: "cfgCxcSection", desc: "Clientes" },
+    "cxc-areas": { title: "Áreas/Instituciones", tab: "cfgNavCxcBtn", section: "cfgCxcSection", desc: "Categorías de clientes" },
+    "cxc-accounts": { title: "Cuentas por Cobrar", tab: "cfgNavCxcBtn", section: "cfgCxcSection", desc: "Ver cuentas" },
+    "system-print": { title: "Impresión", tab: null, section: null, desc: "Configurar impresoras" },
+    "system-backup": { title: "Respaldo", tab: null, section: null, desc: "Backup" },
+    "system-license": { title: "Licencia", tab: null, section: null, desc: "Información" }
+  };
+
+  const config = settingConfig[settingId];
+  if (!config) return;
+
+  openOldSettingsView(config.tab, config.section);
+}
+
+function openOldSettingsView(tabId, sectionId) {
+  const container = document.getElementById("settingsFormContainer");
+  const content = document.getElementById("settingsFormContent");
+
+  document.getElementById("settingsCardsContainer").classList.add("hidden");
+  container.classList.remove("hidden");
+
+  let html = `<button type="button" class="settings-back-btn" id="settingsBackToCardsNew">
+    <span class="material-symbols-outlined">arrow_back</span>
+    Volver a Configuración
+  </button>`;
+
+  if (tabId) {
+    const tabNames = {
+      "cfgNavProductsBtn": "Platillos",
+      "cfgNavModifiersBtn": "Guarniciones",
+      "cfgNavDiscountsBtn": "Descuentos",
+      "cfgNavOpsBtn": "Mesas y Configuración",
+      "cfgNavCxcBtn": "Cuentas por Cobrar"
+    };
+    html += `<div class="settings-old-nav"><h3>${tabNames[tabId] || "Configuración"}</h3></div>`;
+  }
+
+  html += `<div class="settings-old-content">`;
+
+  const tabButtons = {
+    "cfgNavProductsBtn": ["cfgNavProductsBtn", "cfgNavModifiersBtn", "cfgNavDiscountsBtn", "cfgNavOpsBtn", "cfgNavCxcBtn"],
+    "cfgNavModifiersBtn": ["cfgNavProductsBtn", "cfgNavModifiersBtn", "cfgNavDiscountsBtn", "cfgNavOpsBtn", "cfgNavCxcBtn"],
+    "cfgNavDiscountsBtn": ["cfgNavProductsBtn", "cfgNavModifiersBtn", "cfgNavDiscountsBtn", "cfgNavOpsBtn", "cfgNavCxcBtn"],
+    "cfgNavOpsBtn": ["cfgNavProductsBtn", "cfgNavModifiersBtn", "cfgNavDiscountsBtn", "cfgNavOpsBtn", "cfgNavCxcBtn"],
+    "cfgNavCxcBtn": ["cfgNavProductsBtn", "cfgNavModifiersBtn", "cfgNavDiscountsBtn", "cfgNavOpsBtn", "cfgNavCxcBtn"]
+  };
+
+  const sections = {
+    "cfgProductsSection": "cfgProductsSection",
+    "cfgModifiersSection": "cfgModifiersSection",
+    "cfgDiscountsSection": "cfgDiscountsSection",
+    "cfgOpsSection": "cfgOpsSection",
+    "cfgCxcSection": "cfgCxcSection"
+  };
+
+  if (tabId) {
+    tabButtons[tabId].forEach(btnId => {
+      const btn = document.getElementById(btnId);
+      if (btn) {
+        const isActive = btnId === tabId;
+        html += `<button type="button" class="settings-old-tab ${isActive ? 'tab-active' : ''}" data-tab="${btnId}">
+          ${btn.querySelector('.material-symbols-outlined')?.outerHTML || ''}
+          <span>${btn.textContent.trim()}</span>
+        </button>`;
+      }
+    });
+  }
+
+  html += `</div><div class="settings-old-sections">`;
+
+  if (sectionId && document.getElementById(sectionId)) {
+    html += `<div class="settings-old-section" id="settingsOld_${sectionId}">`;
+    html += document.getElementById(sectionId).innerHTML;
+    html += `</div>`;
+  } else if (tabId === "cfgNavProductsBtn") {
+    html += `<div class="settings-old-section" id="settingsOld_cfgProductsSection">${document.getElementById("cfgProductsSection")?.innerHTML || ''}</div>`;
+  } else if (tabId === "cfgNavModifiersBtn") {
+    html += `<div class="settings-old-section" id="settingsOld_cfgModifiersSection">${document.getElementById("cfgModifiersSection")?.innerHTML || ''}</div>`;
+  } else if (tabId === "cfgNavDiscountsBtn") {
+    html += `<div class="settings-old-section" id="settingsOld_cfgDiscountsSection">${document.getElementById("cfgDiscountsSection")?.innerHTML || ''}</div>`;
+  } else if (tabId === "cfgNavCxcBtn") {
+    html += `<div class="settings-old-section" id="settingsOld_cfgCxcSection">${document.getElementById("cfgCxcSection")?.innerHTML || ''}</div>`;
+  } else {
+    html += `<div class="settings-old-section" id="settingsOld_cfgOpsSection">${document.getElementById("cfgOpsSection")?.innerHTML || ''}</div>`;
+    html += `<div class="settings-old-section" id="settingsOld_cfgIdentitySection">${document.getElementById("cfgIdentitySection")?.innerHTML || ''}</div>`;
+  }
+
+  html += `</div>`;
+
+  content.innerHTML = html;
+
+  document.getElementById("settingsBackToCardsNew")?.addEventListener("click", () => {
+    document.getElementById("settingsFormContainer").classList.add("hidden");
+    document.getElementById("settingsCardsContainer").classList.remove("hidden");
+  });
+
+initOldSettingsEvents();
+}
+
+function initOldSettingsEvents() {
+  document.querySelectorAll(".settings-old-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".settings-old-tab").forEach(t => t.classList.remove("tab-active"));
+      tab.classList.add("tab-active");
+      const tabId = tab.dataset.tab;
+      showSettingsTab(tabId);
+    });
+  });
+
+  document.querySelector("#settingsOld_cfgProductsSection #cfgAddCategoryBtn")?.addEventListener("click", () => {
+    saveCategoryConfig().catch(e => toast(e.message, "error"));
+  });
+  document.querySelector("#settingsOld_cfgOpsSection #cfgAddCategoryBtn")?.addEventListener("click", () => {
+    saveCategoryConfig().catch(e => toast(e.message, "error"));
+  });
+  document.querySelector("#settingsOld_cfgOpsSection #cfgAddAreaBtn")?.addEventListener("click", () => {
+    saveAreaConfig().catch(e => toast(e.message, "error"));
+  });
+  document.querySelector("#settingsOld_cfgOpsSection #cfgAddCenterBtn")?.addEventListener("click", () => {
+    saveOperationCenterConfig().catch(e => toast(e.message, "error"));
+  });
+  document.querySelector("#settingsOld_cfgOpsSection #cfgBindThisPcBtn")?.addEventListener("click", () => {
+    bindThisPcToCenter().catch(e => toast(e.message, "error"));
+  });
+  document.querySelector("#settingsOld_cfgOpsSection #cfgSaveDeviceModulesBtn")?.addEventListener("click", () => {
+    saveDeviceModulesConfig().catch(e => toast(e.message, "error"));
+  });
+  document.querySelector("#settingsOld_cfgOpsSection #cfgAddTableBtn")?.addEventListener("click", () => {
+    saveTableConfig().catch(e => toast(e.message, "error"));
+  });
+  document.querySelector("#settingsOld_cfgOpsSection #cfgSaveRestaurantNameBtn")?.addEventListener("click", () => {
+    saveRestaurantNameConfig().catch(e => toast(e.message, "error"));
+  });
+  document.querySelector("#settingsOld_cfgOpsSection #cfgSavePaymentMethodBtn")?.addEventListener("click", () => {
+    savePaymentMethodConfig().catch(e => toast(e.message, "error"));
+  });
+  document.querySelector("#settingsOld_cfgOpsSection #cfgSaveTipConfigBtn")?.addEventListener("click", () => {
+    saveTipConfig().catch(e => toast(e.message, "error"));
+  });
+
+  document.querySelector("#settingsOld_cfgProductsSection #cfgProductsViewListBtn")?.addEventListener("click", () => {
+    document.querySelector("#settingsOld_cfgProductsSection #cfgProductsListView")?.classList.remove("hidden");
+    document.querySelector("#settingsOld_cfgProductsSection #cfgProductsCreateView")?.classList.add("hidden");
+    document.querySelector("#settingsOld_cfgProductsSection #cfgProductsViewListBtn")?.classList.add("tab-active");
+    document.querySelector("#settingsOld_cfgProductsSection #cfgProductsViewCreateBtn")?.classList.remove("tab-active");
+  });
+  document.querySelector("#settingsOld_cfgProductsSection #cfgProductsViewCreateBtn")?.addEventListener("click", () => {
+    document.querySelector("#settingsOld_cfgProductsSection #cfgProductsListView")?.classList.add("hidden");
+    document.querySelector("#settingsOld_cfgProductsSection #cfgProductsCreateView")?.classList.remove("hidden");
+    document.querySelector("#settingsOld_cfgProductsSection #cfgProductsViewListBtn")?.classList.remove("tab-active");
+    document.querySelector("#settingsOld_cfgProductsSection #cfgProductsViewCreateBtn")?.classList.add("tab-active");
+    loadCategoriesForWizard();
+  });
+
+  loadSettingsData();
+}
+
+function loadSettingsData() {
+  renderSettings();
+  loadProductsForSettings();
+  loadModifiersForSettings();
+  loadDiscountsForSettings();
+}
+
+function showSettingsTab(tabId) {
+  document.querySelectorAll(".settings-old-section").forEach(s => s.classList.add("hidden"));
+
+  const tabSectionMap = {
+    "cfgNavProductsBtn": "cfgProductsSection",
+    "cfgNavModifiersBtn": "cfgModifiersSection",
+    "cfgNavDiscountsBtn": "cfgDiscountsSection",
+    "cfgNavOpsBtn": "cfgOpsSection",
+    "cfgNavCxcBtn": "cfgCxcSection"
+  };
+
+  const sectionId = tabSectionMap[tabId];
+  if (sectionId) {
+    document.getElementById(`settingsOld_${sectionId}`)?.classList.remove("hidden");
+    if (sectionId === "cfgProductsSection") {
+      loadProductsForSettings();
+    } else if (sectionId === "cfgModifiersSection") {
+      loadModifiersForSettings();
+    } else if (sectionId === "cfgDiscountsSection") {
+      loadDiscountsForSettings();
+    } else if (sectionId === "cfgCxcSection") {
+      initCxcSection();
+    }
+  }
 }
 
 function showCashierView() {
@@ -2876,9 +3424,10 @@ function renderModulePermissionChecklist(containerId, modules, enabledSet, prefi
       const code = String(m.code || "").trim();
       const checked = enabledSet.has(code) ? "checked" : "";
       return `
-        <label class="line" style="justify-content:flex-start; gap:10px;">
-          <input type="checkbox" ${checked} data-module-perm="${prefix}" data-module-code="${escapeHtml(code)}" />
-          <span>${escapeHtml(m.label || code)} <small>(${escapeHtml(code)})</small></span>
+        <label class="perm-module-item">
+          <input type="checkbox" class="perm-checkbox" ${checked} data-module-perm="${prefix}" data-module-code="${escapeHtml(code)}" />
+          <span class="perm-module-label">${escapeHtml(m.label || code)}</span>
+          <span class="perm-module-code">${escapeHtml(code)}</span>
         </label>
       `;
     })
@@ -4384,7 +4933,7 @@ async function loadSettings() {
 }
 
 async function openSettings() {
-  if (state.authUser?.role !== "admin") {
+  if (state.authUser?.role !== "admin" && state.authUser?.role !== "manager") {
     toast("Solo admin puede abrir configuraciones", "error");
     return;
   }
@@ -4400,6 +4949,7 @@ function switchSettingsSection(section) {
     modifiers: "cfgModifiersSection",
     discounts: "cfgDiscountsSection",
     ops: "cfgOpsSection",
+    cxc: "cfgCxcSection",
   };
   Object.values(sections).forEach((id) => {
     const el = document.getElementById(id);
@@ -5120,6 +5670,42 @@ document.addEventListener("keydown", (event) => {
   }
 });
 document.getElementById("restaurantHomeBtn")?.addEventListener("click", showRestaurantHomeView);
+document.getElementById("logoutBtn")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  logout();
+});
+
+document.getElementById("navDashboardBtn")?.addEventListener("click", () => {
+  updateHeaderNavActive("navDashboardBtn");
+  showRestaurantHomeView();
+});
+
+document.getElementById("navMesasBtn")?.addEventListener("click", () => {
+  updateHeaderNavActive("navMesasBtn");
+  loadTables().then(showTablesView).catch((e) => toast(e.message, "error"));
+});
+
+document.getElementById("navCajaBtn")?.addEventListener("click", () => {
+  updateHeaderNavActive("navCajaBtn");
+  showCashierView();
+  resetCashierSummary();
+});
+
+document.getElementById("navOpsBtn")?.addEventListener("click", () => {
+  updateHeaderNavActive("navOpsBtn");
+  showOpsView();
+});
+
+document.getElementById("headerSettingsBtn")?.addEventListener("click", () => {
+  showSettingsView();
+});
+
+function updateHeaderNavActive(activeBtnId) {
+  document.querySelectorAll(".header-nav-btn").forEach(btn => {
+    btn.classList.remove("active");
+  });
+  document.getElementById(activeBtnId)?.classList.add("active");
+}
 document.getElementById("openTablesFromHomeBtn")?.addEventListener("click", () =>
   loadTables().then(showTablesView).catch((e) => toast(e.message, "error"))
 );
@@ -5170,9 +5756,13 @@ document.getElementById("functionsSeatSummaryPrintAllBtn")?.addEventListener("cl
 document.getElementById("functionsMoveSeatBackBtn")?.addEventListener("click", showFunctionsMenu);
 document.getElementById("functionsSeatSummaryBackBtn")?.addEventListener("click", showFunctionsMenu);
 document.getElementById("functionsSeatSummaryCloseBtn")?.addEventListener("click", closeFunctionsModal);
-document.getElementById("functionsMoveSeatApplyBtn")?.addEventListener("click", () =>
-  applyMoveSeatFromFunctions().catch((e) => toast(e.message, "error"))
-);
+document.getElementById("functionsMoveSeatApplyBtn")?.addEventListener("click", () => {
+  if (state.moveSeatSelected) {
+    toast("Para mover: selecciona un platillo y luego toca otra silla", "info");
+  } else {
+    showFunctionsMenu();
+  }
+});
 document.getElementById("functionsSplitBackBtn")?.addEventListener("click", showFunctionsMenu);
 document.getElementById("functionsSplitCloseBtn")?.addEventListener("click", closeFunctionsModal);
 document.getElementById("functionsSplitRefreshBtn")?.addEventListener("click", () =>
@@ -5199,6 +5789,9 @@ document.getElementById("functionsSplitClearSelectionBtn")?.addEventListener("cl
   state.splitAccounts.targetAccountId = null;
   state.splitAccounts.targetTouched = false;
   renderSplitAccountsSection();
+});
+document.getElementById("functionsSplitPrintAllBtn")?.addEventListener("click", () => {
+  printAllSplitAccounts();
 });
 document.getElementById("functionsSplitSeatSelect")?.addEventListener("change", () => {
   state.splitAccounts.selectedSeatNo = Number(document.getElementById("functionsSplitSeatSelect")?.value || "0") || null;
@@ -5389,6 +5982,46 @@ document.getElementById("cfgAddDiscountPresetBtn")?.addEventListener("click", ()
   saveDiscountPresetConfig().catch((e) => toast(e.message, "error"))
 );
 
+document.getElementById("cfgNavCxcBtn")?.addEventListener("click", () => {
+  if (state.authUser?.role !== "admin") {
+    toast("Solo admin puede acceder a CXC", "error");
+    return;
+  }
+  document.querySelectorAll(".settings-nav-tab").forEach(b => b.classList.remove("tab-active"));
+  document.getElementById("cfgNavCxcBtn")?.classList.add("tab-active");
+  document.querySelectorAll(".cfg-section").forEach(s => s.classList.add("hidden"));
+  document.getElementById("cfgCxcSection")?.classList.remove("hidden");
+  loadCxcAreas();
+  loadCxcClients();
+loadCxcPending();
+});
+
+document.querySelectorAll(".settings-tree-toggle").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const tree = btn.dataset.tree;
+    const content = document.getElementById("tree" + tree.charAt(0).toUpperCase() + tree.slice(1));
+    btn.classList.toggle("active");
+    content?.classList.toggle("show");
+  });
+});
+
+document.querySelectorAll(".settings-tree-item").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".settings-tree-item").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const section = btn.dataset.section;
+    if (section === "cxc") {
+      switchSettingsSection("cxc");
+    } else if (section === "products") {
+      switchSettingsSection("products");
+    } else if (section === "modifiers") {
+      switchSettingsSection("modifiers");
+    } else if (section === "ops") {
+      switchSettingsSection("ops");
+    }
+  });
+});
+
 switchProductsManagerView("list");
 showWizardStep(1);
 applyModifierTemplatePreset();
@@ -5403,11 +6036,56 @@ renderLoginPinDisplay();
 setInterval(refreshTablesElapsedTimes, 30000);
 updateMenuQuickActionsState();
 
+const savedState = restoreAppState();
+
 loadBootstrap()
   .then(() => {
-    if (!state.activeModule) showLoginView();
+    if (savedState && savedState.authToken) {
+      state.authToken = savedState.authToken;
+      state.activeModule = savedState.activeModule;
+      state.viewMode = savedState.viewMode;
+      state.selectedCenterId = savedState.selectedCenterId;
+      if (savedState.userRole) {
+        state.authUser = { id: savedState.userId, role: savedState.userRole };
+      }
+      if (savedState.activeModule === "restaurant") {
+        document.getElementById("loginView")?.classList.add("hidden");
+        document.getElementById("moduleLauncher")?.classList.add("hidden");
+        document.getElementById("restaurantHeader")?.classList.remove("hidden");
+        document.getElementById("restaurantMain")?.classList.remove("hidden");
+        if (savedState.viewMode === "home") {
+          showRestaurantHomeView();
+        } else if (savedState.viewMode === "tables") {
+          showTablesView();
+        } else if (savedState.viewMode === "service") {
+          if (savedState.selectedTableId) {
+            openTableForService(savedState.selectedTableId).catch(() => showRestaurantHomeView());
+          } else {
+            showRestaurantHomeView();
+          }
+        } else if (savedState.viewMode === "cashier") {
+          showCashierView();
+        } else if (savedState.viewMode === "settings") {
+          showSettingsView();
+        } else if (savedState.viewMode === "ops") {
+          showOpsView();
+        } else if (savedState.viewMode === "accountPicker") {
+          showAccountPickerView();
+        } else {
+          showRestaurantHomeView();
+        }
+        toast("Sesión restaurada", "info");
+      } else {
+        showLoginView();
+      }
+    } else {
+      showLoginView();
+    }
   })
-  .catch((e) => toast(e.message, "error", 4000));
+  .catch((e) => {
+    showLoginView();
+    toast(e.message, "error", 4000);
+  });
 
 
 
