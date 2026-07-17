@@ -1,0 +1,302 @@
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { useAuth } from '../hooks/useAuth';
+import api from '../api';
+import { 
+  LayoutGrid, 
+  Settings, 
+  LogOut,
+  Clock,
+  DollarSign,
+  TrendingUp,
+  Users,
+  Receipt,
+  PlayCircle,
+  BarChart3,
+  CreditCard,
+  UtensilsCrossed
+} from 'lucide-react';
+
+export function Dashboard({ onNavigate }) {
+  const { user, logout, modules, restaurantName, logoUrl } = useAuth();
+  const [stats, setStats] = useState({
+    freeTables: 0,
+    busyTables: 0,
+    todayOrders: 0,
+    todaySales: 0
+  });
+  const [centers, setCenters] = useState([]);
+  const [selectedCenter, setSelectedCenter] = useState(null);
+  const [greeting, setGreeting] = useState('');
+
+  useEffect(() => {
+    loadData();
+    updateGreeting();
+  }, []);
+
+  const updateGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) setGreeting('Buenos días');
+    else if (hour < 18) setGreeting('Buenas tardes');
+    else setGreeting('Buenas noches');
+  };
+
+  const loadData = async () => {
+    try {
+      const data = await api.bootstrap();
+      setCenters(data.centers || []);
+      if (data.defaultCenterId) {
+        setSelectedCenter(data.defaultCenterId);
+      }
+      
+      const tables = await api.getTables(data.defaultCenterId);
+      const free = tables.filter(t => t.open_accounts === 0).length;
+      const busy = tables.filter(t => t.open_accounts > 0).length;
+      setStats({
+        freeTables: free,
+        busyTables: busy,
+        todayOrders: busy,
+        todaySales: 0
+      });
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  };
+
+  const menuItems = [
+    { 
+      id: 'tables', 
+      icon: LayoutGrid, 
+      title: 'Mesas', 
+      subtitle: 'Ver mapa de mesas',
+      gradient: 'from-blue-500 to-blue-600',
+      bgLight: 'bg-blue-50'
+    },
+    { 
+      id: 'cxc', 
+      icon: Receipt, 
+      title: 'Cuentas por Cobrar', 
+      subtitle: 'Clientes y CXC',
+      gradient: 'from-amber-500 to-amber-600',
+      bgLight: 'bg-amber-50'
+    },
+    { 
+      id: 'shifts', 
+      icon: PlayCircle, 
+      title: 'Turnos', 
+      subtitle: 'Apertura y cierre',
+      gradient: 'from-teal-500 to-teal-600',
+      bgLight: 'bg-teal-50'
+    },
+    { 
+      id: 'reports', 
+      icon: BarChart3, 
+      title: 'Reportes', 
+      subtitle: 'Ventas y anulaciones',
+      gradient: 'from-orange-500 to-orange-600',
+      bgLight: 'bg-orange-50'
+    },
+    { 
+      id: 'settings', 
+      icon: Settings, 
+      title: 'Configuración', 
+      subtitle: 'Productos y más',
+      gradient: 'from-violet-500 to-violet-600',
+      bgLight: 'bg-violet-50'
+    },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-100">
+        <div className="px-4 pt-4 pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-sm overflow-hidden bg-gradient-to-br from-primary-500 to-primary-600">
+                {logoUrl ? (
+                  <img src={logoUrl} alt={restaurantName} className="w-full h-full object-contain p-1" />
+                ) : (
+                  <UtensilsCrossed className="w-6 h-6 text-white" />
+                )}
+              </div>
+              <div>
+                <h1 className="font-semibold text-gray-900">
+                  {greeting}, {user?.full_name?.split(' ')[0] || 'Usuario'}
+                </h1>
+                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Center Selector */}
+        {centers.length > 0 && (
+          <div className="px-4 pb-3 flex gap-2 overflow-x-auto scrollbar-hide">
+            {centers.map(center => (
+              <motion.button
+                key={center.id}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setSelectedCenter(center.id)}
+                className={`
+                  px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all
+                  ${selectedCenter === center.id
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-gray-100 text-gray-600'
+                  }
+                `}
+              >
+                {center.name}
+              </motion.button>
+            ))}
+          </div>
+        )}
+      </header>
+
+      {/* Stats */}
+      <div className="px-4 py-4">
+        <div className="grid grid-cols-2 gap-3">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0 }}
+            className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 border border-emerald-100"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                <LayoutGrid className="w-4 h-4 text-emerald-600" />
+              </div>
+              <span className="text-xs font-medium text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">
+                +{stats.freeTables}
+              </span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.freeTables}</p>
+            <p className="text-xs text-gray-500">Mesas libres</p>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 border border-amber-100"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                <Users className="w-4 h-4 text-amber-600" />
+              </div>
+              <span className="text-xs font-medium text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">
+                Activas
+              </span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.busyTables}</p>
+            <p className="text-xs text-gray-500">Mesas ocupadas</p>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-100"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Clock className="w-4 h-4 text-blue-600" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.todayOrders}</p>
+            <p className="text-xs text-gray-500">Órdenes hoy</p>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-2xl p-4 border border-violet-100"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
+                <DollarSign className="w-4 h-4 text-violet-600" />
+              </div>
+              <TrendingUp className="w-4 h-4 text-violet-400" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">Q {stats.todaySales.toFixed(0)}</p>
+            <p className="text-xs text-gray-500">Ventas del día</p>
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="px-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            Acciones Rápidas
+          </h2>
+        </div>
+        
+        <div className="space-y-2">
+          {menuItems.map((item, index) => (
+            <motion.button
+              key={item.id}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 + index * 0.05 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => onNavigate(item.id)}
+              className="w-full bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex items-center gap-3"
+            >
+              <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center shadow-sm`}>
+                <item.icon className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 text-left">
+                <h3 className="font-medium text-gray-900">{item.title}</h3>
+                <p className="text-xs text-gray-500">{item.subtitle}</p>
+              </div>
+              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </motion.button>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom Nav */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2">
+        <div className="flex justify-around">
+          <button className="flex flex-col items-center gap-0.5 p-2 text-primary-600">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+            <span className="text-[10px] font-medium">Inicio</span>
+          </button>
+          <button 
+            onClick={() => onNavigate('tables')}
+            className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
+          >
+            <LayoutGrid className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Mesas</span>
+          </button>
+          <button 
+            onClick={() => onNavigate('cxc')}
+            className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
+          >
+            <Receipt className="w-5 h-5" />
+            <span className="text-[10px] font-medium">CXC</span>
+          </button>
+          <button 
+            onClick={() => onNavigate('settings')}
+            className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
+          >
+            <Settings className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Config</span>
+          </button>
+        </div>
+      </nav>
+    </div>
+  );
+}

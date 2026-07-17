@@ -4,7 +4,10 @@
   "description": "POS de restaurante con Node.js + HTML/CSS/JS",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev:all": "concurrently \"node server.js\" \"cd react-app && npm run dev\"",
+    "dev:server": "node server.js",
+    "dev:client": "cd react-app && npm run dev"
   },
   "keywords": [],
   "author": "",
@@ -14,5 +17,8 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "mysql2": "^3.18.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
   }
 }

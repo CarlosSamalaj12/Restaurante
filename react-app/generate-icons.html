@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generar Iconos PWA</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 600px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; }
+    .icons { display: flex; flex-wrap: wrap; gap: 1rem; margin: 2rem 0; }
+    .icon-item {
+      text-align: center;
+      background: white;
+      padding: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    canvas { border: 1px solid #ddd; }
+    .btn {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      background: #0ea5e9;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 1rem;
+    }
+    .btn:hover { background: #0284c7; }
+    .info {
+      background: #e0f2fe;
+      padding: 1rem;
+      border-radius: 8px;
+      margin: 1rem 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎨 Generador de Iconos PWA</h1>
+  
+  <div class="info">
+    <p><strong>Instrucciones:</strong></p>
+    <ol>
+      <li>Abre esta página en Chrome o Edge</li>
+      <li>Haz clic en "Generar Iconos"</li>
+      <li>Descarga cada icono haciendo clic derecho → "Guardar imagen como..."</li>
+      <li>Guarda los PNGs en la carpeta <code>public/icons/</code></li>
+    </ol>
+  </div>
+
+  <button class="btn" onclick="generateIcons()">Generar Iconos</button>
+
+  <div class="icons" id="iconsContainer"></div>
+
+  <script>
+    function generateIcons() {
+      const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+      const container = document.getElementById('iconsContainer');
+      container.innerHTML = '';
+      
+      sizes.forEach(size => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        
+        // Background
+        ctx.fillStyle = '#0ea5e9';
+        ctx.beginPath();
+        ctx.roundRect(0, 0, size, size, size * 0.2);
+        ctx.fill();
+        
+        // Icon shape
+        const cx = size / 2;
+        const cy = size / 2;
+        const r = size * 0.35;
+        
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.moveTo(cx - r * 0.8, cy - r * 0.6);
+        ctx.lineTo(cx, cy - r);
+        ctx.lineTo(cx + r * 0.8, cy - r * 0.6);
+        ctx.lineTo(cx + r * 0.8, cy + r * 0.6);
+        ctx.lineTo(cx, cy + r);
+        ctx.lineTo(cx - r * 0.8, cy + r * 0.6);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Inner circle
+        ctx.fillStyle = '#0ea5e9';
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Download link
+        const item = document.createElement('div');
+        item.className = 'icon-item';
+        
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = `icon-${size}x${size}.png`;
+        link.innerHTML = `<canvas width="100" height="100" style="width:72px;height:72px"></canvas>`;
+        link.querySelector('canvas').getContext('2d').drawImage(canvas, 0, 0, 100, 100);
+        
+        const label = document.createElement('p');
+        label.textContent = `${size}x${size}`;
+        
+        item.appendChild(link);
+        item.appendChild(label);
+        container.appendChild(item);
+      });
+      
+      alert('Iconos generados! Haz clic derecho en cada uno para descargar.');
+    }
+  </script>
+</body>
+</html>

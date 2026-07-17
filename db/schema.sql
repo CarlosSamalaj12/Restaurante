@@ -11,11 +11,13 @@ CREATE TABLE IF NOT EXISTS dining_areas (
 CREATE TABLE IF NOT EXISTS restaurant_tables (
   id INT AUTO_INCREMENT PRIMARY KEY,
   area_id INT NOT NULL,
+  operation_center_id INT NOT NULL,
   code VARCHAR(20) NOT NULL UNIQUE,
   seats INT NOT NULL DEFAULT 4,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_table_area FOREIGN KEY (area_id) REFERENCES dining_areas(id)
+  CONSTRAINT fk_table_area FOREIGN KEY (area_id) REFERENCES dining_areas(id),
+  CONSTRAINT fk_table_center FOREIGN KEY (operation_center_id) REFERENCES operation_centers(id)
 );
 
 CREATE TABLE IF NOT EXISTS staff_users (
@@ -23,7 +25,21 @@ CREATE TABLE IF NOT EXISTS staff_users (
   full_name VARCHAR(120) NOT NULL,
   role ENUM('waiter', 'cashier', 'manager', 'admin') NOT NULL DEFAULT 'waiter',
   pin_code VARCHAR(12) NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  operation_center_id INT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_user_operation_center FOREIGN KEY (operation_center_id) REFERENCES operation_centers(id)
+);
+
+CREATE TABLE IF NOT EXISTS terminals (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  operation_center_id INT NOT NULL,
+  name VARCHAR(50) NOT NULL,
+  printer_name VARCHAR(120) NULL,
+  printer_ip VARCHAR(45) NULL,
+  printer_port INT DEFAULT 9100,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_terminal_center FOREIGN KEY (operation_center_id) REFERENCES operation_centers(id)
 );
 
 CREATE TABLE IF NOT EXISTS shifts (
@@ -49,6 +65,7 @@ CREATE TABLE IF NOT EXISTS customers (
 CREATE TABLE IF NOT EXISTS accounts (
   id INT AUTO_INCREMENT PRIMARY KEY,
   table_id INT NOT NULL,
+  operation_center_id INT NOT NULL,
   waiter_id INT NOT NULL,
   shift_id INT NULL,
   customer_id INT NULL,
@@ -59,6 +76,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   opened_at DATETIME NOT NULL,
   closed_at DATETIME NULL,
   CONSTRAINT fk_account_table FOREIGN KEY (table_id) REFERENCES restaurant_tables(id),
+  CONSTRAINT fk_account_center FOREIGN KEY (operation_center_id) REFERENCES operation_centers(id),
   CONSTRAINT fk_account_waiter FOREIGN KEY (waiter_id) REFERENCES staff_users(id),
   CONSTRAINT fk_account_shift FOREIGN KEY (shift_id) REFERENCES shifts(id),
   CONSTRAINT fk_account_customer FOREIGN KEY (customer_id) REFERENCES customers(id)
@@ -74,7 +92,8 @@ CREATE TABLE IF NOT EXISTS product_categories (
 CREATE TABLE IF NOT EXISTS production_centers (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(80) NOT NULL,
-  printer_name VARCHAR(120) NULL
+  printer_name VARCHAR(120) NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS products (

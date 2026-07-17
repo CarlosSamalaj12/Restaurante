@@ -1,11 +1,30 @@
 require("dotenv").config();
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 const crypto = require("crypto");
 const { pool, query } = require("./src/db");
 
 const app = express();
-app.use(express.json());
+const IS_PROD = process.env.NODE_ENV === "production";
+
+class AppError extends Error {
+  constructor(message, status = 500, code = "INTERNAL_ERROR", detail = null) {
+    super(message || "Error interno");
+    this.name = "AppError";
+    this.status = Number(status) || 500;
+    this.code = String(code || "INTERNAL_ERROR");
+    this.detail = detail;
+  }
+}
+
+app.use((req, res, next) => {
+  req.traceId = crypto.randomUUID();
+  res.setHeader("x-trace-id", req.traceId);
+  next();
+});
+
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, "public")));
 
 const PAYMENT_METHOD_DEFAULTS = [
@@ -25,17 +44,6 @@ const MODULE_DEFAULTS = [
 
 const AUTH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const authSessions = new Map();
-
-const MODIFIER_GROUP_DEFAULTS = {
-  garnish: { displayMethod: "checkbox", isMandatory: 1 },
-  preparation: { displayMethod: "radio", isMandatory: 0 },
-  sauce: { displayMethod: "checkbox", isMandatory: 0 },
-  meat_term: { displayMethod: "radio", isMandatory: 1 },
-  milk_type: { displayMethod: "radio", isMandatory: 0 },
-  beverage_temp: { displayMethod: "radio", isMandatory: 1 },
-  ice: { displayMethod: "radio", isMandatory: 0 },
-  other: { displayMethod: "buttons", isMandatory: 0 },
-};
 
 function normalizeGroupType(value) {
   const valid = new Set(["garnish", "preparation", "sauce", "meat_term", "milk_type", "beverage_temp", "ice", "other"]);
@@ -271,6 +279,18 @@ async function ensureConfigTables() {
      VALUES ('restaurant_name', 'Mi Restaurante')
      ON DUPLICATE KEY UPDATE setting_value = setting_value`
   );
+  await query(
+    `INSERT INTO app_settings (setting_key, setting_value)
+     VALUES ('logo_url', '')
+     ON DUPLICATE KEY UPDATE setting_value = setting_value`
+  );
+  await query(
+    `INSERT INTO app_settings (setting_key, setting_value)
+     VALUES ('login_bg_url', '')
+     ON DUPLICATE KEY UPDATE setting_value = setting_value`
+  );
+
+  await safeExec(`ALTER TABLE app_settings MODIFY COLUMN setting_value TEXT NOT NULL`);
 
   for (const mod of MODULE_DEFAULTS) {
     await query(
@@ -294,6 +314,7 @@ async function ensureConfigTables() {
   await safeExec(`ALTER TABLE modifier_options ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1`);
   await safeExec(`ALTER TABLE product_categories ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1`);
   await safeExec(`ALTER TABLE product_categories ADD COLUMN sort_order INT NOT NULL DEFAULT 0`);
+  await safeExec(`ALTER TABLE product_categories ADD COLUMN color VARCHAR(7) DEFAULT '#6366f1'`);
   await safeExec(`ALTER TABLE dining_areas ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1`);
   await safeExec(`ALTER TABLE dining_areas ADD COLUMN sort_order INT NOT NULL DEFAULT 0`);
   await safeExec(`ALTER TABLE order_items ADD COLUMN sent_at DATETIME NULL`);
@@ -320,6 +341,26 @@ async function ensureConfigTables() {
        LIMIT 1`
     );
   }
+}
+
+async function getLogoUrl() {
+  const [rows] = await query(
+    `SELECT setting_value
+     FROM app_settings
+     WHERE setting_key = 'logo_url'
+     LIMIT 1`
+  );
+  return String(rows?.[0]?.setting_value || "").trim();
+}
+
+async function getLoginBgUrl() {
+  const [rows] = await query(
+    `SELECT setting_value
+     FROM app_settings
+     WHERE setting_key = 'login_bg_url'
+     LIMIT 1`
+  );
+  return String(rows?.[0]?.setting_value || "").trim();
 }
 
 async function getTipPercent() {
@@ -494,7 +535,7 @@ app.get("/api/bootstrap", async (_req, res) => {
   const [waiters] = await query(`SELECT id, full_name FROM staff_users WHERE role IN ('waiter', 'admin')`);
   const [cashiers] = await query(`SELECT id, full_name FROM staff_users WHERE role IN ('cashier', 'admin')`);
   const [categories] = await query(
-    `SELECT id, name
+    `SELECT id, name, color
      FROM product_categories
      WHERE is_active = 1
      ORDER BY sort_order, name`
@@ -511,22 +552,31 @@ app.get("/api/bootstrap", async (_req, res) => {
   } catch (_e) {
     paymentMethods = PAYMENT_METHOD_DEFAULTS;
   }
-  const [customers] = await query(
+   const [customers] = await query(
     `SELECT id, full_name, discount_type, discount_value
      FROM customers ORDER BY full_name`
-  );
-  const restaurantName = await getRestaurantName();
+   );
+   let terminals = [];
+   try {
+     const [termRows] = await query(`SELECT id, name, operation_center_id, printer_name, printer_ip, printer_port, is_active FROM terminals ORDER BY name`);
+     terminals = termRows;
+   } catch (_e) {
+     terminals = [];
+   }
+   const restaurantName = await getRestaurantName();
+   const logoUrl = await getLogoUrl();
+   const loginBgUrl = await getLoginBgUrl();
 
-  res.json({ tables, waiters, cashiers, categories, paymentMethods, customers, centers, defaultCenterId, autoCenterId, terminalIp: ip, restaurantName });
+  res.json({ tables, waiters, cashiers, categories, paymentMethods, customers, centers, defaultCenterId, autoCenterId, terminalIp: ip, restaurantName, logoUrl, loginBgUrl, terminals });
 });
 
 app.post("/api/auth/pin-login", async (req, res) => {
   const pin = String(req.body?.pin || "").trim();
-  if (!/^\d{6,}$/.test(pin)) {
-    return res.status(400).json({ error: "La contraseña debe tener al menos 6 dígitos numéricos" });
+  if (!/^\d{4,}$/.test(pin)) {
+    return res.status(400).json({ error: "La contraseña debe tener al menos 4 dígitos numéricos" });
   }
   const [rows] = await query(
-    `SELECT id, full_name, role
+    `SELECT id, full_name, role, operation_center_id
      FROM staff_users
      WHERE pin_code = ?
      LIMIT 1`,
@@ -547,15 +597,14 @@ app.get("/api/tables", async (req, res) => {
   const [rows] = await query(
     `SELECT
       t.id, t.code, t.seats, a.name AS area_name, t.operation_center_id,
-      COUNT(DISTINCT ac.id) AS open_accounts,
-      COALESCE(MAX(oi.created_at), MAX(ac.opened_at)) AS last_activity_at
-    FROM restaurant_tables t
-    INNER JOIN dining_areas a ON a.id = t.area_id
-    LEFT JOIN accounts ac ON ac.table_id = t.id AND ac.status = 'open'
-    LEFT JOIN order_items oi ON oi.account_id = ac.id AND oi.status = 'active'
-    WHERE t.is_active = 1 AND (? = 0 OR t.operation_center_id = ?)
-    GROUP BY t.id, t.code, t.seats, a.name, t.operation_center_id
-    ORDER BY a.name, t.code`,
+      (SELECT COUNT(*) FROM accounts WHERE table_id = t.id AND status = 'open') AS open_accounts,
+      (SELECT MAX(oi.created_at) FROM accounts ac JOIN order_items oi ON oi.account_id = ac.id AND oi.status = 'active' WHERE ac.table_id = t.id AND ac.status = 'open') AS last_activity_at,
+      (SELECT COALESCE(SUM(oi.line_total), 0) FROM accounts ac JOIN order_items oi ON oi.account_id = ac.id AND oi.status = 'active' WHERE ac.table_id = t.id AND ac.status = 'open') AS total,
+      (SELECT u.full_name FROM accounts ac JOIN staff_users u ON u.id = ac.waiter_id WHERE ac.table_id = t.id AND ac.status = 'open' ORDER BY ac.opened_at DESC LIMIT 1) AS waiter_name
+     FROM restaurant_tables t
+     INNER JOIN dining_areas a ON a.id = t.area_id
+     WHERE t.is_active = 1 AND (? = 0 OR t.operation_center_id = ?)
+     ORDER BY a.name, t.code`,
     [centerId, centerId]
   );
   res.json(rows);
@@ -572,7 +621,7 @@ app.get("/api/settings", async (_req, res) => {
      ORDER BY sort_order, name`
   );
   const [categories] = await query(
-    `SELECT id, name, is_active, sort_order
+    `SELECT id, name, is_active, sort_order, color
      FROM product_categories
      ORDER BY sort_order, name`
   );
@@ -642,8 +691,17 @@ app.get("/api/settings", async (_req, res) => {
      WHERE ip_address = ?`,
     [currentIp]
   );
+  const [terminals] = await query(
+    `SELECT t.id, t.operation_center_id, t.name, t.printer_name, t.printer_ip, t.printer_port, t.is_active, c.name AS center_name
+     FROM terminals t
+     INNER JOIN operation_centers c ON c.id = t.operation_center_id
+     WHERE t.is_active = 1
+     ORDER BY c.name, t.name`
+  );
   const tipPercent = await getTipPercent();
   const restaurantName = await getRestaurantName();
+  const logoUrl = await getLogoUrl();
+  const loginBgUrl = await getLoginBgUrl();
   res.json({
     operationCenters,
     areas,
@@ -661,9 +719,12 @@ app.get("/api/settings", async (_req, res) => {
     staffUsers,
     userModulePermissions,
     deviceModulePermissions,
+    terminals,
     currentIp,
     tipPercent,
     restaurantName,
+    logoUrl,
+    loginBgUrl,
   });
 });
 
@@ -677,6 +738,72 @@ app.post("/api/settings/branding", async (req, res) => {
     [restaurantName.slice(0, 120)]
   );
   res.json({ ok: true, restaurantName: restaurantName.slice(0, 120) });
+});
+
+app.post("/api/settings/logo", async (req, res) => {
+  const logoData = String(req.body?.logoData || "").trim();
+  if (!logoData) return res.status(400).json({ error: "logoData es requerido" });
+
+  const base64Match = logoData.match(/^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,(.+)$/);
+  if (!base64Match) {
+    return res.status(400).json({ error: "Formato de imagen inválido. Usa PNG, JPG, GIF, WebP o SVG." });
+  }
+
+  const ext = base64Match[1].replace('svg+xml', 'svg');
+  const fileName = `logo_${Date.now()}.${ext}`;
+  const uploadsDir = path.join(__dirname, "public", "uploads");
+
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  const filePath = path.join(uploadsDir, fileName);
+  const buffer = Buffer.from(base64Match[2], "base64");
+  fs.writeFileSync(filePath, buffer);
+
+  const logoUrl = `/uploads/${fileName}`;
+
+  await query(
+    `INSERT INTO app_settings (setting_key, setting_value)
+     VALUES ('logo_url', ?)
+     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+    [logoUrl]
+  );
+
+  res.json({ ok: true, logoUrl });
+});
+
+app.post("/api/settings/login-bg", async (req, res) => {
+  const bgData = String(req.body?.bgData || "").trim();
+  if (!bgData) return res.status(400).json({ error: "bgData es requerido" });
+
+  const base64Match = bgData.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/);
+  if (!base64Match) {
+    return res.status(400).json({ error: "Formato de imagen inválido. Usa PNG, JPG, GIF o WebP." });
+  }
+
+  const ext = base64Match[1].replace('jpeg', 'jpg');
+  const fileName = `login_bg_${Date.now()}.${ext}`;
+  const uploadsDir = path.join(__dirname, "public", "uploads");
+
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  const filePath = path.join(uploadsDir, fileName);
+  const buffer = Buffer.from(base64Match[2], "base64");
+  fs.writeFileSync(filePath, buffer);
+
+  const loginBgUrl = `/uploads/${fileName}`;
+
+  await query(
+    `INSERT INTO app_settings (setting_key, setting_value)
+     VALUES ('login_bg_url', ?)
+     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+    [loginBgUrl]
+  );
+
+  res.json({ ok: true, loginBgUrl });
 });
 
 app.post("/api/settings/tip-config", async (req, res) => {
@@ -782,38 +909,59 @@ app.post("/api/accounts/:accountId/restore-tip", async (req, res) => {
 });
 
 app.post("/api/settings/tables", async (req, res) => {
-  const { areaId, code, seats = 4, isActive = 1, centerId = null } = req.body || {};
-  if (!areaId || !code || !centerId) return res.status(400).json({ error: "areaId, centerId y code son requeridos" });
+  const { code, seats = 4, isActive = 1, centerId } = req.body || {};
+  if (!code || !centerId) return res.status(400).json({ error: "centerId y code son requeridos" });
+  const [areas] = await query(`SELECT id FROM dining_areas LIMIT 1`);
+  const areaId = areas.length > 0 ? areas[0].id : 1;
   await query(
     `INSERT INTO restaurant_tables (area_id, operation_center_id, code, seats, is_active)
      VALUES (?, ?, ?, ?, ?)`,
-    [Number(areaId), Number(centerId), String(code).trim(), Number(seats) || 4, Number(isActive) ? 1 : 0]
+    [areaId, Number(centerId), String(code).trim(), Number(seats) || 4, Number(isActive) ? 1 : 0]
   );
   res.status(201).json({ ok: true });
 });
 
 app.post("/api/settings/tables/:tableId", async (req, res) => {
   const tableId = Number(req.params.tableId);
-  const { areaId, code, seats = 4, isActive = 1, centerId = null } = req.body || {};
-  if (!tableId || !areaId || !code || !centerId) {
-    return res.status(400).json({ error: "tableId, areaId, centerId y code son requeridos" });
+  const { code, seats = 4, isActive = 1, centerId } = req.body || {};
+  if (!tableId || !code || !centerId) {
+    return res.status(400).json({ error: "tableId, centerId y code son requeridos" });
   }
+  const [areas] = await query(`SELECT id FROM dining_areas LIMIT 1`);
+  const areaId = areas.length > 0 ? areas[0].id : 1;
   await query(
     `UPDATE restaurant_tables
      SET area_id = ?, operation_center_id = ?, code = ?, seats = ?, is_active = ?
      WHERE id = ?`,
-    [Number(areaId), Number(centerId), String(code).trim(), Number(seats) || 4, Number(isActive) ? 1 : 0, tableId]
+    [areaId, Number(centerId), String(code).trim(), Number(seats) || 4, Number(isActive) ? 1 : 0, tableId]
   );
   res.json({ ok: true });
 });
 
+app.delete("/api/settings/tables/:tableId", async (req, res) => {
+  const tableId = Number(req.params.tableId);
+  if (!tableId) return res.status(400).json({ error: "tableId es requerido" });
+  try {
+    const [accounts] = await query(`SELECT id FROM accounts WHERE table_id = ?`, [tableId]);
+    if (accounts.length > 0) {
+      return res.status(400).json({ error: "No se puede eliminar la mesa porque tiene cuentas asociadas" });
+    }
+    await query(`UPDATE accounts SET table_id = NULL WHERE table_id = ?`, [tableId]);
+    await query(`DELETE FROM restaurant_tables WHERE id = ?`, [tableId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting table:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/settings/categories", async (req, res) => {
-  const { name, isActive = 1, sortOrder = 0 } = req.body || {};
+  const { name, isActive = 1, sortOrder = 0, color = '#6366f1' } = req.body || {};
   if (!name) return res.status(400).json({ error: "name es requerido" });
   const [result] = await query(
-    `INSERT INTO product_categories (name, is_active, sort_order)
-     VALUES (?, ?, ?)`,
-    [String(name).trim(), Number(isActive) ? 1 : 0, Number(sortOrder) || 0]
+    `INSERT INTO product_categories (name, is_active, sort_order, color)
+     VALUES (?, ?, ?, ?)`,
+    [String(name).trim(), Number(isActive) ? 1 : 0, Number(sortOrder) || 0, String(color || '#6366f1').trim()]
   );
   res.status(201).json({ categoryId: result.insertId });
 });
@@ -824,15 +972,54 @@ app.post("/api/settings/categories/:categoryId", async (req, res) => {
   if (!categoryId || !name) return res.status(400).json({ error: "categoryId y name son requeridos" });
   await query(
     `UPDATE product_categories
-     SET name = ?, is_active = ?, sort_order = ?
+     SET name = ?, is_active = ?, sort_order = ?, color = ?
      WHERE id = ?`,
-    [String(name).trim(), Number(isActive) ? 1 : 0, Number(sortOrder) || 0, categoryId]
+    [String(name).trim(), Number(isActive) ? 1 : 0, Number(sortOrder) || 0, String(color || '#6366f1').trim(), categoryId]
   );
   res.json({ ok: true });
+})
+
+
+// Reorder categories (batch sort_order update)
+app.post("/api/settings/categories/reorder", async (req, res) => {
+  try {
+    const { order } = req.body;
+    if (!Array.isArray(order) || !order.length) {
+      return res.status(400).json({ error: "Se requiere un arreglo 'order' con { id, sortOrder }" });
+    }
+    const pool = require("./src/db").pool;
+    for (const item of order) {
+      if (!item.id || typeof item.sortOrder !== "number") continue;
+      await pool.execute(
+        "UPDATE product_categories SET sort_order = ? WHERE id = ?",
+        [item.sortOrder, item.id]
+      );
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error reordering categories:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/settings/categories/:categoryId", async (req, res) => {
+  const categoryId = Number(req.params.categoryId);
+  if (!categoryId) return res.status(400).json({ error: "categoryId es requerido" });
+  try {
+    const [products] = await query(`SELECT id FROM products WHERE category_id = ? LIMIT 1`, [categoryId]);
+    if (products.length > 0) {
+      return res.status(400).json({ error: "No se puede eliminar la categoría porque tiene productos asociados" });
+    }
+    await query(`DELETE FROM product_categories WHERE id = ?`, [categoryId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting category:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post("/api/settings/areas", async (req, res) => {
-  const { name, isActive = 1, sortOrder = 0 } = req.body || {};
+  const { name, isActive = 1, sortOrder = 0, color = '#6366f1' } = req.body || {};
   if (!name) return res.status(400).json({ error: "name es requerido" });
   const [result] = await query(
     `INSERT INTO dining_areas (name, is_active, sort_order)
@@ -856,22 +1043,13 @@ app.post("/api/settings/areas/:areaId", async (req, res) => {
 });
 
 app.post("/api/settings/operation-centers", async (req, res) => {
-  const { name, areaId, tableCount = 0, tablePrefix = "M" } = req.body || {};
-  if (!name || !areaId) return res.status(400).json({ error: "name y areaId son requeridos" });
+  const { name, tableCount = 0, tablePrefix = "M" } = req.body || {};
+  if (!name) return res.status(400).json({ error: "name es requerido" });
   const [inserted] = await query(
     `INSERT INTO operation_centers (name, is_active) VALUES (?, 1)`,
     [String(name).trim()]
   );
   const centerId = Number(inserted.insertId);
-  const count = Math.max(0, Number(tableCount) || 0);
-  const prefix = String(tablePrefix || "M").trim() || "M";
-  for (let i = 1; i <= count; i += 1) {
-    await query(
-      `INSERT INTO restaurant_tables (area_id, operation_center_id, code, seats, is_active)
-       VALUES (?, ?, ?, 4, 1)`,
-      [Number(areaId), centerId, `${prefix}${i}`]
-    );
-  }
   res.status(201).json({ centerId });
 });
 
@@ -899,6 +1077,27 @@ app.post("/api/settings/operation-centers/:centerId/products", async (req, res) 
     [centerId, Number(productId), Number(isEnabled) ? 1 : 0]
   );
   res.status(201).json({ ok: true });
+});
+
+app.delete("/api/settings/operation-centers/:centerId", async (req, res) => {
+  const centerId = Number(req.params.centerId);
+  if (!centerId) return res.status(400).json({ error: "centerId es requerido" });
+  try {
+    const [accounts] = await query(`SELECT id FROM accounts WHERE operation_center_id = ? LIMIT 1`, [centerId]);
+    if (accounts.length > 0) {
+      return res.status(400).json({ error: "No se puede eliminar el centro porque tiene cuentas asociadas" });
+    }
+    const [tables] = await query(`SELECT id FROM restaurant_tables WHERE operation_center_id = ? LIMIT 1`, [centerId]);
+    if (tables.length > 0) {
+      return res.status(400).json({ error: "No se puede eliminar el centro porque tiene mesas asociadas" });
+    }
+    await query(`DELETE FROM operation_center_products WHERE center_id = ?`, [centerId]);
+    await query(`DELETE FROM operation_centers WHERE id = ?`, [centerId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting center:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post("/api/settings/terminal-binding", async (req, res) => {
@@ -1054,6 +1253,16 @@ app.post("/api/settings/modifier-groups", async (req, res) => {
   const max = Number(maxSelect) || 0;
   if (max < min) return res.status(400).json({ error: "maxSelect no puede ser menor que minSelect" });
   const normalizedType = normalizeGroupType(groupType);
+  const MODIFIER_GROUP_DEFAULTS = {
+    garnish: { displayMethod: "checkbox", isMandatory: 1 },
+    preparation: { displayMethod: "radio", isMandatory: 0 },
+    sauce: { displayMethod: "checkbox", isMandatory: 0 },
+    meat_term: { displayMethod: "radio", isMandatory: 1 },
+    milk_type: { displayMethod: "radio", isMandatory: 0 },
+    beverage_temp: { displayMethod: "radio", isMandatory: 1 },
+    ice: { displayMethod: "radio", isMandatory: 0 },
+    other: { displayMethod: "buttons", isMandatory: 0 },
+  };
   const defaults = MODIFIER_GROUP_DEFAULTS[normalizedType] || MODIFIER_GROUP_DEFAULTS.other;
 
   const [result] = await query(
@@ -1115,6 +1324,43 @@ app.post("/api/settings/modifier-options/:optionId", async (req, res) => {
   res.json({ ok: true });
 });
 
+app.delete("/api/settings/modifier-options/:optionId", async (req, res) => {
+  const optionId = Number(req.params.optionId);
+  if (!optionId) return res.status(400).json({ error: "optionId es requerido" });
+  try {
+    await query(`DELETE FROM modifier_options WHERE id = ?`, [optionId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting modifier option:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/settings/modifier-groups/:groupId", async (req, res) => {
+  const groupId = Number(req.params.groupId);
+  if (!groupId) return res.status(400).json({ error: "groupId es requerido" });
+  try {
+    const [products] = await query(`
+      SELECT p.id, p.name FROM products p
+      JOIN product_modifier_groups pmg ON pmg.product_id = p.id
+      WHERE pmg.group_id = ?
+    `, [groupId]);
+    if (products.length > 0) {
+      const names = products.map(p => p.name).join(', ');
+      return res.status(400).json({
+        error: `Está asignado a: ${names}`,
+        products: products
+      });
+    }
+    await query(`DELETE FROM modifier_options WHERE group_id = ?`, [groupId]);
+    await query(`DELETE FROM modifier_groups WHERE id = ?`, [groupId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting modifier group:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/settings/product-steps", async (req, res) => {
   const { productId, groupId, sortOrder = 0 } = req.body || {};
   if (!productId || !groupId) return res.status(400).json({ error: "productId y groupId son requeridos" });
@@ -1125,6 +1371,21 @@ app.post("/api/settings/product-steps", async (req, res) => {
     [Number(productId), Number(groupId), Number(sortOrder) || 0]
   );
   res.status(201).json({ ok: true });
+});
+
+app.delete("/api/settings/product-steps/:productId/:groupId", async (req, res) => {
+  const productId = Number(req.params.productId);
+  const groupId = Number(req.params.groupId);
+  if (!productId || !groupId) return res.status(400).json({ error: "productId y groupId son requeridos" });
+  await query(`DELETE FROM product_modifier_groups WHERE product_id = ? AND group_id = ?`, [productId, groupId]);
+  res.json({ ok: true });
+});
+
+app.delete("/api/settings/product-steps/:productId", async (req, res) => {
+  const productId = Number(req.params.productId);
+  if (!productId) return res.status(400).json({ error: "productId es requerido" });
+  await query(`DELETE FROM product_modifier_groups WHERE product_id = ?`, [productId]);
+  res.json({ ok: true });
 });
 
 app.post("/api/settings/discount-presets", async (req, res) => {
@@ -1140,6 +1401,68 @@ app.post("/api/settings/discount-presets", async (req, res) => {
   res.status(201).json({ ok: true });
 });
 
+// Production Centers
+app.post("/api/settings/production-centers", async (req, res) => {
+  const { name, printerName = '', isActive = 1 } = req.body || {};
+  if (!name) {
+    return res.status(400).json({ error: "name es requerido" });
+  }
+  const [result] = await query(
+    `INSERT INTO production_centers (name, printer_name, is_active)
+     VALUES (?, ?, ?)`,
+    [String(name).trim(), String(printerName).trim(), Number(isActive) ? 1 : 0]
+  );
+  res.status(201).json({ centerId: result.insertId });
+});
+
+app.post("/api/settings/production-centers/:centerId", async (req, res) => {
+  const centerId = Number(req.params.centerId);
+  const { name, printerName = '', isActive = 1 } = req.body || {};
+  if (!centerId || !name) {
+    return res.status(400).json({ error: "centerId y name son requeridos" });
+  }
+  await query(
+    `UPDATE production_centers SET name = ?, printer_name = ?, is_active = ? WHERE id = ?`,
+    [String(name).trim(), String(printerName).trim(), Number(isActive) ? 1 : 0, centerId]
+  );
+  res.json({ ok: true });
+});
+
+// Link product to production centers
+app.post("/api/settings/products/:productId/production-centers", async (req, res) => {
+  const productId = Number(req.params.productId);
+  const { centerIds = [] } = req.body || {};
+  if (!productId) {
+    return res.status(400).json({ error: "productId es requerido" });
+  }
+  await query(`DELETE FROM product_production_centers WHERE product_id = ?`, [productId]);
+  for (const centerId of centerIds) {
+    await query(
+      `INSERT INTO product_production_centers (product_id, center_id) VALUES (?, ?)`,
+      [productId, Number(centerId)]
+    );
+  }
+  res.json({ ok: true });
+});
+
+app.delete("/api/settings/products/:productId", async (req, res) => {
+  const productId = Number(req.params.productId);
+  if (!productId) return res.status(400).json({ error: "productId es requerido" });
+  try {
+    const [accounts] = await query(`SELECT id FROM order_items WHERE product_id = ? LIMIT 1`, [productId]);
+    if (accounts.length > 0) {
+      return res.status(400).json({ error: "No se puede eliminar el producto porque tiene ventas asociadas" });
+    }
+    await query(`DELETE FROM product_production_centers WHERE product_id = ?`, [productId]);
+    await query(`DELETE FROM product_modifier_groups WHERE product_id = ?`, [productId]);
+    await query(`DELETE FROM products WHERE id = ?`, [productId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting product:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/settings/discount-presets/:presetId", async (req, res) => {
   const presetId = Number(req.params.presetId);
   const { name, type, value = 0, isActive = 1, sortOrder = 0 } = req.body || {};
@@ -1152,6 +1475,66 @@ app.post("/api/settings/discount-presets/:presetId", async (req, res) => {
      WHERE id = ?`,
     [String(name).trim(), type, Number(value) || 0, Number(isActive) ? 1 : 0, Number(sortOrder) || 0, presetId]
   );
+  res.json({ ok: true });
+});
+
+app.post("/api/settings/staff-users", async (req, res) => {
+  const { fullName, pinCode, role = 'waiter', operationCenterId = null } = req.body || {};
+  if (!fullName || !pinCode) {
+    return res.status(400).json({ error: "fullName y pinCode son requeridos" });
+  }
+  const [result] = await query(
+    `INSERT INTO staff_users (full_name, pin_code, role, operation_center_id) VALUES (?, ?, ?, ?)`,
+    [String(fullName).trim(), String(pinCode).trim(), role, operationCenterId ? Number(operationCenterId) : null]
+  );
+  res.status(201).json({ userId: result.insertId });
+});
+
+app.post("/api/settings/staff-users/:userId/center", async (req, res) => {
+  const userId = Number(req.params.userId);
+  const { operationCenterId } = req.body || {};
+  if (!userId) {
+    return res.status(400).json({ error: "userId es requerido" });
+  }
+  await query(
+    `UPDATE staff_users SET operation_center_id = ? WHERE id = ?`,
+    [operationCenterId ? Number(operationCenterId) : null, userId]
+  );
+  res.json({ ok: true });
+});
+
+// Terminals
+app.post("/api/settings/terminals", async (req, res) => {
+  const { operationCenterId, name, printerName = null, printerIp = null, printerPort = 9100 } = req.body || {};
+  if (!operationCenterId || !name) {
+    return res.status(400).json({ error: "operationCenterId y name son requeridos" });
+  }
+  const [result] = await query(
+    `INSERT INTO terminals (operation_center_id, name, printer_name, printer_ip, printer_port) VALUES (?, ?, ?, ?, ?)`,
+    [Number(operationCenterId), String(name).trim(), printerName || null, printerIp || null, Number(printerPort) || 9100]
+  );
+  res.status(201).json({ terminalId: result.insertId });
+});
+
+app.post("/api/settings/terminals/:terminalId", async (req, res) => {
+  const terminalId = Number(req.params.terminalId);
+  const { operationCenterId, name, printerName, printerIp, printerPort = 9100, isActive = 1 } = req.body || {};
+  if (!terminalId || !operationCenterId || !name) {
+    return res.status(400).json({ error: "terminalId, operationCenterId y name son requeridos" });
+  }
+  await query(
+    `UPDATE terminals SET operation_center_id = ?, name = ?, printer_name = ?, printer_ip = ?, printer_port = ?, is_active = ? WHERE id = ?`,
+    [Number(operationCenterId), String(name).trim(), printerName || null, printerIp || null, Number(printerPort) || 9100, Number(isActive) ? 1 : 0, terminalId]
+  );
+  res.json({ ok: true });
+});
+
+app.delete("/api/settings/terminals/:terminalId", async (req, res) => {
+  const terminalId = Number(req.params.terminalId);
+  if (!terminalId) {
+    return res.status(400).json({ error: "terminalId es requerido" });
+  }
+  await query(`DELETE FROM terminals WHERE id = ?`, [terminalId]);
   res.json({ ok: true });
 });
 
@@ -1182,9 +1565,9 @@ app.post("/api/tables/:tableId/accounts", async (req, res) => {
     .padStart(3, "0")}`;
 
   const [result] = await query(
-    `INSERT INTO accounts (table_id, waiter_id, shift_id, customer_id, status, guest_count, check_number, opened_at)
-     VALUES (?, ?, ?, ?, 'open', ?, ?, ?)`,
-    [tableId, waiterId, shiftId, customerId, guestCount, tempCheckNumber, nowSql()]
+    `INSERT INTO accounts (table_id, operation_center_id, waiter_id, shift_id, customer_id, status, guest_count, check_number, opened_at)
+     VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?)`,
+    [tableId, finalCenterId, waiterId, shiftId, customerId, guestCount, tempCheckNumber, nowSql()]
   );
   const checkNumber = `CHK-${String(Number(result.insertId || 0)).padStart(4, "0")}`;
   await query(`UPDATE accounts SET check_number = ? WHERE id = ?`, [checkNumber, Number(result.insertId)]);
@@ -1225,6 +1608,24 @@ app.get("/api/accounts/by-check/:checkNumber", async (req, res) => {
   res.json(rows[0]);
 });
 
+app.get("/api/accounts/open", async (req, res) => {
+  try {
+    const [rows] = await query(
+      `SELECT a.id, a.check_number, a.status, a.table_id,
+              t.code AS table_code,
+              (SELECT COALESCE(SUM(oi.line_total), 0) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS total
+       FROM accounts a
+       INNER JOIN restaurant_tables t ON t.id = a.table_id
+       WHERE a.status = 'open'
+       ORDER BY a.opened_at DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Error en /api/accounts/open:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/catalog/products", async (req, res) => {
   const categoryId = Number(req.query.categoryId);
   const centerId = Number(req.query.centerId || "0");
@@ -1243,7 +1644,7 @@ app.get("/api/catalog/products", async (req, res) => {
     centerParams = [centerId, centerId];
   }
   const [products] = await query(
-    `SELECT p.id, p.name, p.base_price
+    `SELECT p.id, p.name, p.base_price, p.category_id
      FROM products p
      WHERE p.is_active = 1 AND (? = 0 OR p.category_id = ?)
      ${centerFilter}
@@ -1300,6 +1701,69 @@ app.get("/api/catalog/products", async (req, res) => {
       modifiers: groupsByProduct[p.id] || [],
     }))
   );
+});
+
+app.get("/api/catalog/categories", async (req, res) => {
+  const [rows] = await query(
+    `SELECT id, name, color
+     FROM product_categories
+     WHERE is_active = 1
+     ORDER BY sort_order, name`
+  );
+  res.json(rows);
+});
+
+app.get("/api/config/data", async (req, res) => {
+  const [products] = await query(
+    `SELECT p.id, p.name, p.category_id, p.base_price, p.allow_discount, p.is_active, c.name AS category_name
+     FROM products p
+     INNER JOIN product_categories c ON c.id = p.category_id
+     WHERE p.is_active = 1
+     ORDER BY p.name`
+  );
+  const [productProductionCenters] = await query(
+    `SELECT product_id, center_id FROM product_production_centers`
+  );
+  const [categories] = await query(
+    `SELECT id, name, color, is_active, sort_order
+     FROM product_categories
+     ORDER BY sort_order, name`
+  );
+  const [areas] = await query(
+    `SELECT id, name, is_active, sort_order
+     FROM dining_areas
+     ORDER BY sort_order, name`
+  );
+  const [centers] = await query(
+    `SELECT id, name, is_active
+     FROM operation_centers
+     ORDER BY id`
+  );
+  const [productionCenters] = await query(
+    `SELECT id, name, printer_name, is_active
+     FROM production_centers
+     ORDER BY id`
+  );
+  const [tables] = await query(
+    `SELECT t.id, t.code, t.seats, t.area_id, t.operation_center_id, t.is_active, a.name AS area_name
+     FROM restaurant_tables t
+     INNER JOIN dining_areas a ON a.id = t.area_id
+     ORDER BY a.name, t.code`
+  );
+  const [groups] = await query(
+    `SELECT id, name, group_type, min_select, max_select, is_mandatory, display_method, sort_order, is_active
+     FROM modifier_groups
+     ORDER BY sort_order, name`
+  );
+  const [options] = await query(
+    `SELECT id, group_id, name, price_delta, sort_order, is_active
+     FROM modifier_options
+     ORDER BY sort_order, name`
+  );
+  const [productModifierGroups] = await query(
+    `SELECT product_id, group_id, sort_order FROM product_modifier_groups`
+  );
+  res.json({ products, categories, areas, centers, tables, productionCenters, productProductionCenters, groups, options, productModifierGroups });
 });
 
 app.get("/api/accounts/:accountId", async (req, res) => {
@@ -1845,6 +2309,88 @@ app.post("/api/accounts/:accountId/split-equal", async (req, res) => {
   res.json({ ok: true, targets: targetAccountIds.length });
 });
 
+// Transferir cuenta a otra cuenta (puede ser otro centro)
+app.post("/api/accounts/:accountId/transfer-account", async (req, res) => {
+  const sourceAccountId = Number(req.params.accountId);
+  const { targetAccountId } = req.body || {};
+  if (!sourceAccountId || !targetAccountId) {
+    return res.status(400).json({ error: "sourceAccountId y targetAccountId son requeridos" });
+  }
+
+  const [sourceRows] = await query(`SELECT id, status FROM accounts WHERE id = ? LIMIT 1`, [sourceAccountId]);
+  if (!sourceRows.length) return res.status(404).json({ error: "Cuenta origen no encontrada" });
+  if (String(sourceRows[0].status) !== "open") {
+    return res.status(400).json({ error: "Solo cuentas abiertas pueden transferirse" });
+  }
+
+  const [targetRows] = await query(`SELECT id, status FROM accounts WHERE id = ? LIMIT 1`, [targetAccountId]);
+  if (!targetRows.length) return res.status(404).json({ error: "Cuenta destino no encontrada" });
+  if (String(targetRows[0].status) !== "open") {
+    return res.status(400).json({ error: "La cuenta destino debe estar abierta" });
+  }
+  if (sourceAccountId === targetAccountId) {
+    return res.status(400).json({ error: "No puedes transferir a la misma cuenta" });
+  }
+
+  const [items] = await query(
+    `SELECT id, seat_no FROM order_items WHERE account_id = ? AND status = 'active'`,
+    [sourceAccountId]
+  );
+
+  for (const item of items) {
+    await query(
+      `UPDATE order_items SET account_id = ? WHERE id = ? AND status = 'active'`,
+      [targetAccountId, item.id]
+    );
+  }
+
+  await query(`UPDATE accounts SET status = 'void' WHERE id = ?`, [sourceAccountId]);
+  await addAccountEvent(sourceAccountId, "transferred_to", { targetAccountId }, null);
+  await addAccountEvent(targetAccountId, "received_transfer_from", { sourceAccountId }, null);
+  res.json({ ok: true, transferredItems: items.length });
+});
+
+// Unir cuentas (combinar items de dos cuentas)
+app.post("/api/accounts/:accountId/join-with", async (req, res) => {
+  const targetAccountId = Number(req.params.accountId);
+  const { sourceAccountId } = req.body || {};
+  if (!targetAccountId || !sourceAccountId) {
+    return res.status(400).json({ error: "targetAccountId y sourceAccountId son requeridos" });
+  }
+  if (targetAccountId === sourceAccountId) {
+    return res.status(400).json({ error: "No puedes unir una cuenta consigo misma" });
+  }
+
+  const [targetRows] = await query(`SELECT id, status FROM accounts WHERE id = ? LIMIT 1`, [targetAccountId]);
+  if (!targetRows.length) return res.status(404).json({ error: "Cuenta destino no encontrada" });
+  if (String(targetRows[0].status) !== "open") {
+    return res.status(400).json({ error: "La cuenta destino debe estar abierta" });
+  }
+
+  const [sourceRows] = await query(`SELECT id, status FROM accounts WHERE id = ? LIMIT 1`, [sourceAccountId]);
+  if (!sourceRows.length) return res.status(404).json({ error: "Cuenta origen no encontrada" });
+  if (String(sourceRows[0].status) !== "open") {
+    return res.status(400).json({ error: "La cuenta origen debe estar abierta" });
+  }
+
+  const [items] = await query(
+    `SELECT id, seat_no FROM order_items WHERE account_id = ? AND status = 'active'`,
+    [sourceAccountId]
+  );
+
+  for (const item of items) {
+    await query(
+      `UPDATE order_items SET account_id = ? WHERE id = ? AND status = 'active'`,
+      [targetAccountId, item.id]
+    );
+  }
+
+  await query(`UPDATE accounts SET status = 'void' WHERE id = ?`, [sourceAccountId]);
+  await addAccountEvent(sourceAccountId, "joined_with", { targetAccountId }, null);
+  await addAccountEvent(targetAccountId, "joined_with", { sourceAccountId }, null);
+  res.json({ ok: true, joinedItems: items.length });
+});
+
 app.post("/api/items/:itemId/move-seat", async (req, res) => {
   const itemId = Number(req.params.itemId);
   const { newSeatNo } = req.body || {};
@@ -2362,9 +2908,21 @@ app.get("/api/reports/account-trace/:accountId", async (req, res) => {
   res.json(rows);
 });
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ error: "Error interno", detail: err.message });
+app.use((err, req, res, _next) => {
+  const status = Number(err?.status || err?.statusCode || 500);
+  const code = String(err?.code || (status >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR"));
+  const message = String(err?.message || "Error interno");
+  const detail = err?.detail || (!IS_PROD && status >= 500 ? err?.stack || err?.message : null);
+
+  console.error(`[${req?.traceId || "no-trace"}]`, err);
+  res.status(status).json({
+    code,
+    message,
+    error: message,
+    status,
+    traceId: req?.traceId || null,
+    detail: detail || null,
+  });
 });
 
 const port = Number(process.env.PORT || 3000);
