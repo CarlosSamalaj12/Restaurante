@@ -56,7 +56,12 @@ export const api = {
   // Account details
   getAccount: (accountId) => request(`/accounts/${accountId}`),
   getAccountByCheck: (checkNumber) => request(`/accounts/by-check/${checkNumber}`),
-  getOpenAccounts: () => request('/accounts/open'),
+  getOpenAccounts: (centerId) => request(`/accounts/open${centerId ? `?centerId=${centerId}` : ''}`),
+  joinAccounts: (targetAccountId, sourceAccountId) => request(`/accounts/${targetAccountId}/join-with`, {
+    method: 'POST',
+    body: { sourceAccountId },
+  }),
+  printPrecheck: (accountId) => request(`/accounts/${accountId}/precheck`, { method: 'POST' }),
 
   // Products catalog
   getProducts: (categoryId, centerId) => {
@@ -134,6 +139,10 @@ export const api = {
     method: 'POST',
     body: { targetAccountIds },
   }),
+  splitCustom: (accountId, data) => request(`/accounts/${accountId}/split-custom`, {
+    method: 'POST',
+    body: data,
+  }),
   transferAccount: (sourceAccountId, targetAccountId) => request(`/accounts/${sourceAccountId}/transfer-account`, {
     method: 'POST',
     body: { targetAccountId },
@@ -182,7 +191,24 @@ export const api = {
     getClientAccounts: (clientId) => request(`/cxc/clients/${clientId}/accounts`),
     createAccount: (data) => request('/cxc/accounts', { method: 'POST', body: data }),
     payAccount: (cxcAccountId, data) => request(`/cxc/accounts/${cxcAccountId}/payments`, { method: 'POST', body: data }),
+    payGlobal: (clientId, data) => request(`/cxc/clients/${clientId}/pay-global`, { method: 'POST', body: data }),
+    getStatement: (clientId, params) => {
+      const qs = params ? new URLSearchParams(params).toString() : '';
+      return request(`/cxc/clients/${clientId}/statement${qs ? '?' + qs : ''}`);
+    },
+    exportStatement: (clientId, params) => {
+      const qs = params ? new URLSearchParams(params).toString() : '';
+      return `/cxc/export-statement/${clientId}${qs ? '?' + qs : ''}`;
+    },
     checkDiscount: (clientId, productId) => request(`/cxc/check-discount?client_id=${clientId}&product_id=${productId}`),
+    getPendingSummary: (params) => {
+      const qs = params ? new URLSearchParams(params).toString() : '';
+      return request(`/cxc/pending-summary${qs ? '?' + qs : ''}`);
+    },
+    exportPendingSummary: (params) => {
+      const qs = params ? new URLSearchParams(params).toString() : '';
+      return `/cxc/export-pending-summary${qs ? '?' + qs : ''}`;
+    },
   },
 
   // Settings endpoints
@@ -259,6 +285,16 @@ export const api = {
     deleteProduct: (productId) => request(`/settings/products/${productId}`, { method: 'DELETE' }),
     deleteCategory: (categoryId) => request(`/settings/categories/${categoryId}`, { method: 'DELETE' }),
     deleteCenter: (centerId) => request(`/settings/operation-centers/${centerId}`, { method: 'DELETE' }),
+  },
+  inventory: {
+    list: () => request('/inventory/items'),
+    create: (data) => request('/inventory/items', { method: 'POST', body: data }),
+    update: (id, data) => request(`/inventory/items/${id}`, { method: 'PUT', body: data }),
+    remove: (id) => request(`/inventory/items/${id}`, { method: 'DELETE' }),
+    movements: (itemId) => request(`/inventory/items/${itemId}/movements`),
+    addMovement: (data) => request('/inventory/movements', { method: 'POST', body: data }),
+    getRecipe: (productId) => request(`/inventory/products/${productId}/recipe`),
+    saveRecipe: (productId, data) => request(`/inventory/products/${productId}/recipe`, { method: 'POST', body: data }),
   },
 };
 

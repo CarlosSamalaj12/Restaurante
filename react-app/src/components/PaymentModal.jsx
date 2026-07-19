@@ -16,6 +16,9 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState('select');
+  const [cxcClients, setCxcClients] = useState([]);
+  const [showCxcSelector, setShowCxcSelector] = useState(false);
+  const [cxcSearch, setCxcSearch] = useState('');
   const toast = useToast();
 
   const pending = totals?.pending || 0;
@@ -43,14 +46,26 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
     }
   };
 
-  const addLine = (method) => {
+  const addLine = async (method) => {
+    if (method.code === 'cxc') {
+      try {
+        const data = await api.cxc.getClients();
+        setCxcClients(data.filter(c => c.cxc_enabled));
+        setShowCxcSelector(true);
+      } catch (error) {
+        toast.error('Error al cargar clientes CXC');
+        return;
+      }
+    }
     setLines([...lines, { 
       id: Date.now(), 
       method: method.code, 
       methodLabel: method.label,
-      amount: pending,
+      amount: method.code === 'cxc' ? pending : pending,
       received: method.code === 'cash' ? pending : 0,
-      reference: ''
+      reference: '',
+      cxcClientId: null,
+      cxcClientName: ''
     }]);
   };
 
@@ -70,6 +85,12 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
       return;
     }
 
+    const cxcLine = lines.find(l => l.method === 'cxc');
+    if (cxcLine && !cxcLine.cxcClientId) {
+      toast.error('Selecciona un cliente CXC');
+      return;
+    }
+
     setLoading(true);
     try {
       for (const line of lines) {
@@ -78,6 +99,16 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
           amount: Number(line.amount),
           referenceNo: line.reference || ''
         });
+
+        if (line.method === 'cxc' && line.cxcClientId) {
+          await api.cxc.createAccount({
+            client_id: line.cxcClientId,
+            account_id: accountId,
+            amount: Number(line.amount),
+            reference: line.reference || '',
+            notes: ''
+          });
+        }
       }
       setStep('success');
       toast.success('Pago registrado');
@@ -220,6 +251,78 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
                   Total
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* CXC Client Selector */}
+          {lines.some(l => l.method === 'cxc' && !l.cxcClientId) && (
+            <div className="mb-4">
+              <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Seleccionar Cliente CXC</p>
+              <input
+                type="text"
+                value={cxcSearch}
+                onChange={(e) => setCxcSearch(e.target.value)}
+                placeholder="Buscar cliente..."
+                className="w-full mb-2 p-2.5 border border-gray-200 rounded-xl text-sm"
+                autoFocus
+              />
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {cxcClients.filter(c =>
+                  c.full_name.toLowerCase().includes(cxcSearch.toLowerCase())
+                ).map(client => (
+                  <button
+                    key={client.id}
+                    onClick={() => {
+                      setLines(lines.map(l =>
+                        l.method === 'cxc' && !l.cxcClientId
+                          ? { ...l, cxcClientId: client.id, cxcClientName: client.full_name }
+                          : l
+                      ));
+                      setShowCxcSelector(false);
+                    }}
+                    className="w-full p-3 bg-amber-50 rounded-xl flex items-center gap-3 hover:bg-amber-100 transition-colors text-left"
+                  >
+                    <div className="w-8 h-8 bg-amber-200 rounded-full flex items-center justify-center">
+                      <CreditCard className="w-4 h-4 text-amber-700" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{client.full_name}</p>
+                      <p className="text-[10px] text-gray-500">
+                        Crédito: Q{Number(client.credit_limit || 0).toFixed(0)} · 
+                        Saldo: Q{Number(client.current_balance || 0).toFixed(0)}
+                      </p>
+                    </div>
+                    <span className="text-xs font-semibold text-amber-700">
+                      Q{Number((client.credit_limit || 0) - (client.current_balance || 0)).toFixed(0)}
+                    </span>
+                  </button>
+                ))}
+                {cxcClients.length === 0 && (
+                  <p className="text-sm text-gray-400 py-4 text-center">No hay clientes CXC disponibles</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* CXC Client selected badge */}
+          {lines.some(l => l.method === 'cxc' && l.cxcClientId) && (
+            <div className="mb-4 p-3 bg-amber-50 rounded-xl flex items-center gap-3">
+              <CreditCard className="w-5 h-5 text-amber-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-900">
+                  Cliente: {lines.find(l => l.method === 'cxc')?.cxcClientName}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setLines(lines.map(l =>
+                    l.method === 'cxc' ? { ...l, cxcClientId: null, cxcClientName: '' } : l
+                  ));
+                }}
+                className="text-xs text-red-600 font-medium hover:underline"
+              >
+                Cambiar
+              </button>
             </div>
           )}
 

@@ -3,6 +3,7 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const ExcelJS = require("exceljs");
 const { pool, query } = require("./src/db");
 
 const app = express();
@@ -320,6 +321,41 @@ async function ensureConfigTables() {
   await safeExec(`ALTER TABLE order_items ADD COLUMN sent_at DATETIME NULL`);
   await safeExec(`ALTER TABLE account_payments MODIFY COLUMN method VARCHAR(50) NOT NULL`);
   await safeExec(`ALTER TABLE accounts ADD COLUMN tip_percent_override DECIMAL(5,2) NULL`);
+  await safeExec(`ALTER TABLE products ADD COLUMN track_inventory TINYINT(1) NOT NULL DEFAULT 0`);
+
+  await query(
+    `CREATE TABLE IF NOT EXISTS inventory_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      unit VARCHAR(20) NOT NULL DEFAULT 'pz',
+      current_stock DECIMAL(12,4) NOT NULL DEFAULT 0,
+      min_stock DECIMAL(12,4) NOT NULL DEFAULT 0,
+      cost_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`
+  );
+  await query(
+    `CREATE TABLE IF NOT EXISTS product_recipes (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      product_id INT NOT NULL,
+      inventory_item_id INT NOT NULL,
+      quantity DECIMAL(12,4) NOT NULL
+    )`
+  );
+  await query(
+    `CREATE TABLE IF NOT EXISTS stock_movements (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      inventory_item_id INT NOT NULL,
+      type ENUM('entry', 'exit', 'adjustment') NOT NULL,
+      quantity DECIMAL(12,4) NOT NULL,
+      reference_type VARCHAR(50),
+      reference_id INT,
+      note TEXT,
+      created_by INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`
+  );
 
   const [existingCenters] = await query(`SELECT id FROM operation_centers ORDER BY id LIMIT 1`);
   let defaultCenterId = existingCenters.length ? Number(existingCenters[0].id) : null;
@@ -1114,27 +1150,27 @@ app.post("/api/settings/terminal-binding", async (req, res) => {
 });
 
 app.post("/api/settings/products", async (req, res) => {
-  const { categoryId, name, basePrice = 0, allowDiscount = 1 } = req.body || {};
+  const { categoryId, name, basePrice = 0, allowDiscount = 1, trackInventory = 0 } = req.body || {};
   if (!categoryId || !name) return res.status(400).json({ error: "categoryId y name son requeridos" });
   const [result] = await query(
-    `INSERT INTO products (category_id, name, base_price, allow_discount, is_active)
-     VALUES (?, ?, ?, ?, 1)`,
-    [Number(categoryId), String(name).trim(), Number(basePrice) || 0, Number(allowDiscount) ? 1 : 0]
+    `INSERT INTO products (category_id, name, base_price, allow_discount, is_active, track_inventory)
+     VALUES (?, ?, ?, ?, 1, ?)`,
+    [Number(categoryId), String(name).trim(), Number(basePrice) || 0, Number(allowDiscount) ? 1 : 0, Number(trackInventory) ? 1 : 0]
   );
   res.status(201).json({ productId: result.insertId });
 });
 
 app.post("/api/settings/products/:productId", async (req, res) => {
   const productId = Number(req.params.productId);
-  const { categoryId, name, basePrice = 0, allowDiscount = 1, isActive = 1 } = req.body || {};
+  const { categoryId, name, basePrice = 0, allowDiscount = 1, isActive = 1, trackInventory = 0 } = req.body || {};
   if (!productId || !categoryId || !name) {
     return res.status(400).json({ error: "productId, categoryId y name son requeridos" });
   }
   await query(
     `UPDATE products
-     SET category_id = ?, name = ?, base_price = ?, allow_discount = ?, is_active = ?
+     SET category_id = ?, name = ?, base_price = ?, allow_discount = ?, is_active = ?, track_inventory = ?
      WHERE id = ?`,
-    [Number(categoryId), String(name).trim(), Number(basePrice) || 0, Number(allowDiscount) ? 1 : 0, Number(isActive) ? 1 : 0, productId]
+    [Number(categoryId), String(name).trim(), Number(basePrice) || 0, Number(allowDiscount) ? 1 : 0, Number(isActive) ? 1 : 0, Number(trackInventory) ? 1 : 0, productId]
   );
   res.json({ ok: true });
 });
@@ -1610,18 +1646,83 @@ app.get("/api/accounts/by-check/:checkNumber", async (req, res) => {
 
 app.get("/api/accounts/open", async (req, res) => {
   try {
+    const centerId = Number(req.query.centerId || "0");
     const [rows] = await query(
-      `SELECT a.id, a.check_number, a.status, a.table_id,
-              t.code AS table_code,
-              (SELECT COALESCE(SUM(oi.line_total), 0) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS total
+      `SELECT a.id, a.check_number, a.status, a.table_id, a.waiter_id, a.guest_count, a.opened_at,
+              t.code AS table_code, t.operation_center_id,
+              u.full_name AS waiter_name,
+              oc.name AS center_name,
+              (SELECT COALESCE(SUM(oi.line_total), 0) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS total,
+              (SELECT COUNT(*) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS item_count,
+              (SELECT MAX(oi.created_at) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS last_activity
        FROM accounts a
        INNER JOIN restaurant_tables t ON t.id = a.table_id
-       WHERE a.status = 'open'
-       ORDER BY a.opened_at DESC`
+       INNER JOIN staff_users u ON u.id = a.waiter_id
+       LEFT JOIN operation_centers oc ON oc.id = t.operation_center_id
+       WHERE a.status = 'open' AND (? = 0 OR t.operation_center_id = ?)
+       ORDER BY a.opened_at DESC`,
+      [centerId, centerId]
     );
+
+    // Attach top 5 items per account
+    const accountIds = rows.map(r => Number(r.id));
+    if (accountIds.length > 0) {
+      const placeholders = accountIds.map(() => '?').join(',');
+      const [items] = await query(
+        `SELECT oi.account_id, p.name AS product_name, oi.qty, oi.line_total
+         FROM order_items oi
+         INNER JOIN products p ON p.id = oi.product_id
+         WHERE oi.account_id IN (${placeholders}) AND oi.status = 'active'
+         ORDER BY oi.created_at ASC`,
+        accountIds
+      );
+      const itemsByAccount = {};
+      items.forEach(item => {
+        if (!itemsByAccount[item.account_id]) itemsByAccount[item.account_id] = [];
+        itemsByAccount[item.account_id].push(item);
+      });
+      rows.forEach(r => {
+        r.items = (itemsByAccount[r.id] || []).slice(0, 5);
+      });
+    }
+    rows.forEach(r => { if (!r.items) r.items = []; });
+
     res.json(rows);
   } catch (err) {
     console.error('Error en /api/accounts/open:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Precuenta (devuelve datos para imprimir)
+app.post("/api/accounts/:accountId/precheck", async (req, res) => {
+  try {
+    const accountId = Number(req.params.accountId);
+    const [accountRows] = await query(
+      `SELECT a.*, t.code AS table_code, u.full_name AS waiter_name,
+              oc.name AS center_name
+       FROM accounts a
+       INNER JOIN restaurant_tables t ON t.id = a.table_id
+       INNER JOIN staff_users u ON u.id = a.waiter_id
+       LEFT JOIN operation_centers oc ON oc.id = t.operation_center_id
+       WHERE a.id = ?`,
+      [accountId]
+    );
+    if (!accountRows.length) return res.status(404).json({ error: "Cuenta no encontrada" });
+    const account = accountRows[0];
+
+    const [items] = await query(
+      `SELECT oi.*, p.name AS product_name
+       FROM order_items oi
+       INNER JOIN products p ON p.id = oi.product_id
+       WHERE oi.account_id = ? AND oi.status = 'active'
+       ORDER BY oi.created_at`,
+      [accountId]
+    );
+
+    res.json({ account, items });
+  } catch (err) {
+    console.error('Error en precheck:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1715,7 +1816,7 @@ app.get("/api/catalog/categories", async (req, res) => {
 
 app.get("/api/config/data", async (req, res) => {
   const [products] = await query(
-    `SELECT p.id, p.name, p.category_id, p.base_price, p.allow_discount, p.is_active, c.name AS category_name
+    `SELECT p.id, p.name, p.category_id, p.base_price, p.allow_discount, p.is_active, p.track_inventory, c.name AS category_name
      FROM products p
      INNER JOIN product_categories c ON c.id = p.category_id
      WHERE p.is_active = 1
@@ -1909,6 +2010,39 @@ app.post("/api/accounts/:accountId/discounts", async (req, res) => {
   res.status(201).json(totals);
 });
 
+async function deductInventoryForAccount(accountId) {
+  try {
+    const [items] = await query(
+      `SELECT oi.product_id, oi.qty, p.track_inventory
+       FROM order_items oi
+       INNER JOIN products p ON p.id = oi.product_id
+       WHERE oi.account_id = ? AND oi.status = 'active'`,
+      [accountId]
+    );
+    for (const item of items) {
+      if (!item.track_inventory) continue;
+      const [recipe] = await query(
+        `SELECT inventory_item_id, quantity FROM product_recipes WHERE product_id = ?`,
+        [item.product_id]
+      );
+      for (const ingredient of recipe) {
+        const deductQty = ingredient.quantity * item.qty;
+        await query(
+          `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, created_at)
+           VALUES (?, 'exit', ?, 'sale', ?, ?)`,
+          [ingredient.inventory_item_id, deductQty, accountId, nowSql()]
+        );
+        await query(
+          `UPDATE inventory_items SET current_stock = current_stock - ? WHERE id = ?`,
+          [deductQty, ingredient.inventory_item_id]
+        );
+      }
+    }
+  } catch (e) {
+    console.error('Error deduciendo inventario:', e);
+  }
+}
+
 app.post("/api/accounts/:accountId/payments", async (req, res) => {
   const accountId = Number(req.params.accountId);
   const { method, amount, referenceNo = "" } = req.body || {};
@@ -1935,6 +2069,7 @@ app.post("/api/accounts/:accountId/payments", async (req, res) => {
     [accountId, normalizedMethod, amountNum, referenceNo, nowSql()]
   );
   await addAccountEvent(accountId, "payment_added", { method: normalizedMethod, amount: amountNum, referenceNo }, null);
+  deductInventoryForAccount(accountId);
 
   const totals = await getAccountTotals(accountId);
   if (Number(totals.pending || 0) <= 0) {
@@ -2307,6 +2442,78 @@ app.post("/api/accounts/:accountId/split-equal", async (req, res) => {
 
   await addAccountEvent(sourceAccountId, "items_shared_equal", { targetAccountIds }, null);
   res.json({ ok: true, targets: targetAccountIds.length });
+});
+
+// Split personalizado - crear N cuentas y asignar items específicos a cada una
+app.post("/api/accounts/:accountId/split-custom", async (req, res) => {
+  const sourceAccountId = Number(req.params.accountId);
+  const { splits } = req.body || {};
+
+  if (!sourceAccountId || !Array.isArray(splits) || splits.length < 2) {
+    return res.status(400).json({ error: "Se requieren al menos 2 cuentas para dividir" });
+  }
+
+  const [srcRows] = await query(
+    `SELECT id, table_id, waiter_id, operation_center_id, guest_count, status
+     FROM accounts WHERE id = ? LIMIT 1`,
+    [sourceAccountId]
+  );
+  if (!srcRows.length) return res.status(404).json({ error: "Cuenta origen no encontrada" });
+  if (String(srcRows[0].status) !== "open") return res.status(400).json({ error: "Cuenta origen no está abierta" });
+
+  const { table_id, waiter_id, operation_center_id } = srcRows[0];
+
+  const allItemIds = splits.flatMap(s => (s.itemIds || []).map(id => Number(id)));
+  if (allItemIds.length === 0) {
+    return res.status(400).json({ error: "Debes asignar al menos un producto a las cuentas" });
+  }
+
+  const placeholders = allItemIds.map(() => '?').join(',');
+  const [validItems] = await query(
+    `SELECT id FROM order_items WHERE id IN (${placeholders}) AND account_id = ? AND status = 'active'`,
+    [...allItemIds, sourceAccountId]
+  );
+  if (validItems.length !== allItemIds.length) {
+    return res.status(400).json({ error: "Uno o más productos no son válidos o ya fueron movidos" });
+  }
+
+  const [openShift] = await query(
+    `SELECT id FROM shifts WHERE status = 'open' AND operation_center_id = ? ORDER BY id DESC LIMIT 1`,
+    [operation_center_id]
+  );
+  const shiftId = openShift.length ? openShift[0].id : null;
+
+  const results = [];
+
+  for (const split of splits) {
+    const itemIds = (split.itemIds || []).map(id => Number(id));
+    if (itemIds.length === 0) continue;
+
+    const tempCheckNumber = `TMP-${Date.now().toString().slice(-8)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
+    const [result] = await query(
+      `INSERT INTO accounts (table_id, operation_center_id, waiter_id, shift_id, status, guest_count, check_number, opened_at)
+       VALUES (?, ?, ?, ?, 'open', 1, ?, ?)`,
+      [table_id, operation_center_id, waiter_id, shiftId, tempCheckNumber, nowSql()]
+    );
+    const newAccountId = Number(result.insertId);
+    const checkNumber = `CHK-${String(newAccountId).padStart(4, "0")}`;
+    await query(`UPDATE accounts SET check_number = ? WHERE id = ?`, [checkNumber, newAccountId]);
+
+    if (itemIds.length > 0) {
+      const itemPlaceholders = itemIds.map(() => '?').join(',');
+      await query(
+        `UPDATE order_items SET account_id = ? WHERE id IN (${itemPlaceholders})`,
+        [newAccountId, ...itemIds]
+      );
+    }
+
+    await addAccountEvent(newAccountId, "account_opened", { source: sourceAccountId, split: true }, waiter_id);
+    await addAccountEvent(sourceAccountId, "items_split_out", { toAccountId: newAccountId, count: itemIds.length }, null);
+
+    results.push({ accountId: newAccountId, checkNumber, name: split.name || `Cuenta ${results.length + 1}`, itemIds });
+  }
+
+  res.json({ ok: true, splits: results });
 });
 
 // Transferir cuenta a otra cuenta (puede ser otro centro)
@@ -2761,15 +2968,31 @@ app.get("/api/cxc/accounts/:cxcAccountId", async (req, res) => {
   try {
     const { cxcAccountId } = req.params;
     const [cxc] = await query(`
-      SELECT cxa.*, c.full_name as client_name, c.credit_limit, c.current_balance
+      SELECT cxa.*, c.full_name as client_name, c.credit_limit, c.current_balance,
+             u.full_name as waiter_name
       FROM cxc_accounts cxa
       JOIN customers c ON cxa.client_id = c.id
+      LEFT JOIN accounts a ON cxa.account_id = a.id
+      LEFT JOIN staff_users u ON a.waiter_id = u.id
       WHERE cxa.id = ?
     `, [cxcAccountId]);
     if (!cxc.length) return res.status(404).json({ error: "No encontrada" });
 
     const [payments] = await query(`SELECT * FROM cxc_payments WHERE cxc_account_id = ? ORDER BY created_at DESC`, [cxcAccountId]);
-    res.json({ ...cxc[0], payments });
+
+    let items = [];
+    if (cxc[0].account_id) {
+      const [orderItems] = await query(`
+        SELECT oi.id, oi.product_id, p.name as product_name, oi.qty, oi.unit_price, oi.line_total, oi.notes, oi.seat_no
+        FROM order_items oi
+        JOIN products p ON oi.product_id = p.id
+        WHERE oi.account_id = ? AND oi.status = 'active'
+        ORDER BY oi.created_at
+      `, [cxc[0].account_id]);
+      items = orderItems;
+    }
+
+    res.json({ ...cxc[0], payments, items });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -2780,9 +3003,10 @@ app.get("/api/cxc/clients/:clientId/accounts", async (req, res) => {
   try {
     const { clientId } = req.params;
     const [rows] = await query(`
-      SELECT cxa.*, a.check_number
+      SELECT cxa.*, a.check_number, u.full_name as waiter_name
       FROM cxc_accounts cxa
       LEFT JOIN accounts a ON cxa.account_id = a.id
+      LEFT JOIN staff_users u ON a.waiter_id = u.id
       WHERE cxa.client_id = ?
       ORDER BY cxa.created_at DESC
     `, [clientId]);
@@ -2833,6 +3057,785 @@ app.get("/api/cxc/check-discount", async (req, res) => {
 
     res.json({ allowed: true, discount: client[0].default_discount_percent || 0 });
   } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Pago global CXC - distribuir pago entre todas las cuentas pendientes (FIFO)
+app.post("/api/cxc/clients/:clientId/pay-global", async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const { amount, payment_method = "efectivo", reference = "", notes = "" } = req.body || {};
+    if (!clientId || !amount || amount <= 0) return res.status(400).json({ error: "clientId y monto requeridos" });
+
+    const [client] = await query(`SELECT full_name, current_balance FROM customers WHERE id = ? AND cxc_enabled = 1`, [clientId]);
+    if (!client.length) return res.status(400).json({ error: "Cliente no encontrado" });
+
+    const [accounts] = await query(
+      `SELECT id, balance, amount FROM cxc_accounts WHERE client_id = ? AND status IN ('pending', 'partial') ORDER BY created_at ASC`,
+      [clientId]
+    );
+    if (!accounts.length) return res.status(400).json({ error: "No hay cuentas pendientes" });
+
+    let remaining = Number(amount);
+    const appliedPayments = [];
+    const paidAccountIds = [];
+    const partialAccountIds = [];
+
+    for (const acc of accounts) {
+      if (remaining <= 0) break;
+
+      const accBalance = Number(acc.balance);
+      const payAmount = Math.min(remaining, accBalance);
+      const newBalance = accBalance - payAmount;
+      const newStatus = newBalance <= 0 ? 'paid' : 'partial';
+
+      await query(
+        `INSERT INTO cxc_payments (cxc_account_id, amount, payment_method, reference, notes) VALUES (?, ?, ?, ?, ?)`,
+        [acc.id, payAmount, payment_method, reference, notes]
+      );
+
+      await query(
+        `UPDATE cxc_accounts SET balance = ?, status = ?, paid_at = ? WHERE id = ?`,
+        [newBalance, newStatus, newBalance <= 0 ? nowSql() : null, acc.id]
+      );
+
+      if (newStatus === 'paid') paidAccountIds.push(acc.id);
+      else partialAccountIds.push(acc.id);
+
+      appliedPayments.push({ account_id: acc.id, amount: payAmount, new_balance: newBalance, status: newStatus });
+      remaining = Number((remaining - payAmount).toFixed(2));
+    }
+
+    // Update customer total balance
+    const totalPaid = Number((Number(amount) - remaining).toFixed(2));
+    await query(`UPDATE customers SET current_balance = current_balance - ? WHERE id = ?`, [totalPaid, clientId]);
+
+    res.json({
+      ok: true,
+      total_paid: totalPaid,
+      remaining,
+      applied_payments: appliedPayments,
+      paid_accounts: paidAccountIds,
+      partial_accounts: partialAccountIds,
+      client_balance: Number(client[0].current_balance) - totalPaid
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Estado de cuenta CXC - reporte completo con movimientos
+app.get("/api/cxc/clients/:clientId/statement", async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const centerId = req.query.center_id ? Number(req.query.center_id) : null;
+    const startDate = req.query.start_date || null;
+    const endDate = req.query.end_date || null;
+    const checkNumber = req.query.check_number || null;
+
+    const [client] = await query(
+      `SELECT c.id, c.full_name, c.phone, c.credit_limit, c.current_balance, c.cxc_enabled, c.is_active, c.created_at, ca.name as area_name
+       FROM customers c LEFT JOIN cxc_areas ca ON c.cxc_area_id = ca.id WHERE c.id = ?`,
+      [clientId]
+    );
+    if (!client.length) return res.status(404).json({ error: "Cliente no encontrado" });
+
+    let centers = [];
+
+    // We try the full query with center info first
+    let accounts = [];
+    let payments = [];
+    let hasCenterInfo = false;
+
+    try {
+      const [centerRows] = await query(
+        `SELECT DISTINCT oc.id, oc.name
+         FROM cxc_accounts cxa
+         INNER JOIN accounts a ON cxa.account_id = a.id
+         INNER JOIN restaurant_tables t ON t.id = a.table_id
+         INNER JOIN operation_centers oc ON oc.id = t.operation_center_id
+         WHERE cxa.client_id = ?
+         ORDER BY oc.name`,
+        [clientId]
+      );
+      centers = centerRows;
+
+      // If we got here, the tables exist — do full query
+      const accParams = [clientId];
+      let accWhere = `cxa.client_id = ?`;
+      if (centerId) { accWhere += ` AND t.operation_center_id = ?`; accParams.push(centerId); }
+      if (startDate) { accWhere += ` AND cxa.created_at >= ?`; accParams.push(startDate); }
+      if (endDate) { accWhere += ` AND cxa.created_at <= ?`; accParams.push(`${endDate} 23:59:59`); }
+      if (checkNumber) { accWhere += ` AND a.check_number LIKE ?`; accParams.push(`%${checkNumber}%`); }
+
+      const [accRows] = await query(
+        `SELECT cxa.id, cxa.amount, cxa.balance, cxa.status, cxa.created_at, cxa.reference, cxa.notes,
+                a.check_number, u.full_name as waiter_name, oc.name as center_name
+         FROM cxc_accounts cxa
+         LEFT JOIN accounts a ON cxa.account_id = a.id
+         LEFT JOIN staff_users u ON a.waiter_id = u.id
+         LEFT JOIN restaurant_tables t ON t.id = a.table_id
+         LEFT JOIN operation_centers oc ON oc.id = t.operation_center_id
+         WHERE ${accWhere}
+         ORDER BY cxa.created_at ASC`,
+        accParams
+      );
+      accounts = accRows;
+      hasCenterInfo = true;
+    } catch (e) { console.error('Statement center/accounts query error:', e.message); }
+
+    if (!hasCenterInfo) {
+      const accParams = [clientId];
+      let accWhere = `cxa.client_id = ?`;
+      if (startDate) { accWhere += ` AND cxa.created_at >= ?`; accParams.push(startDate); }
+      if (endDate) { accWhere += ` AND cxa.created_at <= ?`; accParams.push(`${endDate} 23:59:59`); }
+      if (checkNumber) { accWhere += ` AND a.check_number LIKE ?`; accParams.push(`%${checkNumber}%`); }
+
+      const [accRows] = await query(
+        `SELECT cxa.id, cxa.amount, cxa.balance, cxa.status, cxa.created_at, cxa.reference, cxa.notes,
+                a.check_number, u.full_name as waiter_name, NULL as center_name
+         FROM cxc_accounts cxa
+         LEFT JOIN accounts a ON cxa.account_id = a.id
+         LEFT JOIN staff_users u ON a.waiter_id = u.id
+         WHERE ${accWhere}
+         ORDER BY cxa.created_at ASC`,
+        accParams
+      );
+      accounts = accRows;
+    }
+
+    const accountIds = accounts.map(a => a.id);
+    if (accountIds.length > 0) {
+      const payParams = [...accountIds];
+      let payWhere = `cp.cxc_account_id IN (${accountIds.map(() => '?').join(',')})`;
+      if (startDate) { payWhere += ` AND cp.created_at >= ?`; payParams.push(startDate); }
+      if (endDate) { payWhere += ` AND cp.created_at <= ?`; payParams.push(`${endDate} 23:59:59`); }
+      const [payRows] = await query(
+        `SELECT cp.*, cxa.account_id FROM cxc_payments cp JOIN cxc_accounts cxa ON cp.cxc_account_id = cxa.id WHERE ${payWhere} ORDER BY cp.created_at ASC`,
+        payParams
+      );
+      payments = payRows;
+    }
+
+    // Build movements array
+    const movements = [];
+    let runningBalance = 0;
+
+    movements.push({
+      date: client[0].created_at,
+      type: 'initial',
+      description: 'Saldo inicial',
+      charge: 0,
+      payment: 0,
+      balance: 0,
+      center_name: null
+    });
+
+    for (const acc of accounts) {
+      runningBalance = Number((runningBalance + Number(acc.amount)).toFixed(2));
+      movements.push({
+        date: acc.created_at,
+        type: 'charge',
+        description: `Cargo - ${acc.check_number || `#${acc.id}`}${acc.waiter_name ? ` (${acc.waiter_name})` : ''}`,
+        charge: Number(acc.amount),
+        payment: 0,
+        balance: runningBalance,
+        center_name: acc.center_name || null
+      });
+    }
+
+    for (const pay of payments) {
+      runningBalance = Number((runningBalance - Number(pay.amount)).toFixed(2));
+      const acc = accounts.find(a => a.id === pay.account_id);
+      movements.push({
+        date: pay.created_at,
+        type: 'payment',
+        description: `Pago - ${pay.payment_method}${pay.reference ? ` (Ref: ${pay.reference})` : ''}${acc ? ` - ${acc.check_number || `#${acc.id}`}` : ''}`,
+        charge: 0,
+        payment: Number(pay.amount),
+        balance: runningBalance,
+        center_name: acc?.center_name || null
+      });
+    }
+
+    res.json({
+      client: client[0],
+      accounts,
+      payments,
+      movements,
+      centers,
+      totals: {
+        total_charged: accounts.reduce((s, a) => s + Number(a.amount), 0),
+        total_paid: payments.reduce((s, p) => s + Number(p.amount), 0),
+        current_balance: Number(client[0].current_balance)
+      }
+    });
+  } catch (e) {
+    console.error('Statement endpoint error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Resumen general de saldos pendientes por cliente en un rango de fechas
+app.get("/api/cxc/pending-summary", async (req, res) => {
+  try {
+    const centerId = req.query.center_id ? Number(req.query.center_id) : null;
+    const startDate = req.query.start_date || null;
+    const endDate = req.query.end_date || null;
+
+    let whereCharge = `cxa.id IS NOT NULL`;
+    const chargeParams = [];
+    if (startDate) { whereCharge += ` AND cxa.created_at >= ?`; chargeParams.push(startDate); }
+    if (endDate) { whereCharge += ` AND cxa.created_at <= ?`; chargeParams.push(`${endDate} 23:59:59`); }
+    if (centerId) { whereCharge += ` AND t.operation_center_id = ?`; chargeParams.push(centerId); }
+
+    let rows = [];
+    let centers = [];
+
+    try {
+      const [result] = await query(
+        `SELECT c.id, c.full_name, c.phone, c.credit_limit, c.current_balance, ca.name as area_name,
+                COUNT(DISTINCT cxa.id) as account_count,
+                COALESCE(SUM(cxa.amount), 0) as total_charged,
+                COALESCE(SUM(cxp.amount), 0) as total_paid
+         FROM customers c
+         LEFT JOIN cxc_areas ca ON c.cxc_area_id = ca.id
+         LEFT JOIN cxc_accounts cxa ON cxa.client_id = c.id
+         LEFT JOIN accounts a ON cxa.account_id = a.id
+         LEFT JOIN restaurant_tables t ON t.id = a.table_id
+         LEFT JOIN cxc_payments cxp ON cxp.cxc_account_id = cxa.id
+         WHERE c.cxc_enabled = 1 AND c.is_active = 1 AND ${whereCharge}
+         GROUP BY c.id
+         HAVING total_charged > 0
+         ORDER BY c.full_name`,
+        chargeParams
+      );
+      rows = result;
+
+      const [centerRows] = await query(
+        `SELECT DISTINCT oc.id, oc.name
+         FROM cxc_accounts cxa
+         INNER JOIN accounts a ON cxa.account_id = a.id
+         INNER JOIN restaurant_tables t ON t.id = a.table_id
+         INNER JOIN operation_centers oc ON oc.id = t.operation_center_id
+         ORDER BY oc.name`
+      );
+      centers = centerRows;
+    } catch (e) {
+      console.error('Pending-summary query error:', e.message);
+      // Fallback without operation_centers/restaurant_tables
+      const fallbackWhere = `cxa.id IS NOT NULL`;
+      let fbParams = [];
+      if (startDate) { fbParams.push(startDate); }
+      if (endDate) { fbParams.push(`${endDate} 23:59:59`); }
+
+      let fbWhere = fallbackWhere;
+      if (startDate) fbWhere += ` AND cxa.created_at >= ?`;
+      if (endDate) fbWhere += ` AND cxa.created_at <= ?`;
+
+      const [result] = await query(
+        `SELECT c.id, c.full_name, c.phone, c.credit_limit, c.current_balance, ca.name as area_name,
+                COUNT(DISTINCT cxa.id) as account_count,
+                COALESCE(SUM(cxa.amount), 0) as total_charged,
+                COALESCE(SUM(cxp.amount), 0) as total_paid
+         FROM customers c
+         LEFT JOIN cxc_areas ca ON c.cxc_area_id = ca.id
+         LEFT JOIN cxc_accounts cxa ON cxa.client_id = c.id
+         LEFT JOIN cxc_payments cxp ON cxp.cxc_account_id = cxa.id
+         WHERE c.cxc_enabled = 1 AND c.is_active = 1 AND ${fbWhere}
+         GROUP BY c.id
+         HAVING total_charged > 0
+         ORDER BY c.full_name`,
+        fbParams
+      );
+      rows = result;
+    }
+
+    const summary = rows.map(r => ({
+      ...r,
+      balance: Number(r.total_charged) - Number(r.total_paid)
+    }));
+
+    res.json({
+      clients: summary,
+      centers,
+      totals: {
+        total_clients: summary.length,
+        total_charged: summary.reduce((s, r) => s + Number(r.total_charged), 0),
+        total_paid: summary.reduce((s, r) => s + Number(r.total_paid), 0),
+        total_balance: summary.reduce((s, r) => s + (Number(r.total_charged) - Number(r.total_paid)), 0)
+      }
+    });
+  } catch (e) {
+    console.error('Pending-summary endpoint error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ---------- EXCEL EXPORTS ----------
+
+async function getReportUser(req) {
+  try {
+    const session = getAuthSession(req);
+    if (!session) return 'Usuario';
+    const [rows] = await query(`SELECT full_name FROM staff_users WHERE id = ?`, [Number(session.userId)]);
+    return rows.length ? rows[0].full_name : 'Usuario';
+  } catch { return 'Usuario'; }
+}
+
+function getLogoBuffer() {
+  try {
+    const logoPath = path.join(__dirname, 'public', 'uploads');
+    const files = fs.readdirSync(logoPath).filter(f => f.startsWith('logo_'));
+    if (files.length) return fs.readFileSync(path.join(logoPath, files[0]));
+  } catch {}
+  return null;
+}
+
+function addBorders(ws, row, colStart, colEnd) {
+  for (let c = colStart; c <= colEnd; c++) {
+    ws.getCell(row, c).border = {
+      top: { style: 'thin' }, left: { style: 'thin' },
+      bottom: { style: 'thin' }, right: { style: 'thin' }
+    };
+  }
+}
+
+function styleHeaderRow(ws, row, cols) {
+  for (let c = 1; c <= cols; c++) {
+    const cell = ws.getCell(row, c);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Calibri' };
+    cell.alignment = { horizontal: c >= cols - 2 ? 'right' : 'left', vertical: 'center', wrapText: true };
+  }
+  addBorders(ws, row, 1, cols);
+}
+
+// Export Estado de Cuenta a Excel
+app.get("/api/cxc/export-statement/:clientId", async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const centerId = req.query.center_id ? Number(req.query.center_id) : null;
+    const startDate = req.query.start_date || null;
+    const endDate = req.query.end_date || null;
+    const checkNumber = req.query.check_number || null;
+
+    const [client] = await query(
+      `SELECT c.id, c.full_name, c.phone, c.credit_limit, c.current_balance, c.cxc_enabled, c.is_active, c.created_at, ca.name as area_name
+       FROM customers c LEFT JOIN cxc_areas ca ON c.cxc_area_id = ca.id WHERE c.id = ?`,
+      [clientId]
+    );
+    if (!client.length) return res.status(404).json({ error: "Cliente no encontrado" });
+
+    let accounts = [];
+    try {
+      const accParams = [clientId];
+      let accWhere = `cxa.client_id = ?`;
+      if (centerId) { accWhere += ` AND t.operation_center_id = ?`; accParams.push(centerId); }
+      if (startDate) { accWhere += ` AND cxa.created_at >= ?`; accParams.push(startDate); }
+      if (endDate) { accWhere += ` AND cxa.created_at <= ?`; accParams.push(`${endDate} 23:59:59`); }
+      if (checkNumber) { accWhere += ` AND a.check_number LIKE ?`; accParams.push(`%${checkNumber}%`); }
+      const [accRows] = await query(
+        `SELECT cxa.id, cxa.amount, cxa.balance, cxa.status, cxa.created_at, cxa.reference, cxa.notes,
+                a.check_number, u.full_name as waiter_name, oc.name as center_name
+         FROM cxc_accounts cxa
+         LEFT JOIN accounts a ON cxa.account_id = a.id
+         LEFT JOIN staff_users u ON a.waiter_id = u.id
+         LEFT JOIN restaurant_tables t ON t.id = a.table_id
+         LEFT JOIN operation_centers oc ON oc.id = t.operation_center_id
+         WHERE ${accWhere}
+         ORDER BY cxa.created_at ASC`,
+        accParams
+      );
+      accounts = accRows;
+    } catch (_) {
+      const accParams = [clientId];
+      let accWhere = `cxa.client_id = ?`;
+      if (startDate) { accWhere += ` AND cxa.created_at >= ?`; accParams.push(startDate); }
+      if (endDate) { accWhere += ` AND cxa.created_at <= ?`; accParams.push(`${endDate} 23:59:59`); }
+      if (checkNumber) { accWhere += ` AND a.check_number LIKE ?`; accParams.push(`%${checkNumber}%`); }
+      const [accRows] = await query(
+        `SELECT cxa.id, cxa.amount, cxa.balance, cxa.status, cxa.created_at, cxa.reference, cxa.notes,
+                a.check_number, u.full_name as waiter_name, NULL as center_name
+         FROM cxc_accounts cxa
+         LEFT JOIN accounts a ON cxa.account_id = a.id
+         LEFT JOIN staff_users u ON a.waiter_id = u.id
+         WHERE ${accWhere}
+         ORDER BY cxa.created_at ASC`,
+        accParams
+      );
+      accounts = accRows;
+    }
+
+    const accountIds = accounts.map(a => a.id);
+    let payments = [];
+    if (accountIds.length > 0) {
+      const payParams = [...accountIds];
+      let payWhere = `cp.cxc_account_id IN (${accountIds.map(() => '?').join(',')})`;
+      if (startDate) { payWhere += ` AND cp.created_at >= ?`; payParams.push(startDate); }
+      if (endDate) { payWhere += ` AND cp.created_at <= ?`; payParams.push(`${endDate} 23:59:59`); }
+      const [payRows] = await query(
+        `SELECT cp.*, cxa.account_id FROM cxc_payments cp JOIN cxc_accounts cxa ON cp.cxc_account_id = cxa.id WHERE ${payWhere} ORDER BY cp.created_at ASC`,
+        payParams
+      );
+      payments = payRows;
+    }
+
+    const movements = [];
+    let runningBalance = 0;
+    for (const acc of accounts) {
+      runningBalance = Number((runningBalance + Number(acc.amount)).toFixed(2));
+      movements.push({
+        date: acc.created_at, type: 'charge',
+        description: `Cargo - ${acc.check_number || `#${acc.id}`}${acc.waiter_name ? ` (${acc.waiter_name})` : ''}`,
+        charge: Number(acc.amount), payment: 0, balance: runningBalance,
+        center_name: acc.center_name || null
+      });
+    }
+    for (const pay of payments) {
+      runningBalance = Number((runningBalance - Number(pay.amount)).toFixed(2));
+      const acc = accounts.find(a => a.id === pay.account_id);
+      movements.push({
+        date: pay.created_at, type: 'payment',
+        description: `Pago - ${pay.payment_method}${pay.reference ? ` (Ref: ${pay.reference})` : ''}${acc ? ` - ${acc.check_number || `#${acc.id}`}` : ''}`,
+        charge: 0, payment: Number(pay.amount), balance: runningBalance,
+        center_name: acc?.center_name || null
+      });
+    }
+
+    const totals = {
+      total_charged: accounts.reduce((s, a) => s + Number(a.amount), 0),
+      total_paid: payments.reduce((s, p) => s + Number(p.amount), 0),
+      current_balance: Number(client[0].current_balance)
+    };
+    const user = await getReportUser(req);
+    const logoBuf = getLogoBuffer();
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = user;
+    wb.created = new Date();
+    const ws = wb.addWorksheet('Estado de Cuenta');
+    ws.pageSetup.orientation = 'landscape';
+    ws.pageSetup.fitToPage = true;
+
+    ws.getColumn(1).width = 14;
+    ws.getColumn(2).width = 48;
+    ws.getColumn(3).width = 18;
+    ws.getColumn(4).width = 16;
+    ws.getColumn(5).width = 16;
+    ws.getColumn(6).width = 16;
+
+    let row = 1;
+    if (logoBuf) {
+      const imgId = wb.addImage({ buffer: logoBuf, extension: 'png' });
+      ws.addImage(imgId, { tl: { col: 0, row: row - 1 }, ext: { width: 80, height: 60 } });
+    }
+    ws.mergeCells(row, 1, row + 1, 6);
+    ws.getCell(row, 1).value = 'ESTADO DE CUENTA';
+    ws.getCell(row, 1).font = { bold: true, size: 18, color: { argb: 'FF1F4E79' }, name: 'Calibri' };
+    ws.getCell(row, 1).alignment = { horizontal: 'center', vertical: 'center' };
+    row += 2;
+
+    ws.mergeCells(row, 1, row, 6);
+    ws.getCell(row, 1).value = `Cliente: ${client[0].full_name}${client[0].area_name ? `  |  ${client[0].area_name}` : ''}`;
+    ws.getCell(row, 1).font = { bold: true, size: 12, name: 'Calibri' };
+    row++;
+
+    ws.mergeCells(row, 1, row, 6);
+    ws.getCell(row, 1).value = `Generado por: ${user}  |  ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    ws.getCell(row, 1).font = { italic: true, size: 10, color: { argb: 'FF666666' }, name: 'Calibri' };
+    row++;
+
+    if (startDate || endDate) {
+      ws.mergeCells(row, 1, row, 6);
+      ws.getCell(row, 1).value = `Período: ${startDate || '—'}  al  ${endDate || '—'}`;
+      ws.getCell(row, 1).font = { size: 10, color: { argb: 'FF666666' }, name: 'Calibri' };
+      row++;
+    }
+    row++;
+
+    const summaryData = [
+      { label: 'Total Cargado', value: totals.total_charged, color: 'FF000000' },
+      { label: 'Total Pagado', value: totals.total_paid, color: 'FF008000' },
+      { label: 'Saldo Actual', value: totals.current_balance, color: totals.current_balance > 0 ? 'FFFF0000' : 'FF008000' },
+      { label: 'Límite Crédito', value: Number(client[0].credit_limit || 0), color: 'FF000000' },
+    ];
+    ws.getRow(row).height = 50;
+    summaryData.forEach((d, i) => {
+      const c = i + 1;
+      ws.getCell(row, c).value = d.label;
+      ws.getCell(row, c).font = { size: 9, color: { argb: 'FF666666' }, name: 'Calibri' };
+      ws.getCell(row, c).alignment = { horizontal: 'center', vertical: 'bottom', wrapText: true };
+      ws.getCell(row + 1, c).value = `Q${d.value.toFixed(2)}`;
+      ws.getCell(row + 1, c).font = { bold: true, size: 16, color: { argb: d.color }, name: 'Calibri' };
+      ws.getCell(row + 1, c).alignment = { horizontal: 'center', vertical: 'top' };
+      addBorders(ws, row, c, c);
+      addBorders(ws, row + 1, c, c);
+      ws.getCell(row + 1, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
+    });
+    row += 3;
+
+    styleHeaderRow(ws, row, 6);
+    row++;
+
+    movements.forEach((m, i) => {
+      ws.getCell(row, 1).value = new Date(m.date);
+      ws.getCell(row, 1).numFmt = 'dd/mm/yyyy';
+      ws.getCell(row, 1).alignment = { vertical: 'center' };
+      ws.getCell(row, 2).value = m.description;
+      ws.getCell(row, 2).alignment = { vertical: 'center', wrapText: true };
+      ws.getCell(row, 3).value = m.center_name || '-';
+      ws.getCell(row, 3).alignment = { vertical: 'center' };
+
+      if (m.charge > 0) {
+        ws.getCell(row, 4).value = m.charge;
+        ws.getCell(row, 4).numFmt = '#,##0.00';
+        ws.getCell(row, 4).font = { color: { argb: 'FFFF0000' }, bold: true };
+      } else {
+        ws.getCell(row, 4).value = '-';
+      }
+      ws.getCell(row, 4).alignment = { horizontal: 'right', vertical: 'center' };
+
+      if (m.payment > 0) {
+        ws.getCell(row, 5).value = m.payment;
+        ws.getCell(row, 5).numFmt = '#,##0.00';
+        ws.getCell(row, 5).font = { color: { argb: 'FF008000' }, bold: true };
+      } else {
+        ws.getCell(row, 5).value = '-';
+      }
+      ws.getCell(row, 5).alignment = { horizontal: 'right', vertical: 'center' };
+
+      ws.getCell(row, 6).value = m.balance;
+      ws.getCell(row, 6).numFmt = '#,##0.00';
+      ws.getCell(row, 6).font = { bold: true, color: { argb: m.balance > 0 ? 'FFFF0000' : 'FF008000' } };
+      ws.getCell(row, 6).alignment = { horizontal: 'right', vertical: 'center' };
+
+      if (i % 2 === 1) {
+        for (let c = 1; c <= 6; c++) ws.getCell(row, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9F9F9' } };
+      }
+      addBorders(ws, row, 1, 6);
+      row++;
+    });
+
+    const totalRow = row;
+    for (let c = 1; c <= 6; c++) {
+      ws.getCell(totalRow, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+      ws.getCell(totalRow, c).font = { bold: true, size: 11, name: 'Calibri' };
+    }
+    ws.mergeCells(totalRow, 1, totalRow, 3);
+    ws.getCell(totalRow, 1).value = 'TOTALES';
+    ws.getCell(totalRow, 4).value = totals.total_charged;
+    ws.getCell(totalRow, 4).numFmt = '#,##0.00';
+    ws.getCell(totalRow, 4).font = { bold: true, color: { argb: 'FFFF0000' }, size: 11, name: 'Calibri' };
+    ws.getCell(totalRow, 4).alignment = { horizontal: 'right' };
+    ws.getCell(totalRow, 5).value = totals.total_paid;
+    ws.getCell(totalRow, 5).numFmt = '#,##0.00';
+    ws.getCell(totalRow, 5).font = { bold: true, color: { argb: 'FF008000' }, size: 11, name: 'Calibri' };
+    ws.getCell(totalRow, 5).alignment = { horizontal: 'right' };
+    ws.getCell(totalRow, 6).value = totals.current_balance;
+    ws.getCell(totalRow, 6).numFmt = '#,##0.00';
+    ws.getCell(totalRow, 6).font = { bold: true, color: { argb: totals.current_balance > 0 ? 'FFFF0000' : 'FF008000' }, size: 11, name: 'Calibri' };
+    ws.getCell(totalRow, 6).alignment = { horizontal: 'right' };
+    addBorders(ws, totalRow, 1, 6);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Estado_Cuenta_${client[0].full_name.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('Export statement error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Export Reporte General de Saldos a Excel
+app.get("/api/cxc/export-pending-summary", async (req, res) => {
+  try {
+    const centerId = req.query.center_id ? Number(req.query.center_id) : null;
+    const startDate = req.query.start_date || null;
+    const endDate = req.query.end_date || null;
+
+    let rows = [];
+    try {
+      let whereCharge = `cxa.id IS NOT NULL`;
+      const chargeParams = [];
+      if (startDate) { whereCharge += ` AND cxa.created_at >= ?`; chargeParams.push(startDate); }
+      if (endDate) { whereCharge += ` AND cxa.created_at <= ?`; chargeParams.push(`${endDate} 23:59:59`); }
+      if (centerId) { whereCharge += ` AND t.operation_center_id = ?`; chargeParams.push(centerId); }
+
+      const [result] = await query(
+        `SELECT c.id, c.full_name, c.phone, c.credit_limit, c.current_balance, ca.name as area_name,
+                COUNT(DISTINCT cxa.id) as account_count,
+                COALESCE(SUM(cxa.amount), 0) as total_charged,
+                COALESCE(SUM(cxp.amount), 0) as total_paid
+         FROM customers c
+         LEFT JOIN cxc_areas ca ON c.cxc_area_id = ca.id
+         LEFT JOIN cxc_accounts cxa ON cxa.client_id = c.id
+         LEFT JOIN accounts a ON cxa.account_id = a.id
+         LEFT JOIN restaurant_tables t ON t.id = a.table_id
+         LEFT JOIN cxc_payments cxp ON cxp.cxc_account_id = cxa.id
+         WHERE c.cxc_enabled = 1 AND c.is_active = 1 AND ${whereCharge}
+         GROUP BY c.id
+         HAVING total_charged > 0
+         ORDER BY c.full_name`,
+        chargeParams
+      );
+      rows = result;
+    } catch (_) {
+      let fbWhere = `cxa.id IS NOT NULL`;
+      let fbParams = [];
+      if (startDate) { fbWhere += ` AND cxa.created_at >= ?`; fbParams.push(startDate); }
+      if (endDate) { fbWhere += ` AND cxa.created_at <= ?`; fbParams.push(`${endDate} 23:59:59`); }
+      const [result] = await query(
+        `SELECT c.id, c.full_name, c.phone, c.credit_limit, c.current_balance, ca.name as area_name,
+                COUNT(DISTINCT cxa.id) as account_count,
+                COALESCE(SUM(cxa.amount), 0) as total_charged,
+                COALESCE(SUM(cxp.amount), 0) as total_paid
+         FROM customers c
+         LEFT JOIN cxc_areas ca ON c.cxc_area_id = ca.id
+         LEFT JOIN cxc_accounts cxa ON cxa.client_id = c.id
+         LEFT JOIN cxc_payments cxp ON cxp.cxc_account_id = cxa.id
+         WHERE c.cxc_enabled = 1 AND c.is_active = 1 AND ${fbWhere}
+         GROUP BY c.id
+         HAVING total_charged > 0
+         ORDER BY c.full_name`,
+        fbParams
+      );
+      rows = result;
+    }
+
+    const user = await getReportUser(req);
+    const logoBuf = getLogoBuffer();
+    const totals = {
+      total_clients: rows.length,
+      total_charged: rows.reduce((s, r) => s + Number(r.total_charged), 0),
+      total_paid: rows.reduce((s, r) => s + Number(r.total_paid), 0),
+      total_balance: rows.reduce((s, r) => s + (Number(r.total_charged) - Number(r.total_paid)), 0)
+    };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = user;
+    wb.created = new Date();
+    const ws = wb.addWorksheet('Saldos Pendientes');
+    ws.pageSetup.orientation = 'landscape';
+    ws.pageSetup.fitToPage = true;
+
+    ws.getColumn(1).width = 30;
+    ws.getColumn(2).width = 22;
+    ws.getColumn(3).width = 14;
+    ws.getColumn(4).width = 16;
+    ws.getColumn(5).width = 16;
+    ws.getColumn(6).width = 16;
+
+    let row = 1;
+    if (logoBuf) {
+      const imgId = wb.addImage({ buffer: logoBuf, extension: 'png' });
+      ws.addImage(imgId, { tl: { col: 0, row: row - 1 }, ext: { width: 80, height: 60 } });
+    }
+    ws.mergeCells(row, 1, row + 1, 6);
+    ws.getCell(row, 1).value = 'REPORTE GENERAL DE SALDOS';
+    ws.getCell(row, 1).font = { bold: true, size: 18, color: { argb: 'FF1F4E79' }, name: 'Calibri' };
+    ws.getCell(row, 1).alignment = { horizontal: 'center', vertical: 'center' };
+    row += 2;
+
+    ws.mergeCells(row, 1, row, 6);
+    ws.getCell(row, 1).value = `Generado por: ${user}  |  ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    ws.getCell(row, 1).font = { italic: true, size: 10, color: { argb: 'FF666666' }, name: 'Calibri' };
+    row++;
+
+    if (startDate || endDate) {
+      ws.mergeCells(row, 1, row, 6);
+      ws.getCell(row, 1).value = `Período: ${startDate || '—'}  al  ${endDate || '—'}`;
+      ws.getCell(row, 1).font = { size: 10, color: { argb: 'FF666666' }, name: 'Calibri' };
+      row++;
+    }
+    row++;
+
+    const kpis = [
+      { label: 'Clientes', value: totals.total_clients, color: 'FF000000', fmt: '0' },
+      { label: 'Total Cargado', value: totals.total_charged, color: 'FF000000', fmt: '#,##0.00' },
+      { label: 'Total Pagado', value: totals.total_paid, color: 'FF008000', fmt: '#,##0.00' },
+      { label: 'Saldo Total', value: totals.total_balance, color: totals.total_balance > 0 ? 'FFFF0000' : 'FF008000', fmt: '#,##0.00' },
+    ];
+    ws.getRow(row).height = 50;
+    kpis.forEach((k, i) => {
+      const c = i + 1;
+      ws.getCell(row, c).value = k.label;
+      ws.getCell(row, c).font = { size: 9, color: { argb: 'FF666666' }, name: 'Calibri' };
+      ws.getCell(row, c).alignment = { horizontal: 'center', vertical: 'bottom', wrapText: true };
+      ws.getCell(row + 1, c).value = typeof k.value === 'number' && k.fmt === '#,##0.00' ? k.value : k.value;
+      if (k.fmt === '#,##0.00') ws.getCell(row + 1, c).numFmt = k.fmt;
+      ws.getCell(row + 1, c).font = { bold: true, size: 16, color: { argb: k.color }, name: 'Calibri' };
+      ws.getCell(row + 1, c).alignment = { horizontal: 'center', vertical: 'top' };
+      addBorders(ws, row, c, c);
+      addBorders(ws, row + 1, c, c);
+      ws.getCell(row + 1, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
+    });
+    row += 3;
+
+    ['Cliente', 'Área', 'Cuentas', 'Cargado', 'Pagado', 'Saldo'].forEach((label, i) => {
+      ws.getCell(row, i + 1).value = label;
+    });
+    styleHeaderRow(ws, row, 6);
+    row++;
+
+    rows.forEach((r, i) => {
+      const balance = Number(r.total_charged) - Number(r.total_paid);
+      ws.getCell(row, 1).value = r.full_name;
+      ws.getCell(row, 1).alignment = { vertical: 'center' };
+      ws.getCell(row, 2).value = r.area_name || '-';
+      ws.getCell(row, 2).alignment = { vertical: 'center' };
+      ws.getCell(row, 3).value = Number(r.account_count);
+      ws.getCell(row, 3).alignment = { horizontal: 'right', vertical: 'center' };
+      ws.getCell(row, 4).value = Number(r.total_charged);
+      ws.getCell(row, 4).numFmt = '#,##0.00';
+      ws.getCell(row, 4).alignment = { horizontal: 'right', vertical: 'center' };
+      ws.getCell(row, 5).value = Number(r.total_paid);
+      ws.getCell(row, 5).numFmt = '#,##0.00';
+      ws.getCell(row, 5).font = { color: { argb: 'FF008000' } };
+      ws.getCell(row, 5).alignment = { horizontal: 'right', vertical: 'center' };
+      ws.getCell(row, 6).value = balance;
+      ws.getCell(row, 6).numFmt = '#,##0.00';
+      ws.getCell(row, 6).font = { bold: true, color: { argb: balance > 0 ? 'FFFF0000' : 'FF008000' } };
+      ws.getCell(row, 6).alignment = { horizontal: 'right', vertical: 'center' };
+
+      if (i % 2 === 1) {
+        for (let c = 1; c <= 6; c++) ws.getCell(row, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9F9F9' } };
+      }
+      addBorders(ws, row, 1, 6);
+      row++;
+    });
+
+    const totalRow = row;
+    for (let c = 1; c <= 6; c++) {
+      ws.getCell(totalRow, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+      ws.getCell(totalRow, c).font = { bold: true, size: 11, name: 'Calibri' };
+    }
+    ws.mergeCells(totalRow, 1, totalRow, 2);
+    ws.getCell(totalRow, 1).value = `${totals.total_clients} clientes`;
+    ws.getCell(totalRow, 3).value = rows.reduce((s, r) => s + Number(r.account_count), 0);
+    ws.getCell(totalRow, 3).alignment = { horizontal: 'right' };
+    ws.getCell(totalRow, 4).value = totals.total_charged;
+    ws.getCell(totalRow, 4).numFmt = '#,##0.00';
+    ws.getCell(totalRow, 4).font = { bold: true, size: 11, name: 'Calibri' };
+    ws.getCell(totalRow, 4).alignment = { horizontal: 'right' };
+    ws.getCell(totalRow, 5).value = totals.total_paid;
+    ws.getCell(totalRow, 5).numFmt = '#,##0.00';
+    ws.getCell(totalRow, 5).font = { bold: true, color: { argb: 'FF008000' }, size: 11, name: 'Calibri' };
+    ws.getCell(totalRow, 5).alignment = { horizontal: 'right' };
+    ws.getCell(totalRow, 6).value = totals.total_balance;
+    ws.getCell(totalRow, 6).numFmt = '#,##0.00';
+    ws.getCell(totalRow, 6).font = { bold: true, color: { argb: totals.total_balance > 0 ? 'FFFF0000' : 'FF008000' }, size: 11, name: 'Calibri' };
+    ws.getCell(totalRow, 6).alignment = { horizontal: 'right' };
+    addBorders(ws, totalRow, 1, 6);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="Reporte_Saldos_Pendientes.xlsx"');
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('Export pending-summary error:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -2908,6 +3911,113 @@ app.get("/api/reports/account-trace/:accountId", async (req, res) => {
   res.json(rows);
 });
 
+// Inventory items CRUD
+app.get("/api/inventory/items", async (_req, res) => {
+  try {
+    const [rows] = await query(
+      `SELECT id, name, unit, current_stock, min_stock, cost_price, is_active
+       FROM inventory_items WHERE is_active = 1 ORDER BY name`
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/inventory/items", async (req, res) => {
+  try {
+    const { name, unit = 'pz', costPrice = 0, minStock = 0 } = req.body || {};
+    if (!name) return res.status(400).json({ error: "name es requerido" });
+    const [result] = await query(
+      `INSERT INTO inventory_items (name, unit, cost_price, min_stock) VALUES (?, ?, ?, ?)`,
+      [String(name).trim(), String(unit), Number(costPrice) || 0, Number(minStock) || 0]
+    );
+    res.status(201).json({ id: result.insertId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put("/api/inventory/items/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { name, unit, costPrice, minStock } = req.body || {};
+    await query(
+      `UPDATE inventory_items SET name = ?, unit = ?, cost_price = ?, min_stock = ? WHERE id = ?`,
+      [String(name).trim(), String(unit), Number(costPrice) || 0, Number(minStock) || 0, id]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/inventory/items/:id", async (req, res) => {
+  try {
+    await query(`UPDATE inventory_items SET is_active = 0 WHERE id = ?`, [Number(req.params.id)]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Stock movements
+app.get("/api/inventory/items/:id/movements", async (req, res) => {
+  try {
+    const [rows] = await query(
+      `SELECT id, type, quantity, reference_type, reference_id, note, created_by, created_at
+       FROM stock_movements WHERE inventory_item_id = ? ORDER BY created_at DESC LIMIT 200`,
+      [Number(req.params.id)]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/inventory/movements", async (req, res) => {
+  try {
+    const { inventoryItemId, type, quantity, note = '' } = req.body || {};
+    if (!inventoryItemId || !type || !quantity) {
+      return res.status(400).json({ error: "inventoryItemId, type y quantity son requeridos" });
+    }
+    const qty = Number(quantity);
+    if (qty <= 0) return res.status(400).json({ error: "quantity debe ser mayor a 0" });
+    await query(
+      `INSERT INTO stock_movements (inventory_item_id, type, quantity, note, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [Number(inventoryItemId), String(type), qty, String(note), nowSql()]
+    );
+    const sign = type === 'exit' ? -1 : 1;
+    await query(
+      `UPDATE inventory_items SET current_stock = current_stock + (? * ?) WHERE id = ?`,
+      [sign, qty, Number(inventoryItemId)]
+    );
+    res.status(201).json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Product recipes
+app.get("/api/inventory/products/:productId/recipe", async (req, res) => {
+  try {
+    const [rows] = await query(
+      `SELECT pr.id, pr.inventory_item_id, pr.quantity, ii.name AS item_name, ii.unit
+       FROM product_recipes pr
+       INNER JOIN inventory_items ii ON ii.id = pr.inventory_item_id
+       WHERE pr.product_id = ?`,
+      [Number(req.params.productId)]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/inventory/products/:productId/recipe", async (req, res) => {
+  try {
+    const productId = Number(req.params.productId);
+    const { ingredients } = req.body || {};
+    await query(`DELETE FROM product_recipes WHERE product_id = ?`, [productId]);
+    if (ingredients && ingredients.length > 0) {
+      for (const ing of ingredients) {
+        await query(
+          `INSERT INTO product_recipes (product_id, inventory_item_id, quantity) VALUES (?, ?, ?)`,
+          [productId, Number(ing.inventoryItemId), Number(ing.quantity)]
+        );
+      }
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.use((err, req, res, _next) => {
   const status = Number(err?.status || err?.statusCode || 500);
   const code = String(err?.code || (status >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR"));
@@ -2932,6 +4042,7 @@ app.listen(port, async () => {
     await pool.query("SELECT 1");
     console.log(`POS activo en http://localhost:${port}`);
   } catch (e) {
-    console.error("No se pudo conectar a MariaDB. Revisa variables en .env", e.message);
+    console.error('Pending-summary endpoint error:', e);
+    res.status(500).json({ error: e.message });
   }
 });

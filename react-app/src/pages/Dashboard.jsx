@@ -10,11 +10,11 @@ import {
   DollarSign,
   TrendingUp,
   Users,
-  Receipt,
   PlayCircle,
   BarChart3,
   CreditCard,
-  UtensilsCrossed
+  UtensilsCrossed,
+  ListTodo
 } from 'lucide-react';
 
 export function Dashboard({ onNavigate }) {
@@ -41,15 +41,17 @@ export function Dashboard({ onNavigate }) {
     else setGreeting('Buenas noches');
   };
 
-  const loadData = async () => {
+  const loadData = async (centerId) => {
     try {
       const data = await api.bootstrap();
       setCenters(data.centers || []);
-      if (data.defaultCenterId) {
-        setSelectedCenter(data.defaultCenterId);
+      
+      const targetCenter = centerId || data.defaultCenterId;
+      if (!selectedCenter && targetCenter) {
+        setSelectedCenter(targetCenter);
       }
       
-      const tables = await api.getTables(data.defaultCenterId);
+      const tables = await api.getTables(targetCenter);
       const free = tables.filter(t => t.open_accounts === 0).length;
       const busy = tables.filter(t => t.open_accounts > 0).length;
       setStats({
@@ -63,6 +65,10 @@ export function Dashboard({ onNavigate }) {
     }
   };
 
+  useEffect(() => {
+    loadData(selectedCenter);
+  }, [selectedCenter]);
+
   const menuItems = [
     { 
       id: 'tables', 
@@ -72,31 +78,23 @@ export function Dashboard({ onNavigate }) {
       gradient: 'from-blue-500 to-blue-600',
       bgLight: 'bg-blue-50'
     },
-    { 
-      id: 'cxc', 
-      icon: Receipt, 
-      title: 'Cuentas por Cobrar', 
-      subtitle: 'Clientes y CXC',
-      gradient: 'from-amber-500 to-amber-600',
-      bgLight: 'bg-amber-50'
-    },
-    { 
-      id: 'shifts', 
+    {
+      id: 'shifts',
       icon: PlayCircle, 
       title: 'Turnos', 
       subtitle: 'Apertura y cierre',
       gradient: 'from-teal-500 to-teal-600',
       bgLight: 'bg-teal-50'
     },
-    { 
-      id: 'reports', 
-      icon: BarChart3, 
-      title: 'Reportes', 
-      subtitle: 'Ventas y anulaciones',
+    {
+      id: 'reports',
+      icon: BarChart3,
+      title: 'Reportes',
+      subtitle: 'Ventas, anulaciones y CXC',
       gradient: 'from-orange-500 to-orange-600',
       bgLight: 'bg-orange-50'
     },
-    { 
+    {
       id: 'settings', 
       icon: Settings, 
       title: 'Configuración', 
@@ -239,27 +237,23 @@ export function Dashboard({ onNavigate }) {
           </h2>
         </div>
         
-        <div className="space-y-2">
+        <div className="grid grid-cols-3 gap-2">
           {menuItems.map((item, index) => (
             <motion.button
               key={item.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 + index * 0.05 }}
-              whileTap={{ scale: 0.98 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => onNavigate(item.id)}
-              className="w-full bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex items-center gap-3"
+              className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex flex-col items-center text-center gap-2"
             >
-              <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center shadow-sm`}>
+              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center shadow-sm`}>
                 <item.icon className="w-5 h-5 text-white" />
               </div>
-              <div className="flex-1 text-left">
-                <h3 className="font-medium text-gray-900">{item.title}</h3>
-                <p className="text-xs text-gray-500">{item.subtitle}</p>
+              <div className="flex flex-col">
+                <h3 className="text-xs font-medium text-gray-900 leading-tight">{item.title}</h3>
               </div>
-              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
             </motion.button>
           ))}
         </div>
@@ -282,11 +276,18 @@ export function Dashboard({ onNavigate }) {
             <span className="text-[10px] font-medium">Mesas</span>
           </button>
           <button 
-            onClick={() => onNavigate('cxc')}
+            onClick={() => onNavigate('accounts')}
             className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
           >
-            <Receipt className="w-5 h-5" />
-            <span className="text-[10px] font-medium">CXC</span>
+            <ListTodo className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Cuentas</span>
+          </button>
+          <button 
+            onClick={() => onNavigate('reports')}
+            className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
+          >
+            <BarChart3 className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Reportes</span>
           </button>
           <button 
             onClick={() => onNavigate('settings')}

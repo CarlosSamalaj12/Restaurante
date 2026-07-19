@@ -348,28 +348,53 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
     ? (productModifierGroups?.filter(pmg => Number(pmg.product_id) === Number(editingProduct.id)).map(pmg => Number(pmg.group_id)) || [])
     : [];
 
-  const [step, setStep] = useState(editingProduct ? 6 : 1);
+  const [step, setStep] = useState(editingProduct ? 7 : 1);
   const [form, setForm] = useState({
     name: editingProduct?.name || '',
     categoryId: editingProduct?.category_id || '',
     basePrice: editingProduct?.base_price ?? 0,
     allowDiscount: editingProduct?.allow_discount ?? true,
+    trackInventory: editingProduct?.track_inventory ?? false,
     productionCenterIds: existingProductionCenters,
-    modifierGroupIds: existingModifierGroupIds
+    modifierGroupIds: existingModifierGroupIds,
+    recipe: []
   });
   const [loading, setLoading] = useState(false);
   const [modifierSearch, setModifierSearch] = useState('');
+  const [inventoryItems, setInventoryItems] = useState([]);
   const toast = useToast();
 
   const isEditing = !!editingProduct;
+
+  useEffect(() => {
+    if (editingProduct && editingProduct.track_inventory) {
+      loadRecipe();
+    }
+    loadInventoryItems();
+  }, []);
+
+  const loadRecipe = async () => {
+    try {
+      const data = await api.inventory.getRecipe(editingProduct.id);
+      setForm(prev => ({ ...prev, recipe: data.map(r => ({ inventoryItemId: r.inventory_item_id, quantity: r.quantity })) }));
+    } catch {}
+  };
+
+  const loadInventoryItems = async () => {
+    try {
+      const data = await api.inventory.list();
+      setInventoryItems(data);
+    } catch {}
+  };
 
   const steps = [
     { num: 1, label: 'Nombre' },
     { num: 2, label: 'Categoría' },
     { num: 3, label: 'Precio' },
     { num: 4, label: 'Producción' },
-    { num: 5, label: 'Modificadores' },
-    { num: 6, label: 'Confirmar' }
+    { num: 5, label: 'Receta' },
+    { num: 6, label: 'Modificadores' },
+    { num: 7, label: 'Confirmar' }
   ];
 
   const handleNext = () => {
@@ -397,7 +422,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
     try {
       let productId = editingProduct?.id;
       if (isEditing) {
-        await api.settings.updateProduct(editingProduct.id, form);
+        await api.settings.updateProduct(editingProduct.id, { ...form, isActive: 1 });
       } else {
         const result = await api.settings.createProduct(form);
         productId = result.productId;
@@ -408,6 +433,11 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
       }
       for (let i = 0; i < form.modifierGroupIds.length; i++) {
         await api.settings.setProductSteps(productId, form.modifierGroupIds[i], i + 1);
+      }
+      if (form.trackInventory) {
+        await api.inventory.saveRecipe(productId, { ingredients: form.recipe });
+      } else {
+        await api.inventory.saveRecipe(productId, { ingredients: [] });
       }
       toast.success(isEditing ? '¡Producto actualizado!' : '¡Producto creado!');
       onCreated();
@@ -597,6 +627,76 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
 
           {step === 5 && (
             <div className="space-y-4">
+              <p className="text-gray-500 text-sm">¿Controlar inventario?</p>
+              <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                <input
+                  type="checkbox"
+                  checked={form.trackInventory}
+                  onChange={(e) => setForm({ ...form, trackInventory: e.target.checked })}
+                  className="w-5 h-5 rounded border-gray-300"
+                />
+                <span className="text-sm text-gray-700">Descontar del inventario al vender</span>
+              </label>
+
+              {form.trackInventory && (
+                <>
+                  <p className="text-xs text-gray-400 mt-2">Agrega los insumos que consume este producto</p>
+                  {inventoryItems.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">No hay insumos registrados. Crea insumos en Reportes &gt; Inventario</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {form.recipe.map((ing, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-xl p-3">
+                          <select
+                            value={ing.inventoryItemId}
+                            onChange={e => {
+                              const recipe = [...form.recipe];
+                              recipe[idx] = { ...recipe[idx], inventoryItemId: Number(e.target.value) };
+                              setForm({ ...form, recipe });
+                            }}
+                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                          >
+                            <option value="">Seleccionar...</option>
+                            {inventoryItems.map(item => (
+                              <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={ing.quantity}
+                            onChange={e => {
+                              const recipe = [...form.recipe];
+                              recipe[idx] = { ...recipe[idx], quantity: Number(e.target.value) };
+                              setForm({ ...form, recipe });
+                            }}
+                            className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                            placeholder="0"
+                          />
+                          <button
+                            onClick={() => setForm({ ...form, recipe: form.recipe.filter((_, i) => i !== idx) })}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => setForm({ ...form, recipe: [...form.recipe, { inventoryItemId: '', quantity: 0 }] })}
+                        className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
+                      >
+                        + Agregar insumo
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {step === 6 && (
+            <div className="space-y-4">
               <p className="text-gray-500 text-sm">¿Qué modificadores necesita?</p>
               <p className="text-xs text-gray-400">Selecciona los grupos de opciones que estarán disponibles para este producto</p>
               {modifierGroups?.length > 5 && (
@@ -647,7 +747,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
             </div>
           )}
 
-          {step === 6 && (
+          {step === 7 && (
             <div className="space-y-4">
               <p className="text-gray-500 text-sm">Confirma los datos</p>
               <div className="bg-gray-50 rounded-xl p-4 space-y-3">
@@ -672,6 +772,10 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                       ? form.productionCenterIds.map(id => productionCenters.find(c => c.id === id)?.name).join(', ')
                       : 'Ninguno'}
                   </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Inventario</span>
+                  <span className="font-medium text-gray-900">{form.trackInventory ? `Sí (${form.recipe.length} insumos)` : 'No'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Modificadores</span>
@@ -703,7 +807,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
               Cancelar
             </button>
           )}
-          {step < 6 ? (
+          {step < 7 ? (
             <button
               onClick={handleNext}
               className="flex-1 py-3 bg-primary-600 text-white font-medium rounded-xl"

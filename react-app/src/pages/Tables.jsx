@@ -15,13 +15,14 @@ import {
   UtensilsCrossed
 } from 'lucide-react';
 
-export function Tables({ onBack, onSelectTable, centers }) {
+export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCenter, setSelectedCenter] = useState(null);
   const [showNewAccount, setShowNewAccount] = useState(false);
   const [selectedTable, setSelectedTable] = useState(null);
   const [accounts, setAccounts] = useState([]);
+  const [guestCount, setGuestCount] = useState(4);
   const toast = useToast();
   const { user, selectedTerminal, restaurantName, logoUrl } = useAuth();
 
@@ -37,6 +38,16 @@ export function Tables({ onBack, onSelectTable, centers }) {
     loadTables();
   }, [selectedCenter]);
 
+  // Auto-open table when navigated from OpenAccountsPanel
+  useEffect(() => {
+    if (autoOpenTable && tables.length > 0) {
+      const table = tables.find(t => t.id === autoOpenTable.tableId);
+      if (table) {
+        handleTablePress(table, autoOpenTable.accountId);
+      }
+    }
+  }, [autoOpenTable, tables]);
+
   const loadTables = async () => {
     setLoading(true);
     try {
@@ -49,11 +60,22 @@ export function Tables({ onBack, onSelectTable, centers }) {
     }
   };
 
-  const handleTablePress = async (table) => {
+  const handleTablePress = async (table, preselectedAccountId = null) => {
     setSelectedTable(table);
+    setGuestCount(table.seats || 4);
     try {
       const accts = await api.getAccounts(table.id);
       setAccounts(accts);
+      
+      // If coming from OpenAccountsPanel with a specific account, go directly to it
+      if (preselectedAccountId) {
+        const account = accts.find(a => a.id === preselectedAccountId);
+        if (account) {
+          onSelectTable(account.id, table.code, table.id);
+          return;
+        }
+      }
+      
       setShowNewAccount(true);
     } catch (error) {
       toast.error('Error al cargar cuentas');
@@ -66,7 +88,7 @@ export function Tables({ onBack, onSelectTable, centers }) {
     try {
       const result = await api.createAccount(selectedTable.id, {
         waiterId: user?.id || 1,
-        guestCount: selectedTable.seats,
+        guestCount,
         centerId: selectedCenter
       });
       toast.success(`Cuenta ${result.checkNumber} creada`);
@@ -361,12 +383,14 @@ export function Tables({ onBack, onSelectTable, centers }) {
               {/* Header */}
               <div className="px-5 pb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center">
-                    <span className="text-xl font-bold text-gray-700">{selectedTable.code}</span>
+                  <div className="w-14 h-14 bg-gradient-to-br from-gray-700 to-gray-900 rounded-2xl flex items-center justify-center shadow-md">
+                    <span className="text-lg font-extrabold text-white leading-none">
+                      {selectedTable.code?.replace(/^Mesa\s*/i, '').substring(0, 3)}
+                    </span>
                   </div>
                   <div>
-                    <h2 className="font-semibold text-gray-900">Mesa {selectedTable.code}</h2>
-                    <p className="text-sm text-gray-500">{selectedTable.area_name} · {selectedTable.seats} asientos</p>
+                    <h2 className="font-semibold text-gray-900 text-lg">{selectedTable.code}</h2>
+                    <p className="text-sm text-gray-500">{selectedTable.area_name}</p>
                   </div>
                 </div>
               </div>
@@ -402,6 +426,33 @@ export function Tables({ onBack, onSelectTable, centers }) {
                   </div>
                 )}
 
+                {/* Guest count selector */}
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Comensales
+                  </h3>
+                  <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-2">
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                      className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-lg font-bold text-gray-600 shadow-sm"
+                    >
+                      −
+                    </motion.button>
+                    <div className="flex-1 text-center">
+                      <span className="text-2xl font-bold text-gray-900">{guestCount}</span>
+                      <span className="text-sm text-gray-500 ml-1">personas</span>
+                    </div>
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => setGuestCount(Math.min(20, guestCount + 1))}
+                      className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-lg font-bold text-gray-600 shadow-sm"
+                    >
+                      +
+                    </motion.button>
+                  </div>
+                </div>
+
                 {/* New Account Button */}
                 <motion.button
                   whileTap={{ scale: 0.98 }}
@@ -409,7 +460,7 @@ export function Tables({ onBack, onSelectTable, centers }) {
                   className="w-full py-3 bg-gray-900 text-white rounded-xl font-medium flex items-center justify-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
-                  Nueva Cuenta
+                  Nueva Cuenta — {guestCount} {guestCount === 1 ? 'persona' : 'personas'}
                 </motion.button>
               </div>
             </motion.div>

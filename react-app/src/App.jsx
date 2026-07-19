@@ -8,9 +8,9 @@ import { Dashboard } from './pages/Dashboard';
 import { Tables } from './pages/Tables';
 import { OrderView } from './pages/OrderView';
 import { SettingsPage } from './pages/Settings';
-import { CXCPage } from './pages/CXC';
 import { ShiftsPage } from './pages/Shifts';
 import { ReportsPage } from './pages/Reports';
+import { AccountsPage } from './pages/AccountsPage';
 import api from './api';
 
 function AppContent() {
@@ -20,6 +20,7 @@ function AppContent() {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [selectedTableCode, setSelectedTableCode] = useState(null);
   const [selectedTableId, setSelectedTableId] = useState(null);
+  const [autoOpenTable, setAutoOpenTable] = useState(null);
 
   useEffect(() => {
     if (user) {
@@ -36,9 +37,14 @@ function AppContent() {
     }
   };
 
-  const handleNavigate = (page) => {
+  const handleNavigate = (page, params = {}) => {
     setView(page);
     setSelectedAccount(null);
+    if (page === 'tables' && params.openTableId) {
+      setAutoOpenTable({ tableId: params.openTableId, accountId: params.openAccountId });
+    } else {
+      setAutoOpenTable(null);
+    }
   };
 
   const handleSelectTable = (accountId, tableCode, tableId) => {
@@ -83,14 +89,14 @@ function AppContent() {
     case 'tables':
       return (
         <Tables
-          onBack={() => setView('dashboard')}
+          onBack={() => {
+            setAutoOpenTable(null);
+            setView('dashboard');
+          }}
           onSelectTable={handleSelectTable}
           centers={centers}
+          autoOpenTable={autoOpenTable}
         />
-      );
-    case 'cxc':
-      return (
-        <CXCPage onBack={() => setView('dashboard')} />
       );
     case 'shifts':
       return (
@@ -103,6 +109,18 @@ function AppContent() {
     case 'settings':
       return (
         <SettingsPage onBack={() => setView('dashboard')} />
+      );
+    case 'accounts':
+      return (
+        <AccountsPage 
+          onBack={() => setView('dashboard')} 
+          onSelectAccount={(account) => {
+            setSelectedAccount(account.id);
+            setSelectedTableCode(account.table_code);
+            setSelectedTableId(account.table_id);
+            setView('order');
+          }} 
+        />
       );
     default:
       return <Dashboard onNavigate={handleNavigate} />;

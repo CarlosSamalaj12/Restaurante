@@ -33,6 +33,8 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
   const [selectedModifiers, setSelectedModifiers] = useState({});
   const [showVoidModal, setShowVoidModal] = useState(false);
   const [itemToVoid, setItemToVoid] = useState(null);
+  const [currentSeat, setCurrentSeat] = useState(1);
+  const [itemNotes, setItemNotes] = useState('');
   const toast = useToast();
 
   useEffect(() => {
@@ -69,20 +71,22 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
     if (requiredModifiers.length > 0) {
       setSelectedProduct(product);
       setSelectedModifiers({});
+      setItemNotes('');
       setShowModifierModal(true);
       return;
     }
-    await addItemToAccount(product.id, 1, []);
+    await addItemToAccount(product.id, 1, [], '');
   };
 
-  const addItemToAccount = async (productId, qty, modifierOptionIds) => {
+  const addItemToAccount = async (productId, qty, modifierOptionIds, notes = '') => {
     setAddingItem(true);
     try {
       await api.addItem(accountId, {
         productId,
         qty,
-        seatNo: 1,
-        modifierOptionIds
+        seatNo: currentSeat,
+        modifierOptionIds,
+        notes
       });
       toast.success(`${selectedProduct?.name || 'Producto'} agregado`);
       loadData();
@@ -115,7 +119,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
   const handleConfirmModifiers = () => {
     if (!selectedProduct) return;
     const allOptionIds = Object.values(selectedModifiers).flat();
-    addItemToAccount(selectedProduct.id, 1, allOptionIds);
+    addItemToAccount(selectedProduct.id, 1, allOptionIds, itemNotes);
   };
 
   const handleSendOrder = async () => {
@@ -222,14 +226,31 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
           className="lg:w-72 bg-white border-b lg:border-b-0 lg:border-r border-gray-100"
         >
           {/* Order Header */}
-          <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ShoppingBag className="w-4 h-4 text-gray-500" />
-              <h2 className="font-medium text-gray-900 text-sm">Tu Orden</h2>
+          <div className="px-4 py-3 border-b border-gray-50">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-gray-500" />
+                <h2 className="font-medium text-gray-900 text-sm">Tu Orden</h2>
+              </div>
+              <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+                {items.length} items
+              </span>
             </div>
-            <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
-              {items.length} items
-            </span>
+            <div className="flex gap-1.5">
+              {Array.from({ length: Math.max(account?.guest_count || 4, 1) }, (_, i) => i + 1).map(seat => {
+                const count = items.filter(it => (it.seat_no || 1) === seat).length;
+                return count > 0 ? (
+                  <span key={seat} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                    seat === 1 ? 'bg-blue-100 text-blue-700' :
+                    seat === 2 ? 'bg-emerald-100 text-emerald-700' :
+                    seat === 3 ? 'bg-amber-100 text-amber-700' :
+                    'bg-purple-100 text-purple-700'
+                  }`}>
+                    S{seat}: {count}
+                  </span>
+                ) : null;
+              })}
+            </div>
           </div>
           
           {/* Items List */}
@@ -259,17 +280,32 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{item.product_name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                            (item.seat_no || 1) === 1 ? 'bg-blue-100 text-blue-700' :
+                            (item.seat_no || 1) === 2 ? 'bg-emerald-100 text-emerald-700' :
+                            (item.seat_no || 1) === 3 ? 'bg-amber-100 text-amber-700' :
+                            'bg-purple-100 text-purple-700'
+                          }`}>
+                            S{(item.seat_no || 1)}
+                          </span>
+                          <p className="text-sm font-medium text-gray-900 truncate">{item.product_name}</p>
+                        </div>
                         {item.modifiers?.length > 0 && (
-                          <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                          <p className="text-[10px] text-gray-500 mt-0.5 truncate ml-7">
                             {item.modifiers.map(m => m.name).join(', ')}
+                          </p>
+                        )}
+                        {item.notes && (
+                          <p className="text-[10px] text-amber-600 italic mt-0.5 ml-7">
+                            Nota: {item.notes}
                           </p>
                         )}
                       </div>
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => handleVoidItem(item)}
-                        className="p-1.5 text-red-500/70 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-1.5 text-red-500/70 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </motion.button>
@@ -357,6 +393,27 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                 `}
               >
                 {cat.name}
+              </motion.button>
+            ))}
+          </div>
+
+          {/* Seat selector */}
+          <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-hide">
+            {Array.from({ length: Math.max(account?.guest_count || 4, 1) }, (_, i) => i + 1).map(seat => (
+              <motion.button
+                key={seat}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setCurrentSeat(seat)}
+                className={`
+                  px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5
+                  ${currentSeat === seat
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }
+                `}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${currentSeat === seat ? 'bg-white' : 'bg-gray-400'}`} />
+                Silla {seat}
               </motion.button>
             ))}
           </div>
@@ -536,7 +593,17 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                 ))}
               </div>
 
-              <div className="p-5 border-t border-gray-100 bg-gray-50">
+              <div className="px-5 py-3 border-t border-gray-100 space-y-3">
+                <div>
+                  <label className="text-xs text-gray-500 font-medium">Observación (opcional)</label>
+                  <textarea
+                    value={itemNotes}
+                    onChange={(e) => setItemNotes(e.target.value)}
+                    placeholder="Ej: Sin cebolla, término medio..."
+                    rows={2}
+                    className="w-full mt-1 p-3 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-300"
+                  />
+                </div>
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   onClick={handleConfirmModifiers}
