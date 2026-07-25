@@ -75,6 +75,7 @@ export const api = {
   getConfigData: () => request('/config/data'),
 
   // Production Centers
+  getProductionCenters: () => request('/settings/production-centers'),
   createProductionCenter: (data) => request('/settings/production-centers', {
     method: 'POST',
     body: data,
@@ -82,6 +83,9 @@ export const api = {
   updateProductionCenter: (centerId, data) => request(`/settings/production-centers/${centerId}`, {
     method: 'POST',
     body: data,
+  }),
+  deleteProductionCenter: (centerId) => request(`/settings/production-centers/${centerId}`, {
+    method: 'DELETE',
   }),
   updateProductProductionCenters: (productId, centerIds) => request(`/settings/products/${productId}/production-centers`, {
     method: 'POST',
@@ -143,6 +147,10 @@ export const api = {
     method: 'POST',
     body: data,
   }),
+  splitShared: (accountId, data) => request(`/accounts/${accountId}/split-shared`, {
+    method: 'POST',
+    body: data,
+  }),
   transferAccount: (sourceAccountId, targetAccountId) => request(`/accounts/${sourceAccountId}/transfer-account`, {
     method: 'POST',
     body: { targetAccountId },
@@ -158,7 +166,18 @@ export const api = {
     body: data,
   }),
 
+  // Reprint / Search
+  searchPaidAccounts: (q, centerId, startDate, endDate) => {
+    let url = `/accounts/paid/search?q=${encodeURIComponent(q)}&centerId=${centerId}`;
+    if (startDate) url += `&startDate=${encodeURIComponent(startDate)}`;
+    if (endDate) url += `&endDate=${encodeURIComponent(endDate)}`;
+    return request(url);
+  },
+  getAccountReceipt: (accountId) => request(`/accounts/${accountId}/receipt`),
+
   // Shifts
+  checkActiveShift: (centerId) => request(`/shifts/active?centerId=${centerId}`),
+  previewShift: (centerId, closingCash) => request(`/shifts/preview?centerId=${centerId}${closingCash !== undefined ? '&closingCash=' + closingCash : ''}`),
   openShift: (data) => request('/shifts/open', {
     method: 'POST',
     body: data,
@@ -167,11 +186,57 @@ export const api = {
     method: 'POST',
     body: data,
   }),
+  getClosedShifts: (centerId, limit = 20) => request(`/shifts/closed?centerId=${centerId}&limit=${limit}`),
+  getShiftReport: (shiftId) => request(`/shifts/${shiftId}/report`),
 
   // Reports
   getVoidedItems: () => request('/reports/voided-items'),
-  getWaiterTips: () => request('/reports/waiter-tips'),
+  getWaiterTips: (params) => {
+    const q = new URLSearchParams();
+    if (params?.startDate) q.set('startDate', params.startDate);
+    if (params?.endDate) q.set('endDate', params.endDate);
+    if (params?.waiterId) q.set('waiterId', params.waiterId);
+    if (params?.centerId) q.set('centerId', params.centerId);
+    return request(`/reports/waiter-tips?${q.toString()}`);
+  },
   getAccountTrace: (accountId) => request(`/reports/account-trace/${accountId}`),
+  getProductSales: (params) => {
+    const q = new URLSearchParams();
+    if (params?.startDate) q.set('startDate', params.startDate);
+    if (params?.endDate) q.set('endDate', params.endDate);
+    if (params?.centerId) q.set('centerId', params.centerId);
+    if (params?.categoryId) q.set('categoryId', params.categoryId);
+    if (params?.productName) q.set('productName', params.productName);
+    return request(`/reports/product-sales?${q.toString()}`);
+  },
+  getSalesByPaymentMethod: (params) => {
+    const q = new URLSearchParams();
+    if (params?.startDate) q.set('startDate', params.startDate);
+    if (params?.endDate) q.set('endDate', params.endDate);
+    if (params?.centerId) q.set('centerId', params.centerId);
+    if (params?.method) q.set('method', params.method);
+    return request(`/reports/sales-by-payment-method?${q.toString()}`);
+  },
+  getSalesByCenter: (params) => {
+    const q = new URLSearchParams();
+    if (params?.startDate) q.set('startDate', params.startDate);
+    if (params?.endDate) q.set('endDate', params.endDate);
+    if (params?.centerId) q.set('centerId', params.centerId);
+    if (params?.productName) q.set('productName', params.productName);
+    if (params?.productIds?.length) q.set('productIds', params.productIds.join(','));
+    return request(`/reports/sales-by-center?${q.toString()}`);
+  },
+  getSalesByUser: (params) => {
+    const q = new URLSearchParams();
+    if (params?.startDate) q.set('startDate', params.startDate);
+    if (params?.endDate) q.set('endDate', params.endDate);
+    if (params?.centerId) q.set('centerId', params.centerId);
+    if (params?.categoryId) q.set('categoryId', params.categoryId);
+    if (params?.productName) q.set('productName', params.productName);
+    if (params?.productIds?.length) q.set('productIds', params.productIds.join(','));
+    if (params?.userIds?.length) q.set('userIds', params.userIds.join(','));
+    return request(`/reports/sales-by-user?${q.toString()}`);
+  },
 
   // CXC - Cuentas por Cobrar
   cxc: {
@@ -276,8 +341,12 @@ export const api = {
       method: 'DELETE',
     }),
     createDiscountPreset: (data) => request('/settings/discount-presets', { method: 'POST', body: data }),
+    getTipExcludedMethods: () => request('/settings/tip-excluded-methods'),
+    setTipExcludedMethods: (data) => request('/settings/tip-excluded-methods', { method: 'POST', body: data }),
     updateDiscountPreset: (presetId, data) => request(`/settings/discount-presets/${presetId}`, { method: 'POST', body: data }),
     createStaffUser: (data) => request('/settings/staff-users', { method: 'POST', body: data }),
+    updateStaffUser: (userId, data) => request(`/settings/staff-users/${userId}`, { method: 'PUT', body: data }),
+    deleteStaffUser: (userId) => request(`/settings/staff-users/${userId}`, { method: 'DELETE' }),
     updateStaffUserCenter: (userId, centerId) => request(`/settings/staff-users/${userId}/center`, { method: 'POST', body: { operationCenterId: centerId } }),
     createTerminal: (data) => request('/settings/terminals', { method: 'POST', body: data }),
     updateTerminal: (terminalId, data) => request(`/settings/terminals/${terminalId}`, { method: 'POST', body: data }),
@@ -286,6 +355,17 @@ export const api = {
     deleteCategory: (categoryId) => request(`/settings/categories/${categoryId}`, { method: 'DELETE' }),
     deleteCenter: (centerId) => request(`/settings/operation-centers/${centerId}`, { method: 'DELETE' }),
   },
+  roles: {
+    list: () => request('/settings/roles'),
+    create: (data) => request('/settings/roles', { method: 'POST', body: data }),
+    update: (roleId, data) => request(`/settings/roles/${roleId}`, { method: 'PUT', body: data }),
+    delete: (roleId) => request(`/settings/roles/${roleId}`, { method: 'DELETE' }),
+    setPermissions: (roleId, permissionIds) => request(`/settings/roles/${roleId}/permissions`, { method: 'POST', body: { permissionIds } }),
+  },
+  users: {
+    setRoles: (userId, roleIds) => request(`/settings/users/${userId}/roles`, { method: 'POST', body: { roleIds } }),
+  },
+  refreshSession: () => request('/auth/refresh-session', { method: 'POST' }),
   inventory: {
     list: () => request('/inventory/items'),
     create: (data) => request('/inventory/items', { method: 'POST', body: data }),
@@ -295,6 +375,40 @@ export const api = {
     addMovement: (data) => request('/inventory/movements', { method: 'POST', body: data }),
     getRecipe: (productId) => request(`/inventory/products/${productId}/recipe`),
     saveRecipe: (productId, data) => request(`/inventory/products/${productId}/recipe`, { method: 'POST', body: data }),
+  },
+  
+  // KDS - Kitchen Display System
+  kds: {
+    getOrders: (centerId) => {
+      const params = new URLSearchParams();
+      if (centerId) params.append('centerId', centerId);
+      return request(`/kds/orders?${params}`);
+    },
+    getOrdersWithVoided: (centerId) => {
+      const params = new URLSearchParams();
+      if (centerId) params.append('centerId', centerId);
+      return request(`/kds/orders-with-voided?${params}`);
+    },
+    getProductionCenters: () => request('/kds/production-centers'),
+    markItemDone: (itemId) => request(`/kds/items/${itemId}/done`, { method: 'POST' }),
+    markAccountDone: (accountId) => request(`/kds/accounts/${accountId}/done-all`, { method: 'POST' }),
+    getCompleted: (centerId, limit = 50) => {
+      const params = new URLSearchParams({ limit });
+      if (centerId) params.append('centerId', centerId);
+      return request(`/kds/completed?${params}`);
+    },
+    getVoided: (centerId, limit = 20) => {
+      const params = new URLSearchParams({ limit });
+      if (centerId) params.append('centerId', centerId);
+      return request(`/kds/voided?${params}`);
+    },
+    getKdsReport: (date, centerId, limit = 100) => {
+      const params = new URLSearchParams();
+      if (date) params.append('date', date);
+      if (centerId) params.append('centerId', centerId);
+      params.append('limit', limit);
+      return request(`/kds/report?${params}`);
+    },
   },
 };
 

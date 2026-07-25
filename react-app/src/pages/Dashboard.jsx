@@ -14,7 +14,9 @@ import {
   BarChart3,
   CreditCard,
   UtensilsCrossed,
-  ListTodo
+  ListTodo,
+  Printer,
+  ChefHat
 } from 'lucide-react';
 
 export function Dashboard({ onNavigate }) {
@@ -78,6 +80,14 @@ export function Dashboard({ onNavigate }) {
       gradient: 'from-blue-500 to-blue-600',
       bgLight: 'bg-blue-50'
     },
+    { 
+      id: 'kds', 
+      icon: ChefHat, 
+      title: 'KDS', 
+      subtitle: 'Cocina en vivo',
+      gradient: 'from-orange-500 to-red-600',
+      bgLight: 'bg-orange-50'
+    },
     {
       id: 'shifts',
       icon: PlayCircle, 
@@ -122,7 +132,9 @@ export function Dashboard({ onNavigate }) {
                 <h1 className="font-semibold text-gray-900">
                   {greeting}, {user?.full_name?.split(' ')[0] || 'Usuario'}
                 </h1>
-                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
+                <p className="text-xs text-gray-500">
+                  {user?.role === 'admin' ? 'Administrador' : user?.role === 'manager' ? 'Gerente' : user?.role === 'cashier' ? 'Cajero' : user?.role === 'waiter' ? 'Mesero' : user?.role}
+                </p>
               </div>
             </div>
             <button
@@ -262,18 +274,18 @@ export function Dashboard({ onNavigate }) {
       {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2">
         <div className="flex justify-around">
-          <button className="flex flex-col items-center gap-0.5 p-2 text-primary-600">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-            </svg>
-            <span className="text-[10px] font-medium">Inicio</span>
-          </button>
-          <button 
-            onClick={() => onNavigate('tables')}
+          <button onClick={() => onNavigate('tables')}
             className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
           >
             <LayoutGrid className="w-5 h-5" />
             <span className="text-[10px] font-medium">Mesas</span>
+          </button>
+          <button 
+            onClick={() => onNavigate('kds')}
+            className="flex flex-col items-center gap-0.5 p-2 text-orange-500"
+          >
+            <ChefHat className="w-5 h-5" />
+            <span className="text-[10px] font-medium">KDS</span>
           </button>
           <button 
             onClick={() => onNavigate('accounts')}
@@ -283,18 +295,18 @@ export function Dashboard({ onNavigate }) {
             <span className="text-[10px] font-medium">Cuentas</span>
           </button>
           <button 
-            onClick={() => onNavigate('reports')}
+            onClick={() => onNavigate('reprints')}
             className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
           >
-            <BarChart3 className="w-5 h-5" />
-            <span className="text-[10px] font-medium">Reportes</span>
+            <Printer className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Reimpr.</span>
           </button>
           <button 
             onClick={() => onNavigate('settings')}
             className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
           >
             <Settings className="w-5 h-5" />
-            <span className="text-[10px] font-medium">Config</span>
+            <span className="text-[10px] font-medium">Config.</span>
           </button>
         </div>
       </nav>

@@ -11,6 +11,8 @@ import { SettingsPage } from './pages/Settings';
 import { ShiftsPage } from './pages/Shifts';
 import { ReportsPage } from './pages/Reports';
 import { AccountsPage } from './pages/AccountsPage';
+import { ReprintPage } from './pages/ReprintPage';
+import { KitchenDisplay } from './pages/KitchenDisplay';
 import api from './api';
 
 function AppContent() {
@@ -102,6 +104,10 @@ function AppContent() {
       return (
         <ShiftsPage onBack={() => setView('dashboard')} />
       );
+    case 'reprints':
+      return (
+        <ReprintPage onBack={() => setView('dashboard')} />
+      );
     case 'reports':
       return (
         <ReportsPage onBack={() => setView('dashboard')} />
@@ -121,6 +127,10 @@ function AppContent() {
             setView('order');
           }} 
         />
+      );
+    case 'kds':
+      return (
+        <KitchenDisplay onBack={() => setView('dashboard')} />
       );
     default:
       return <Dashboard onNavigate={handleNavigate} />;

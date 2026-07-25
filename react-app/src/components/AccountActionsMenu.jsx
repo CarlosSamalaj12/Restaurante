@@ -11,6 +11,8 @@ import {
   Trash2,
   ArrowRight,
   ArrowLeftRight,
+  Check,
+  Users,
 } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
@@ -26,6 +28,13 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       label: 'Dividir Cuenta',
       description: 'Dividir entre varias cuentas',
       color: 'bg-blue-500',
+    },
+    {
+      id: 'shared',
+      icon: Users,
+      label: 'Cuenta Compartida',
+      description: 'Dividir igual entre personas',
+      color: 'bg-indigo-500',
     },
     {
       id: 'transfer',
@@ -127,6 +136,15 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
             accountId={accountId} 
             account={account}
             tableId={tableId}
+            onClose={() => setActiveAction(null)}
+            onRefresh={onRefresh}
+          />
+        )}
+        {activeAction === 'shared' && (
+          <SharedAccountModal 
+            accountId={accountId} 
+            account={account}
+            totals={totals}
             onClose={() => setActiveAction(null)}
             onRefresh={onRefresh}
           />
@@ -285,10 +303,10 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl w-full max-w-md p-5"
+          className="bg-white rounded-2xl w-full max-w-2xl p-5"
         >
-          <h3 className="font-semibold text-gray-900 mb-2">Dividir Cuenta</h3>
-          <p className="text-sm text-gray-500 mb-4">¿Entre cuántas cuentas deseas dividir?</p>
+          <h3 className="font-semibold text-gray-900 mb-1">Dividir Cuenta</h3>
+          <p className="text-xs text-gray-500 mb-4">¿Entre cuántas cuentas deseas dividir?</p>
           
           <div className="grid grid-cols-5 gap-2 mb-4">
             {[2, 3, 4, 5, 6].map(n => (
@@ -398,10 +416,10 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+        className="bg-white rounded-2xl w-full max-w-6xl max-h-[94vh] flex flex-col"
       >
         {/* Header */}
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="font-semibold text-gray-900">Dividir en {splitCount} cuentas</h3>
             <p className="text-xs text-gray-500">Toca un producto y luego la cuenta donde va</p>
@@ -413,17 +431,17 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
 
         <div className="flex-1 flex flex-col min-h-0">
           {/* Unassigned items tray */}
-          <div className="bg-gray-50 border-b px-5 py-3">
+          <div className="bg-gray-50 border-b px-5 py-2.5 flex-shrink-0">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Productos sin asignar
               </p>
               <span className="text-xs text-gray-400">{unassigned.length} items</span>
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" style={{ maxHeight: '120px' }}>
               {unassigned.length === 0 ? (
-                <div className="flex items-center gap-2 text-sm text-emerald-600 py-2">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                <div className="flex items-center gap-2 text-xs text-emerald-600 py-2">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                   Todos asignados
                 </div>
               ) : (
@@ -432,13 +450,13 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                     key={item.id}
                     layout
                     onClick={() => setSelectedItemId(selectedItemId === item.id ? null : item.id)}
-                    className={`flex-shrink-0 w-36 p-3 rounded-xl border-2 text-left transition-all ${
+                    className={`flex-shrink-0 w-40 p-2.5 rounded-lg border-2 text-left transition-all ${
                       selectedItemId === item.id
                         ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-200'
-                        : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
                     }`}
                   >
-                    <p className="text-sm font-medium text-gray-900 truncate">{item.product_name}</p>
+                    <p className="text-xs font-medium text-gray-900 truncate">{item.product_name}</p>
                     <p className="text-xs text-gray-500 mt-0.5">Q{Number(item.line_total || 0).toFixed(2)}</p>
                   </motion.button>
                 ))
@@ -448,7 +466,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
 
           {/* Account columns */}
           <div className="flex-1 overflow-x-auto overflow-y-auto p-5">
-            <div className="flex gap-4 h-full" style={{ minWidth: `${Math.max(splitCount * 180, 100)}px` }}>
+            <div className="flex gap-3 h-full" style={{ minWidth: `${Math.max(splitCount * 180, 100)}px` }}>
               {Array.from({ length: splitCount }, (_, i) => {
                 const accountItems = items.filter(item => assignments[item.id] === i);
                 const isTarget = selectedItemId !== null;
@@ -464,23 +482,23 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                         handleAssign(selectedItemId, i);
                       }
                     }}
-                    className={`flex-1 min-w-[150px] rounded-xl border-2 flex flex-col transition-all ${
+                    className={`flex-1 min-w-[160px] rounded-xl border-2 flex flex-col transition-all ${
                       isTarget
                         ? `${accountLightColors[i]} cursor-pointer hover:shadow-lg border-dashed`
                         : 'border-gray-200 bg-gray-50/50'
                     }`}
                   >
                     {/* Account header */}
-                    <div className={`${accountHeaderColors[i]} rounded-t-lg px-3 py-2.5 text-center`}>
-                      <p className="text-white font-bold text-sm">Cuenta {i + 1}</p>
-                      <p className="text-white/90 text-lg font-bold">Q{getAccountTotal(i).toFixed(2)}</p>
+                    <div className={`${accountHeaderColors[i]} rounded-t-lg px-3 py-2 text-center`}>
+                      <p className="text-white font-bold text-xs">Cuenta {i + 1}</p>
+                      <p className="text-white/90 text-base font-bold">Q{getAccountTotal(i).toFixed(2)}</p>
                       <p className="text-white/70 text-[10px]">{getAssignedCount(i)} items</p>
                     </div>
 
                     {/* Assigned items */}
-                    <div className="flex-1 p-2 space-y-1.5 min-h-[80px]">
+                    <div className="flex-1 p-2 space-y-1.5 min-h-[60px]">
                       {accountItems.length === 0 ? (
-                        <div className="flex items-center justify-center h-full py-6">
+                        <div className="flex items-center justify-center h-full py-4">
                           <p className="text-xs text-gray-400">
                             {isTarget ? 'Toca para asignar' : 'Vacía'}
                           </p>
@@ -500,7 +518,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                                 return next;
                               });
                             }}
-                            className="group relative bg-white rounded-lg border border-gray-100 p-2.5 cursor-pointer hover:border-red-200 hover:bg-red-50/30 transition-all"
+                            className="group relative bg-white rounded-lg border border-gray-100 p-2 cursor-pointer hover:border-red-200 hover:bg-red-50/30 transition-all"
                           >
                             <div className="flex items-start justify-between gap-1">
                               <p className="text-xs font-medium text-gray-800 truncate flex-1">{item.product_name}</p>
@@ -519,20 +537,20 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-100 bg-white flex items-center gap-3">
+        <div className="px-5 py-3 border-t border-gray-100 bg-white flex items-center gap-3 flex-shrink-0">
           <div className="flex-1">
             {selectedItemId !== null ? (
-              <span className="text-sm text-blue-600 font-medium flex items-center gap-1.5">
+              <span className="text-xs text-blue-600 font-medium flex items-center gap-1.5">
                 <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
                 Producto seleccionado — toca una cuenta para asignarlo
               </span>
             ) : unassigned.length > 0 ? (
-              <span className="text-sm text-amber-600 font-medium">
+              <span className="text-xs text-amber-600 font-medium">
                 {unassigned.length} producto{unassigned.length !== 1 ? 's' : ''} sin asignar
               </span>
             ) : (
-              <span className="text-sm text-emerald-600 font-medium flex items-center gap-1.5">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              <span className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                 Todos los productos asignados
               </span>
             )}
@@ -540,15 +558,246 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
           <button
             onClick={handleSplit}
             disabled={loading || assignedCount === 0}
-            className="px-8 py-3 bg-blue-500 text-white rounded-xl text-sm font-semibold disabled:opacity-50 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20"
+            className="px-6 py-2.5 bg-blue-500 text-white rounded-xl text-xs font-semibold disabled:opacity-50 hover:bg-blue-600 transition-colors"
           >
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
-                Dividiendo...
-              </span>
+            {loading ? 'Dividiendo...' : 'Dividir Cuenta'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function SharedAccountModal({ accountId, account, totals, onClose, onRefresh }) {
+  const [peopleCount, setPeopleCount] = useState(2);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const toast = useToast();
+
+  // Load items when modal opens
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await api.printPrecheck(accountId);
+        setItems(data.items || []);
+      } catch (err) {
+        toast.error('Error al cargar productos');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [accountId]);
+
+  // Calculate shared split - each product appears in every account with 1/n quantity
+  const getSharedPreview = () => {
+    if (!items.length || peopleCount < 2) return [];
+    const fraction = 1 / peopleCount;
+    const fractionText = peopleCount === 2 ? '1/2' : peopleCount === 3 ? '1/3' : `1/${peopleCount}`;
+
+    return items.map(item => {
+      const unitPrice = Number(item.unit_price) || 0;
+      const originalQty = Number(item.qty) || 1;
+      const originalTotal = Number(item.line_total) || 0;
+      const fractionalQty = Number((fraction).toFixed(2));
+      const fractionalTotal = Number((originalTotal * fraction).toFixed(2));
+
+      return {
+        ...item,
+        fractionText,
+        originalQty,
+        originalTotal,
+        fractionalQty,
+        fractionalTotal,
+      };
+    });
+  };
+
+  const previewItems = getSharedPreview();
+  const grandTotal = items.reduce((s, i) => s + Number(i.line_total || 0), 0);
+  const perPerson = Number((grandTotal / peopleCount).toFixed(2));
+
+  const handleCreate = async () => {
+    if (peopleCount < 2) return;
+    setCreating(true);
+    try {
+      await api.splitShared(accountId, { peopleCount });
+      toast.success(`${peopleCount} cuentas compartidas creadas`);
+      onRefresh();
+      onClose();
+    } catch (err) {
+      toast.error(err.message || 'Error al crear cuentas compartidas');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const baseColors = [
+    'bg-indigo-500', 'bg-pink-500', 'bg-amber-500',
+    'bg-emerald-500', 'bg-cyan-500', 'bg-purple-500'
+  ];
+  const baseLightColors = [
+    'bg-indigo-50 border-indigo-200',
+    'bg-pink-50 border-pink-200',
+    'bg-amber-50 border-amber-200',
+    'bg-emerald-50 border-emerald-200',
+    'bg-cyan-50 border-cyan-200',
+    'bg-purple-50 border-purple-200',
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-2xl w-full max-w-6xl max-h-[94vh] flex flex-col"
+      >
+        {/* Header */}
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h3 className="font-semibold text-gray-900">Cuenta Compartida</h3>
+            <p className="text-xs text-gray-500">Todos pagan lo mismo — cada producto se divide entre las personas</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        {/* People selector */}
+        <div className="px-5 py-3 border-b bg-gray-50 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">¿Entre cuántas personas?</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPeopleCount(Math.max(2, peopleCount - 1))}
+                className="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-600 font-bold hover:bg-gray-100 flex items-center justify-center"
+              >
+                −
+              </button>
+              <span className="w-10 text-center font-bold text-lg text-gray-900">{peopleCount}</span>
+              <button
+                onClick={() => setPeopleCount(Math.min(12, peopleCount + 1))}
+                className="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-600 font-bold hover:bg-gray-100 flex items-center justify-center"
+              >
+                +
+              </button>
+            </div>
+          </div>
+          {/* Quick select buttons */}
+          <div className="flex gap-2 mt-2">
+            {[2, 3, 4, 5, 6, 8].filter(n => n <= 12).map(n => (
+              <button
+                key={n}
+                onClick={() => setPeopleCount(n)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  peopleCount === n
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Preview: shared products + per-person columns */}
+        <div className="flex-1 overflow-x-auto overflow-y-auto p-5">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-sm text-gray-400">Cargando productos...</p>
+            </div>
+          ) : (
+            <>
+              {/* Per-person totals summary */}
+              <div className="flex gap-3 mb-4" style={{ minWidth: `${Math.max(peopleCount * 200, 400)}px` }}>
+                {Array.from({ length: peopleCount }, (_, i) => (
+                  <div key={i} className={`flex-1 min-w-[180px] rounded-xl border-2 ${baseLightColors[i % baseLightColors.length]} px-3 py-2 text-center`}>
+                    <p className={`${baseColors[i % baseColors.length]} text-white text-xs font-bold rounded-full py-0.5`}>
+                      Persona {i + 1}
+                    </p>
+                    <p className="text-xl font-black text-gray-900 mt-1">Q{perPerson.toFixed(2)}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Products table - all items with fractional qty and price */}
+              <div className="bg-gray-50 rounded-xl border border-gray-200 overflow-hidden" style={{ minWidth: `${Math.max(peopleCount * 200, 400)}px` }}>
+                <div className="grid border-b border-gray-200" style={{ gridTemplateColumns: `2fr repeat(${peopleCount}, 1fr) 1fr` }}>
+                  {/* Product header */}
+                  <div className="px-3 py-2 bg-gray-100 text-xs font-bold text-gray-600">Producto</div>
+                  {/* Per-person headers */}
+                  {Array.from({ length: peopleCount }, (_, i) => (
+                    <div key={i} className={`px-2 py-2 text-center text-xs font-bold ${baseColors[i % baseColors.length]} text-white`}>
+                      Persona {i + 1}
+                    </div>
+                  ))}
+                  <div className="px-3 py-2 bg-gray-100 text-xs font-bold text-gray-600 text-right">Total</div>
+                </div>
+
+                {previewItems.map(item => (
+                  <div key={item.id} className="grid border-b border-gray-100 last:border-0 hover:bg-white transition-colors" style={{ gridTemplateColumns: `2fr repeat(${peopleCount}, 1fr) 1fr` }}>
+                    {/* Product name + original info */}
+                    <div className="px-3 py-2 flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-800 truncate">{item.product_name}</p>
+                        <p className="text-[10px] text-gray-400">
+                          {item.originalQty}x original · Q{item.originalTotal.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                    {/* Each person gets 1/n */}
+                    {Array.from({ length: peopleCount }, (_, i) => (
+                      <div key={i} className="px-2 py-2 text-center border-l border-gray-100 flex flex-col items-center justify-center">
+                        <span className={`${baseColors[i % baseColors.length]} text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 mb-0.5`}>
+                          {item.fractionText}
+                        </span>
+                        <span className="text-xs font-semibold text-gray-700">
+                          {item.fractionalQty}x
+                        </span>
+                        <span className="text-[10px] text-gray-500">
+                          Q{item.fractionalTotal.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                    {/* Total for this product */}
+                    <div className="px-3 py-2 text-right flex items-center justify-end">
+                      <span className="text-xs font-bold text-gray-900">Q{item.originalTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
+          <div>
+            <p className="text-xs text-gray-400">Total cuenta</p>
+            <p className="text-lg font-bold text-gray-900">Q{grandTotal.toFixed(2)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-gray-400">Cada persona paga</p>
+            <p className="text-xl font-black text-indigo-600">Q{perPerson.toFixed(2)}</p>
+          </div>
+          <button
+            onClick={handleCreate}
+            disabled={creating || loading || peopleCount < 2}
+            className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50 hover:bg-indigo-700 transition-colors flex items-center gap-2"
+          >
+            {creating ? (
+              <>
+                <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                Creando...
+              </>
             ) : (
-              'Dividir Cuenta'
+              <>
+                <Check className="w-3.5 h-3.5" />
+                Crear {peopleCount} Cuentas
+              </>
             )}
           </button>
         </div>
@@ -557,76 +806,224 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
   );
 }
 
-function MoveSeatModal({ accountId, items, onClose, onRefresh }) {
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [newSeat, setNewSeat] = useState('');
+function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
+  // staged: map of itemId -> newSeatNo (null if same/not moved)
+  const [staged, setStaged] = useState({});
+  const [saving, setSaving] = useState(false);
   const toast = useToast();
 
-  const seats = [...new Set(items.map(i => i.seat_no || 1))].sort((a, b) => a - b);
+  const seats = [...new Set(initialItems.map(i => i.seat_no || 1))].sort((a, b) => a - b);
   const maxSeat = Math.max(...seats, 4);
 
-  const handleMove = async () => {
-    if (!selectedItem || !newSeat) return;
+  // Apply staged changes to get the "preview" state
+  const items = initialItems.map(item => ({
+    ...item,
+    effectiveSeat: staged[item.id] !== undefined ? staged[item.id] : (item.seat_no || 1),
+  }));
+
+  const getItemsForSeat = (seat) => {
+    return items.filter(i => i.effectiveSeat === seat);
+  };
+
+  const getMovedCount = () => Object.values(staged).filter(s => s !== null).length;
+
+  const selectItem = (itemId) => {
+    setStaged(prev => {
+      const id = String(itemId);
+      const next = { ...prev };
+      // Toggle: if already pending (null), deselect; if already moved, clear; if new, mark pending
+      if (next[id] === null) {
+        // Already pending → deselect
+        delete next[id];
+      } else if (next[id] !== undefined) {
+        // Already moved to a seat → clear
+        delete next[id];
+      } else {
+        // New → mark as pending (null = waiting for destination)
+        next[id] = null;
+      }
+      return next;
+    });
+  };
+
+  const moveSelectedToSeat = (destSeat) => {
+    const selectedId = Object.keys(staged).find(id => staged[id] === null);
+    if (!selectedId) return;
+    const item = items.find(i => String(i.id) === selectedId);
+    if (!item || item.effectiveSeat === destSeat) {
+      setStaged({});
+      return;
+    }
+    setStaged({ [selectedId]: destSeat });
+  };
+
+  // The currently selected item (pending a destination)
+  const pendingItemId = Object.keys(staged).find(id => staged[id] === null);
+  const pendingItem = pendingItemId ? items.find(i => String(i.id) === pendingItemId) : null;
+
+  const handleSave = async () => {
+    const moves = Object.entries(staged)
+      .filter(([_, newSeat]) => newSeat !== null)
+      .map(([itemId, newSeat]) => ({ itemId: Number(itemId), newSeat }));
+
+    if (moves.length === 0) {
+      onClose();
+      return;
+    }
+
+    setSaving(true);
     try {
-      await api.moveItemSeat(selectedItem, parseInt(newSeat));
-      toast.success('Producto movido');
+      for (const { itemId, newSeat } of moves) {
+        await api.moveItemSeat(itemId, newSeat);
+      }
+      toast.success(`${moves.length} producto${moves.length > 1 ? 's' : ''} movido${moves.length > 1 ? 's' : ''}`);
       onRefresh();
       onClose();
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-md p-5"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col"
       >
-        <h3 className="font-semibold text-gray-900 mb-4">Mover a Silla</h3>
-        
-        <div className="mb-4">
-          <label className="text-sm text-gray-600 mb-2 block">Seleccionar Producto</label>
-          <select 
-            value={selectedItem || ''} 
-            onChange={(e) => setSelectedItem(e.target.value ? parseInt(e.target.value) : null)}
-            className="w-full border border-gray-200 rounded-xl p-3"
-          >
-            <option value="">Elegir...</option>
-            {items.map(item => (
-              <option key={item.id} value={item.id}>
-                {item.product_name} (Silla {item.seat_no || 1})
-              </option>
-            ))}
-          </select>
+        {/* Header - compacta */}
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h3 className="font-semibold text-gray-900">Mover Silla</h3>
+            <p className="text-xs text-gray-400">
+              {pendingItem
+                ? `"${pendingItem.product_name}" (Silla ${pendingItem.effectiveSeat}) — toca la silla destino`
+                : '1. Toca un producto → 2. Toca la silla destino'}
+            </p>
+          </div>
+          <button onClick={() => { setStaged({}); onClose(); }} className="p-2 hover:bg-gray-100 rounded-xl">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
         </div>
 
-        <div className="mb-4">
-          <label className="text-sm text-gray-600 mb-2 block">Mover a Silla</label>
-          <select 
-            value={newSeat} 
-            onChange={(e) => setNewSeat(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl p-3"
-          >
-            <option value="">Elegir...</option>
-            {Array.from({ length: maxSeat }, (_, i) => i + 1).map(seat => (
-              <option key={seat} value={seat}>Silla {seat}</option>
-            ))}
-          </select>
+        {/* Seat columns - maximizado */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(maxSeat, 6)}, minmax(0, 1fr))` }}>
+            {Array.from({ length: maxSeat }, (_, i) => i + 1).map(seat => {
+              const seatItems = getItemsForSeat(seat);
+              const isTarget = pendingItem && pendingItem.effectiveSeat !== seat;
+              const isSource = pendingItem && pendingItem.effectiveSeat === seat;
+
+              return (
+                <motion.div
+                  key={seat}
+                  layout
+                  onClick={() => moveSelectedToSeat(seat)}
+                  animate={isTarget ? { scale: 1.01 } : {}}
+                  className={`
+                    rounded-xl border-2 overflow-hidden transition-all
+                    ${isTarget ? 'border-blue-400 bg-blue-50 shadow-lg shadow-blue-200 cursor-pointer' : ''}
+                    ${isSource ? 'border-gray-200 bg-gray-50 opacity-60' : ''}
+                    ${!pendingItem ? 'border-gray-200 bg-gray-50' : ''}
+                  `}
+                >
+                  {/* Seat header */}
+                  <div className={`px-3 py-2 flex items-center justify-between ${
+                    isTarget ? 'bg-blue-500 text-white' : 'bg-gray-800 text-white'
+                  }`}>
+                    <span className="font-bold text-sm">Silla {seat}</span>
+                    <span className={`text-[10px] ${isTarget ? 'text-blue-100' : 'text-gray-300'}`}>
+                      {seatItems.length} item{seatItems.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {/* Target hint */}
+                  {isTarget && (
+                    <div className="bg-blue-500 text-white text-[10px] font-bold text-center py-1">
+                      ✓ Mover aquí
+                    </div>
+                  )}
+
+                  {/* Items - compacto */}
+                  <div className="p-2 space-y-1">
+                    {seatItems.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-4 italic">
+                        {isTarget ? 'Soltar aquí' : 'Vacía'}
+                      </p>
+                    ) : (
+                      seatItems.map(item => {
+                        const isPending = pendingItemId !== undefined && pendingItemId === String(item.id);
+                        const isMoved = staged[String(item.id)] !== undefined && staged[String(item.id)] !== null;
+
+                        return (
+                          <motion.button
+                            key={item.id}
+                            layout
+                            whileTap={{ scale: pendingItem && !isSource ? 0.97 : 0 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!pendingItem || isSource) {
+                                selectItem(String(item.id));
+                              }
+                            }}
+                            className={`
+                              w-full text-left px-2 py-1.5 rounded-lg transition-all border text-xs
+                              ${isPending
+                                ? 'bg-blue-500 text-white border-blue-600 shadow'
+                                : isMoved
+                                  ? 'bg-green-50 text-green-700 border-green-300'
+                                  : 'bg-white border-gray-100 text-gray-700 hover:border-gray-300'
+                              }
+                            `}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="truncate font-medium leading-tight">{item.product_name}</span>
+                              <span className={`shrink-0 ml-1 ${isPending ? 'text-blue-200' : 'text-gray-400'}`}>
+                                {item.qty || 1}x
+                              </span>
+                            </div>
+                            {isMoved && (
+                              <p className="text-[10px] text-green-600 mt-0.5">→ Silla {staged[item.id]}</p>
+                            )}
+                          </motion.button>
+                        );
+                      })
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-3 border border-gray-200 rounded-xl">
-            Cancelar
-          </button>
-          <button 
-            onClick={handleMove} 
-            disabled={!selectedItem || !newSeat}
-            className="flex-1 py-3 bg-purple-500 text-white rounded-xl disabled:opacity-50"
-          >
-            Mover
-          </button>
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-gray-100 flex-shrink-0">
+          {saving ? (
+            <div className="flex items-center justify-center gap-2 text-purple-600 text-xs font-medium">
+              Guardando...
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setStaged({}); onClose(); }}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-medium text-gray-600"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-medium flex items-center justify-center gap-2 ${
+                  getMovedCount() > 0
+                    ? 'bg-purple-600 text-white hover:bg-purple-700'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {getMovedCount() > 0 ? `${getMovedCount()} cambios — Guardar` : 'Guardar'}
+              </button>
+            </div>
+          )}
         </div>
       </motion.div>
     </div>
@@ -728,7 +1125,25 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
   );
 }
 
-function PrecheckModal({ account, totals, onClose }) {
+function PrecheckModal({ accountId, account, totals, onClose }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await api.printPrecheck(accountId);
+        setItems(data.items || []);
+      } catch (err) {
+        console.error('Error cargando items para precuenta:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [accountId]);
+
   const handlePrint = () => {
     const content = `
       <!DOCTYPE html>
@@ -750,8 +1165,12 @@ function PrecheckModal({ account, totals, onClose }) {
           <div class="center">
             <h2>PRE-CUENTA</h2>
             <p>Mesa: ${account?.table_code || '-'}</p>
-            <p>Check: ${account?.check_number || '-'}</p>
+            <p>Cuenta #: ${account?.check_number || '-'}</p>
           </div>
+          <div class="sep"></div>
+          ${items.map(item => `
+            <p class="row"><span>${item.qty || 1}x ${item.product_name || '-'}</span><span>Q ${Number(item.line_total || 0).toFixed(2)}</span></p>
+          `).join('')}
           <div class="sep"></div>
           <p><strong>Subtotal:</strong> Q ${totals?.subtotal?.toFixed(2) || '0.00'}</p>
           ${totals?.discountTotal > 0 ? `<p><strong>Descuento:</strong> -Q ${totals.discountTotal.toFixed(2)}</p>` : ''}
@@ -777,10 +1196,30 @@ function PrecheckModal({ account, totals, onClose }) {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-md p-5"
+        className="bg-white rounded-2xl w-full max-w-md p-5 max-h-[85vh] flex flex-col"
       >
         <h3 className="font-semibold text-gray-900 mb-4">Pre-Cuenta</h3>
-        <div className="mb-4 space-y-2 text-sm">
+
+        {loading ? (
+          <p className="text-sm text-gray-500 text-center py-4">Cargando productos...</p>
+        ) : items.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4 italic mb-4">Sin productos</p>
+        ) : (
+          <div className="flex-1 overflow-y-auto max-h-[40vh] mb-4 space-y-1.5">
+            {items.map((item, i) => (
+              <div key={i} className="flex justify-between text-sm">
+                <span className="text-gray-700">
+                  {item.qty || 1}x {item.product_name}
+                </span>
+                <span className="text-gray-600 font-medium">
+                  Q {Number(item.line_total || 0).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="border-t pt-3 space-y-1.5 text-sm">
           <div className="flex justify-between">
             <span>Subtotal</span>
             <span>Q {totals?.subtotal?.toFixed(2) || '0.00'}</span>
@@ -802,7 +1241,7 @@ function PrecheckModal({ account, totals, onClose }) {
             <span>Q {totals?.total?.toFixed(2) || '0.00'}</span>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 mt-4">
           <button onClick={onClose} className="flex-1 py-3 border border-gray-200 rounded-xl">
             Cerrar
           </button>
@@ -995,7 +1434,7 @@ function TransferAccountModal({ accountId, account, onClose, onRefresh }) {
                     <div>
                       <p className="font-medium text-gray-900">Mesa {acc.table_code || '-'}</p>
                       <p className="text-xs text-gray-500">
-                        Check: {acc.check_number} • Centro: {acc.operation_center_name || '-'}
+                        Cuenta #: {acc.check_number} • Centro: {acc.operation_center_name || '-'}
                       </p>
                     </div>
                     <p className="font-bold text-cyan-600">Q {Number(acc.total || 0).toFixed(2) || '0.00'}</p>
@@ -1095,7 +1534,7 @@ function JoinAccountsModal({ accountId, account, onClose, onRefresh }) {
                     <div>
                       <p className="font-medium text-gray-900">Mesa {acc.table_code || '-'}</p>
                       <p className="text-xs text-gray-500">
-                        Check: {acc.check_number} • Centro: {acc.operation_center_name || '-'}
+                        Cuenta #: {acc.check_number} • Centro: {acc.operation_center_name || '-'}
                       </p>
                     </div>
                     <p className="font-bold text-teal-600">Q {Number(acc.total || 0).toFixed(2) || '0.00'}</p>

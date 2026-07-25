@@ -18,7 +18,8 @@ import {
   Settings,
   Save,
   Monitor,
-  List
+  List,
+  Shield
 } from 'lucide-react';
 
 const TABS = [
@@ -30,6 +31,7 @@ const TABS = [
   { id: 'terminals', label: 'Terminales', icon: Monitor },
   { id: 'modifiers', label: 'Modificadores', icon: List },
   { id: 'users', label: 'Usuarios', icon: Users },
+  { id: 'roles', label: 'Roles', icon: Shield },
   { id: 'payments', label: 'Pagos', icon: CreditCard },
   { id: 'system', label: 'Sistema', icon: Settings },
 ];
@@ -49,6 +51,10 @@ export function SettingsPage({ onBack }) {
     modifierOptions: [],
     productModifierGroups: [],
     paymentMethods: [],
+    roles: [],
+    permissions: [],
+    permByRole: {},
+    rolesByUser: {},
     restaurantName: '',
     tipPercent: 0,
     logoUrl: '',
@@ -79,7 +85,11 @@ export function SettingsPage({ onBack }) {
         productProductionCenters: configData.productProductionCenters || [],
         productModifierGroups: configData.productModifierGroups || [],
         paymentMethods: bootstrapData.paymentMethods || [],
-        staffUsers: [],
+        staffUsers: configData.staffUsers || [],
+        roles: configData.roles || [],
+        permissions: configData.permissions || [],
+        permByRole: configData.permByRole || {},
+        rolesByUser: configData.rolesByUser || {},
         restaurantName: bootstrapData.restaurantName || 'Mi Restaurante',
         tipPercent: 0,
         logoUrl: bootstrapData.logoUrl || '',
@@ -158,7 +168,7 @@ export function SettingsPage({ onBack }) {
           <CentersSection centers={data.centers} onReload={loadData} />
         )}
         {activeTab === 'production' && (
-          <ProductionCentersSection productionCenters={data.productionCenters} />
+          <ProductionCentersSection productionCenters={data.productionCenters} onReload={loadData} />
         )}
         {activeTab === 'tables' && (
           <TablesSection tables={data.tables} centers={data.centers} onReload={loadData} />
@@ -170,7 +180,17 @@ export function SettingsPage({ onBack }) {
           <ModifiersSection groups={data.modifierGroups} options={data.modifierOptions} onReload={loadData} />
         )}
         {activeTab === 'users' && (
-          <UsersSection centers={data.centers} />
+          <UsersSection centers={data.centers} roles={data.roles} staffUsers={data.staffUsers} onReload={loadData} />
+        )}
+        {activeTab === 'roles' && (
+          <RolesSection
+            roles={data.roles}
+            permissions={data.permissions}
+            permByRole={data.permByRole}
+            rolesByUser={data.rolesByUser}
+            staffUsers={data.staffUsers}
+            onReload={loadData}
+          />
         )}
         {activeTab === 'payments' && (
           <PaymentsSection methods={data.paymentMethods} />
@@ -181,6 +201,7 @@ export function SettingsPage({ onBack }) {
             tipPercent={data.tipPercent}
             logoUrl={data.logoUrl}
             loginBgUrl={data.loginBgUrl}
+            paymentMethods={data.paymentMethods}
             onSaved={(updates) => {
               if (updates.restaurantName) setData(d => ({ ...d, restaurantName: updates.restaurantName }));
               if (updates.logoUrl !== undefined) setData(d => ({ ...d, logoUrl: updates.logoUrl }));
@@ -224,6 +245,20 @@ function ProductsSection({ products, categories, productionCenters, productProdu
     return cat?.color || '#6366f1';
   };
 
+  const getProductCenters = (productId) => {
+    const centerIds = productProductionCenters
+      ?.filter(ppc => Number(ppc.product_id) === Number(productId))
+      .map(ppc => Number(ppc.center_id)) || [];
+    return productionCenters.filter(c => centerIds.includes(c.id));
+  };
+
+  const getCenterBadgeColor = (centerName) => {
+    const name = (centerName || '').toLowerCase();
+    if (name.includes('cocina')) return 'bg-orange-100 text-orange-700';
+    if (name.includes('bar')) return 'bg-blue-100 text-blue-700';
+    return 'bg-gray-100 text-gray-700';
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -241,48 +276,73 @@ function ProductsSection({ products, categories, productionCenters, productProdu
 
       {/* Product List */}
       <div className="space-y-2">
-        {products.map(product => (
-          <motion.div
-            key={product.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl p-4 flex items-center gap-3"
-          >
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: getCategoryColor(product.category_id) + '20' }}
+        {products.map(product => {
+          const centers = getProductCenters(product.id);
+          return (
+            <motion.div
+              key={product.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-xl p-4"
             >
-              <div
-                className="w-4 h-4 rounded-full"
-                style={{ backgroundColor: getCategoryColor(product.category_id) }}
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900 truncate">{product.name}</p>
-              <p className="text-xs text-gray-500">{product.category_name}</p>
-            </div>
-            <div className="text-right flex-shrink-0">
-              <p className="font-bold text-gray-900">Q {Number(product.base_price).toFixed(2)}</p>
-            </div>
-            <div className="flex gap-1">
-              <button
-                onClick={() => {
-                  setEditingProduct(product);
-                  setShowWizard(true);
-                }}
-                className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-              >
-                <Edit className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setConfirmDelete({ id: product.id, name: product.name })}
-                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </motion.div>
-        ))}
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ backgroundColor: getCategoryColor(product.category_id) + '20' }}
+                >
+                  <div
+                    className="w-4 h-4 rounded-full"
+                    style={{ backgroundColor: getCategoryColor(product.category_id) }}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-900 truncate">{product.name}</p>
+                  <p className="text-xs text-gray-500">{product.category_name}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="font-bold text-gray-900">Q {Number(product.base_price).toFixed(2)}</p>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      setEditingProduct(product);
+                      setShowWizard(true);
+                    }}
+                    className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete({ id: product.id, name: product.name })}
+                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              
+              {/* Centers badges */}
+              {centers.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-1.5">
+                  <span className="text-xs text-gray-400 font-medium">Va a:</span>
+                  {centers.map(center => (
+                    <span 
+                      key={center.id}
+                      className={`text-xs font-medium px-2 py-1 rounded-lg ${getCenterBadgeColor(center.name)}`}
+                    >
+                      {center.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {centers.length === 0 && (
+                <div className="mt-2 pt-2 border-t border-gray-100">
+                  <span className="text-xs text-gray-400 italic">Sin centro de producción asignado</span>
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
       </div>
 
       {/* Product Wizard Modal */}
@@ -1072,47 +1132,78 @@ function CentersSection({ centers, onReload }) {
 }
 
 // Production Centers Section
-function ProductionCentersSection({ productionCenters }) {
+function ProductionCentersSection({ productionCenters, onReload }) {
   const [showWizard, setShowWizard] = useState(false);
   const [editingCenter, setEditingCenter] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const toast = useToast();
 
   const handleCreated = () => {
     setShowWizard(false);
     setEditingCenter(null);
-    window.location.reload();
+    if (onReload) onReload();
+  };
+
+  const handleDeleteCenter = async () => {
+    if (!confirmDelete) return;
+    try {
+      await api.settings.deleteProductionCenter(confirmDelete.id);
+      toast.success('Centro eliminado');
+      setConfirmDelete(null);
+      if (onReload) onReload();
+    } catch (error) {
+      toast.error(error.message || 'No se pudo eliminar');
+      setConfirmDelete(null);
+    }
+  };
+
+  const getCenterColor = (centerName) => {
+    const name = (centerName || '').toLowerCase();
+    if (name.includes('cocina')) return 'from-orange-500 to-red-600';
+    if (name.includes('bar')) return 'from-blue-500 to-indigo-600';
+    return 'from-emerald-500 to-teal-600';
   };
 
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">
-          {productionCenters.length} centros de producción
-        </h2>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Centros de Producción
+          </h2>
+          <p className="text-sm text-gray-500">
+            Define dónde se preparan los productos (cocina, bar, etc.)
+          </p>
+        </div>
         <button
           onClick={() => setShowWizard(true)}
           className="bg-primary-600 text-white px-4 py-2 rounded-xl font-medium flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
-          Nuevo
+          Nuevo Centro
         </button>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {productionCenters.map(center => (
           <motion.div
             key={center.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl p-4 flex items-center gap-3"
+            className="bg-white rounded-xl p-4 flex items-center gap-4 border border-gray-200"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
-              <div className="w-4 h-4 rounded-full bg-white/30" />
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getCenterColor(center.name)} flex items-center justify-center shadow-sm`}>
+              <div className="w-5 h-5 rounded-full bg-white/30" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900">{center.name}</p>
-              <p className="text-xs text-gray-500">
-                {center.printer_name ? `Impresora: ${center.printer_name}` : 'Sin impresora asignada'}
+              <div className="flex items-center gap-2">
+                <p className="font-semibold text-gray-900">{center.name}</p>
+                {!center.is_active && (
+                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">Inactivo</span>
+                )}
+              </div>
+              <p className="text-sm text-gray-500">
+                {center.printer_name ? `Impresora: ${center.printer_name}` : 'Sin impresora'}
               </p>
             </div>
             <div className="flex gap-1">
@@ -1125,9 +1216,22 @@ function ProductionCentersSection({ productionCenters }) {
               >
                 <Edit className="w-4 h-4" />
               </button>
+              <button
+                onClick={() => setConfirmDelete({ id: center.id, name: center.name })}
+                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           </motion.div>
         ))}
+        
+        {productionCenters.length === 0 && (
+          <div className="text-center py-12 bg-gray-50 rounded-xl">
+            <p className="text-gray-500">No hay centros de producción</p>
+            <p className="text-sm text-gray-400 mt-1">Crea uno para empezar</p>
+          </div>
+        )}
       </div>
 
       {showWizard && (
@@ -1139,6 +1243,40 @@ function ProductionCentersSection({ productionCenters }) {
           }}
           onCreated={handleCreated}
         />
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
+          >
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Eliminar centro</h3>
+              <p className="text-gray-500 mb-6">
+                ¿Eliminar <strong>{confirmDelete.name}</strong>?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmDelete(null)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteCenter}
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );
@@ -2366,12 +2504,25 @@ function TableWizardModal({ centers, onClose, onCreated }) {
 }
 
 // Users Section
-function UsersSection({ centers }) {
+function UsersSection({ centers, roles, staffUsers, onReload }) {
   const [showWizard, setShowWizard] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
   const toast = useToast();
 
   const handleCreated = () => {
     setShowWizard(false);
+    onReload();
+  };
+
+  const handleDelete = async (user) => {
+    if (!window.confirm(`¿Eliminar usuario "${user.full_name}"?`)) return;
+    try {
+      await api.settings.deleteStaffUser(user.id);
+      toast.success('Usuario eliminado');
+      onReload();
+    } catch (e) {
+      toast.error(e.message || 'Error al eliminar usuario');
+    }
   };
 
   return (
@@ -2395,47 +2546,442 @@ function UsersSection({ centers }) {
         </p>
       </div>
 
+      {/* User list */}
+      <div className="space-y-2 mb-6">
+        {staffUsers.map(user => (
+          <div key={user.id} className="bg-white rounded-xl p-4 border border-gray-100 flex items-center gap-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center text-white font-bold">
+              {user.full_name.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-gray-900">{user.full_name}</p>
+              <p className="text-xs text-gray-500 truncate">{user.role_names || user.role}</p>
+            </div>
+            <span className="text-xs text-gray-400 font-mono shrink-0">PIN: {user.pin_code || '---'}</span>
+            <button
+              onClick={() => setEditingUser(user)}
+              className="p-2 rounded-xl hover:bg-blue-50 text-blue-600 transition-colors"
+              title="Editar"
+            >
+              <Edit className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleDelete(user)}
+              className="p-2 rounded-xl hover:bg-red-50 text-red-500 transition-colors"
+              title="Eliminar"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+
       {showWizard && (
         <UserWizardModal
           centers={centers}
+          roles={roles}
           onClose={() => setShowWizard(false)}
           onCreated={handleCreated}
+        />
+      )}
+
+      {editingUser && (
+        <EditUserModal
+          user={editingUser}
+          centers={centers}
+          roles={roles}
+          onClose={() => setEditingUser(null)}
+          onSaved={onReload}
         />
       )}
     </div>
   );
 }
 
-// User Wizard Modal
-function UserWizardModal({ centers, onClose, onCreated }) {
-  const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: '', pin: '', role: 'waiter', operationCenterId: '' });
+// Roles Section
+function RolesSection({ roles, permissions, permByRole, rolesByUser, staffUsers, onReload }) {
+  const [selectedRole, setSelectedRole] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showUserAssign, setShowUserAssign] = useState(false);
+  const toast = useToast();
+
+  const permsByModule = {};
+  for (const p of permissions) {
+    const mod = p.module_code || 'general';
+    if (!permsByModule[mod]) permsByModule[mod] = [];
+    permsByModule[mod].push(p);
+  }
+
+  const handleTogglePermission = async (roleId, permissionId, enabled) => {
+    const current = permByRole[roleId] || [];
+    const updated = enabled
+      ? [...current, permissionId]
+      : current.filter(id => id !== permissionId);
+    try {
+      await api.roles.setPermissions(roleId, updated);
+      await api.refreshSession();
+      toast.success('Permiso actualizado');
+      onReload();
+    } catch (e) {
+      toast.error('Error al actualizar permiso');
+    }
+  };
+
+  const handleDeleteRole = async (role) => {
+    if (!window.confirm(`¿Eliminar el rol "${role.name}"?`)) return;
+    try {
+      await api.roles.delete(role.id);
+      toast.success('Rol eliminado');
+      setSelectedRole(null);
+      onReload();
+    } catch (e) {
+      toast.error(e.message || 'Error al eliminar rol');
+    }
+  };
+
+  if (showCreate) {
+    return (
+      <CreateRoleModal
+        onClose={() => setShowCreate(false)}
+        onCreated={() => { setShowCreate(false); onReload(); }}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">Roles y Permisos</h2>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="bg-primary-600 text-white px-4 py-2 rounded-xl font-medium flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Nuevo Rol
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Lista de roles */}
+        <div className="bg-white rounded-xl p-4 border border-gray-100">
+          <h3 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wide">Roles</h3>
+          <div className="space-y-2">
+            {roles.map(role => (
+              <button
+                key={role.id}
+                onClick={() => setSelectedRole(role)}
+                className={`w-full text-left p-3 rounded-xl transition-all ${
+                  selectedRole?.id === role.id
+                    ? 'bg-primary-50 border-2 border-primary-500'
+                    : 'bg-gray-50 border-2 border-transparent hover:border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">{role.name}</p>
+                    <p className="text-xs text-gray-500">{role.description}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      role.is_system ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                    }`}>
+                      {role.is_system ? 'Sistema' : 'Personalizado'}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {(permByRole[role.id] || []).length > 0 && (
+                    <span className="text-xs text-gray-400">
+                      {(permByRole[role.id] || []).length} permisos
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Detalle del rol seleccionado */}
+        <div className="lg:col-span-2 bg-white rounded-xl p-4 border border-gray-100">
+          {selectedRole ? (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-bold text-gray-900 text-lg">{selectedRole.name}</h3>
+                  <p className="text-sm text-gray-500">{selectedRole.description}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowUserAssign(true)}
+                    className="text-sm px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100"
+                  >
+                    Asignar Usuarios
+                  </button>
+                  {!selectedRole.is_system && (
+                    <button
+                      onClick={() => handleDeleteRole(selectedRole)}
+                      className="text-sm px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {showUserAssign && (
+                <AssignUsersModal
+                  role={selectedRole}
+                  staffUsers={staffUsers}
+                  rolesByUser={rolesByUser}
+                  roles={roles}
+                  onClose={() => setShowUserAssign(false)}
+                  onAssigned={onReload}
+                />
+              )}
+
+              <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                {Object.entries(permsByModule).map(([module, perms]) => (
+                  <div key={module}>
+                    <h4 className="text-sm font-semibold text-gray-700 uppercase mb-2">
+                      {module === 'restaurant' ? 'Restaurante' :
+                       module === 'erp' ? 'Inventario/ERP' :
+                       module === 'crm' ? 'CRM' :
+                       module === 'pms' ? 'PMS' : 'General'}
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {perms.map(p => {
+                        const enabled = (permByRole[selectedRole.id] || []).includes(p.id);
+                        return (
+                          <label
+                            key={p.id}
+                            className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                              enabled
+                                ? 'border-primary-500 bg-primary-50'
+                                : 'border-gray-100 bg-gray-50 hover:border-gray-200'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={enabled}
+                              onChange={(e) => handleTogglePermission(selectedRole.id, p.id, e.target.checked)}
+                              className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                            />
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-400">
+              <Shield className="w-12 h-12 mx-auto mb-3 opacity-40" />
+              <p>Selecciona un rol para ver y editar sus permisos</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CreateRoleModal({ onClose, onCreated }) {
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const toast = useToast();
 
-  const ROLES = [
-    { id: 'waiter', label: 'Mesero', icon: '🍽️', color: 'from-amber-400 to-orange-500' },
-    { id: 'cashier', label: 'Cajero', icon: '💰', color: 'from-emerald-400 to-green-500' },
-    { id: 'admin', label: 'Administrador', icon: '👑', color: 'from-purple-400 to-indigo-500' },
-  ];
+  const handleCreate = async () => {
+    if (!name.trim() || !slug.trim()) {
+      toast.error('Nombre y slug son requeridos');
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.roles.create({ name: name.trim(), slug: slug.trim(), description: description.trim() });
+      toast.success('Rol creado');
+      onCreated();
+    } catch (e) {
+      toast.error(e.message || 'Error al crear rol');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
+      <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6">
+        <h3 className="font-bold text-gray-900 text-lg mb-4">Nuevo Rol</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => { setName(e.target.value); setSlug(e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')); }}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none"
+              placeholder="Ej: Capturista"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Slug (identificador)</label>
+            <input
+              type="text"
+              value={slug}
+              onChange={e => setSlug(e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none bg-gray-50 text-gray-500"
+              placeholder="capturista"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+            <input
+              type="text"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none"
+              placeholder="Descripción opcional"
+            />
+          </div>
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl">
+            Cancelar
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={loading}
+            className="flex-1 py-3 bg-primary-600 text-white font-medium rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Crear Rol'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AssignUsersModal({ role, staffUsers, rolesByUser, roles, onClose, onAssigned }) {
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const toast = useToast();
+
+  useEffect(() => {
+    const userIds = [];
+    for (const [uid, rids] of Object.entries(rolesByUser)) {
+      if (rids.includes(role.id)) userIds.push(Number(uid));
+    }
+    setSelectedUserIds(userIds);
+  }, [role, rolesByUser]);
+
+  const toggleUser = (userId) => {
+    setSelectedUserIds(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const handleSave = async () => {
+    try {
+      for (const user of staffUsers) {
+        const previousRoles = rolesByUser[user.id] || [];
+        const hadRole = previousRoles.includes(role.id);
+        const wantsRole = selectedUserIds.includes(user.id);
+        if (hadRole === wantsRole) continue;
+        const updatedRoles = wantsRole
+          ? [...previousRoles, role.id]
+          : previousRoles.filter(id => id !== role.id);
+        await api.users.setRoles(user.id, updatedRoles);
+      }
+      await api.refreshSession();
+      toast.success('Usuarios asignados al rol');
+      onAssigned();
+      onClose();
+    } catch (e) {
+      toast.error('Error al asignar usuarios');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
+      <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6">
+        <h3 className="font-bold text-gray-900 text-lg mb-1">Asignar Usuarios</h3>
+        <p className="text-sm text-gray-500 mb-4">Usuarios con rol: <strong>{role.name}</strong></p>
+        <div className="space-y-2 max-h-60 overflow-y-auto">
+          {staffUsers.map(user => (
+            <label
+              key={user.id}
+              className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                selectedUserIds.includes(user.id)
+                  ? 'border-primary-500 bg-primary-50'
+                  : 'border-gray-100 hover:border-gray-200'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={selectedUserIds.includes(user.id)}
+                onChange={() => toggleUser(user.id)}
+                className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+              />
+              <div>
+                <p className="font-medium text-gray-900">{user.full_name}</p>
+                <p className="text-xs text-gray-400">ID: {user.id}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            className="flex-1 py-3 bg-primary-600 text-white font-medium rounded-xl"
+          >
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// User Wizard Modal
+function UserWizardModal({ centers, roles, onClose, onCreated }) {
+  const [step, setStep] = useState(1);
+  const [form, setForm] = useState({ name: '', pin: '', roleId: '', operationCenterId: '' });
+  const [loading, setLoading] = useState(false);
+  const toast = useToast();
+
+  const ROLE_COLORS = ['from-amber-400 to-orange-500', 'from-emerald-400 to-green-500', 'from-purple-400 to-indigo-500', 'from-blue-400 to-cyan-500', 'from-pink-400 to-rose-500'];
+  const ROLE_ICONS = ['🍽️', '💰', '👑', '⚙️', '📋'];
 
   const handleSave = async () => {
     if (!form.operationCenterId) {
       toast.error('Selecciona un centro de trabajo');
       return;
     }
+    if (!form.roleId) {
+      toast.error('Selecciona un rol');
+      return;
+    }
     setLoading(true);
     try {
-      await api.createStaffUser({
+      const result = await api.settings.createStaffUser({
         fullName: form.name,
         pinCode: form.pin,
-        role: form.role,
+        role: 'waiter',
         operationCenterId: form.operationCenterId
       });
+      await api.users.setRoles(result.userId, [form.roleId]);
       toast.success('¡Usuario creado!');
       onCreated();
     } catch (error) {
-      toast.error('Error al crear usuario');
+      toast.error(error.message || 'Error al crear usuario');
     } finally {
       setLoading(false);
     }
@@ -2501,30 +3047,26 @@ function UserWizardModal({ centers, onClose, onCreated }) {
             <div className="space-y-4">
               <p className="text-gray-500 text-sm">¿Cuál es su rol?</p>
               <div className="space-y-3">
-                {ROLES.map(role => (
+                {(roles.length ? roles : []).map((role, idx) => (
                   <motion.button
                     key={role.id}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => {
-                      setForm({ ...form, role: role.id });
+                      setForm({ ...form, roleId: role.id });
                       setStep(4);
                     }}
                     className={`w-full p-4 rounded-xl border-2 flex items-center gap-4 transition-all ${
-                      form.role === role.id
+                      form.roleId === role.id
                         ? 'border-primary-500 bg-primary-50'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    <div className={`w-12 h-12 bg-gradient-to-br ${role.color} rounded-xl flex items-center justify-center text-2xl`}>
-                      {role.icon}
+                    <div className={`w-12 h-12 bg-gradient-to-br ${ROLE_COLORS[idx % ROLE_COLORS.length]} rounded-xl flex items-center justify-center text-2xl`}>
+                      {ROLE_ICONS[idx % ROLE_ICONS.length]}
                     </div>
                     <div className="text-left">
-                      <p className="font-semibold text-gray-900">{role.label}</p>
-                      <p className="text-xs text-gray-500">
-                        {role.id === 'waiter' && 'Puede tomar órdenes'}
-                        {role.id === 'cashier' && 'Puede cobrar'}
-                        {role.id === 'admin' && 'Acceso total'}
-                      </p>
+                      <p className="font-semibold text-gray-900">{role.name}</p>
+                      <p className="text-xs text-gray-500">{role.description || role.slug}</p>
                     </div>
                   </motion.button>
                 ))}
@@ -2565,12 +3107,12 @@ function UserWizardModal({ centers, onClose, onCreated }) {
             <div className="space-y-4">
               <p className="text-gray-500 text-sm">Confirma los datos</p>
               <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 text-center">
-                <div className={`w-16 h-16 bg-gradient-to-br ${ROLES.find(r => r.id === form.role)?.color} rounded-2xl flex items-center justify-center mx-auto mb-3 text-3xl`}>
-                  {ROLES.find(r => r.id === form.role)?.icon}
+                <div className={`w-16 h-16 bg-gradient-to-br ${ROLE_COLORS[roles.findIndex(r => r.id === form.roleId) % ROLE_COLORS.length]} rounded-2xl flex items-center justify-center mx-auto mb-3 text-3xl`}>
+                  {ROLE_ICONS[roles.findIndex(r => r.id === form.roleId) % ROLE_ICONS.length]}
                 </div>
                 <p className="text-xl font-bold text-gray-900">{form.name}</p>
                 <p className="text-sm text-gray-500">PIN: •••••{form.pin.slice(-2)}</p>
-                <p className="text-sm font-medium text-primary-600 mt-1">{ROLES.find(r => r.id === form.role)?.label}</p>
+                <p className="text-sm font-medium text-primary-600 mt-1">{roles.find(r => r.id === form.roleId)?.name}</p>
                 <p className="text-sm font-medium text-blue-600 mt-1">
                   Centro: {centers.find(c => c.id === form.operationCenterId)?.name}
                 </p>
@@ -2617,6 +3159,90 @@ function UserWizardModal({ centers, onClose, onCreated }) {
           )}
         </div>
       </motion.div>
+    </div>
+  );
+}
+
+// Edit User Modal
+function EditUserModal({ user, centers, roles, onClose, onSaved }) {
+  const [fullName, setFullName] = useState(user.full_name || '');
+  const [pinCode, setPinCode] = useState(user.pin_code || '');
+  const [centerId, setCenterId] = useState(user.operation_center_id || '');
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+
+  const handleSave = async () => {
+    if (!fullName.trim()) { toast.error('El nombre es requerido'); return; }
+    setSaving(true);
+    try {
+      await api.settings.updateStaffUser(user.id, {
+        fullName: fullName.trim(),
+        pinCode: pinCode.trim() || undefined,
+        operationCenterId: centerId || null,
+      });
+      toast.success('Usuario actualizado');
+      onSaved();
+      onClose();
+    } catch (e) {
+      toast.error(e.message || 'Error al actualizar usuario');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
+      <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6">
+        <h3 className="font-bold text-gray-900 text-lg mb-4">Editar Usuario</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+            <input
+              type="text"
+              value={fullName}
+              onChange={e => setFullName(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">PIN</label>
+            <input
+              type="password"
+              value={pinCode}
+              onChange={e => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none"
+              placeholder="Dejar vacío para mantener el actual"
+              maxLength={6}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Centro de trabajo</label>
+            <select
+              value={centerId}
+              onChange={e => setCenterId(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none"
+            >
+              <option value="">Seleccionar centro</option>
+              {centers.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 py-3 bg-primary-600 text-white font-medium rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Guardar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2677,7 +3303,7 @@ function resizeImage(dataUrl, maxW, maxH, quality = 0.8, format = 'image/jpeg') 
   });
 }
 
-function SystemSection({ restaurantName, tipPercent, logoUrl, loginBgUrl, onSaved }) {
+function SystemSection({ restaurantName, tipPercent, logoUrl, loginBgUrl, paymentMethods, onSaved }) {
   const [name, setName] = useState(restaurantName);
   const [tip, setTip] = useState(tipPercent);
   const [logoPreview, setLogoPreview] = useState(logoUrl);
@@ -2685,6 +3311,7 @@ function SystemSection({ restaurantName, tipPercent, logoUrl, loginBgUrl, onSave
   const [bgPreview, setBgPreview] = useState(loginBgUrl);
   const [bgBase64, setBgBase64] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [excludedMethods, setExcludedMethods] = useState(['cxc']);
   const logoInputRef = useRef(null);
   const bgInputRef = useRef(null);
   const toast = useToast();
@@ -2693,6 +3320,12 @@ function SystemSection({ restaurantName, tipPercent, logoUrl, loginBgUrl, onSave
     setName(restaurantName);
     setTip(tipPercent);
   }, [restaurantName, tipPercent]);
+
+  useEffect(() => {
+    api.settings.getTipExcludedMethods().then(r => {
+      if (r.excludedMethods) setExcludedMethods(r.excludedMethods);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     setLogoPreview(logoUrl);
@@ -2785,6 +3418,7 @@ function SystemSection({ restaurantName, tipPercent, logoUrl, loginBgUrl, onSave
       if (Number(tip) !== Number(tipPercent)) {
         await api.settings.updateTipConfig(Number(tip));
       }
+      await api.settings.setTipExcludedMethods({ excludedMethods });
       toast.success('Configuración guardada');
     } catch (error) {
       toast.error(error.message || 'Error al guardar');
@@ -2925,6 +3559,36 @@ function SystemSection({ restaurantName, tipPercent, logoUrl, loginBgUrl, onSave
               onChange={(e) => setTip(e.target.value === '' ? 0 : Number(e.target.value))}
               className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Métodos que NO generan propina
+            </label>
+            <p className="text-xs text-gray-400 mb-2">Selecciona los métodos de pago que excluyen la propina</p>
+            <div className="space-y-2">
+              {(paymentMethods||[]).map(pm => {
+                const isExcluded = excludedMethods.includes(pm.code);
+                return (
+                  <label key={pm.code} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isExcluded}
+                      onChange={() => {
+                        setExcludedMethods(prev =>
+                          isExcluded ? prev.filter(c => c !== pm.code) : [...prev, pm.code]
+                        );
+                      }}
+                      className="w-4 h-4 text-red-600 rounded focus:ring-red-500"
+                    />
+                    <span className="text-sm text-gray-700">{pm.label}</span>
+                    {isExcluded && <span className="text-xs text-red-500 ml-auto">Sin propina</span>}
+                  </label>
+                );
+              })}
+              {(!paymentMethods || paymentMethods.length === 0) && (
+                <p className="text-xs text-gray-400">No hay métodos de pago configurados</p>
+              )}
+            </div>
           </div>
           <button
             onClick={handleSave}

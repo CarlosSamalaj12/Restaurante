@@ -33,6 +33,8 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
   const [selectedModifiers, setSelectedModifiers] = useState({});
   const [showVoidModal, setShowVoidModal] = useState(false);
   const [itemToVoid, setItemToVoid] = useState(null);
+  const [voidPin, setVoidPin] = useState('');
+  const [voidReason, setVoidReason] = useState('');
   const [currentSeat, setCurrentSeat] = useState(1);
   const [itemNotes, setItemNotes] = useState('');
   const toast = useToast();
@@ -134,19 +136,39 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
 
   const handleVoidItem = (item) => {
     setItemToVoid(item);
+    setVoidPin('');
+    setVoidReason('');
     setShowVoidModal(true);
   };
 
   const confirmVoidItem = async () => {
     if (!itemToVoid) return;
+    
+    // Check if item was sent (needs PIN)
+    if (itemToVoid.sent_at && !voidPin.trim()) {
+      toast.error('Ingresa el PIN de autorización para anular productos enviados');
+      return;
+    }
+    
     try {
-      await api.voidItem(itemToVoid.id, {
-        reason: 'Cancelado',
-        authorizedBy: account?.waiter_id
-      });
+      const payload = {
+        reason: voidReason || 'Cancelado'
+      };
+      
+      // If item was sent, use PIN auth
+      if (itemToVoid.sent_at) {
+        payload.authPin = voidPin;
+      } else {
+        // If not sent, just pass the waiter ID
+        payload.authorizedBy = account?.waiter_id;
+      }
+      
+      await api.voidItem(itemToVoid.id, payload);
       toast.success('Producto anulado');
       setShowVoidModal(false);
       setItemToVoid(null);
+      setVoidPin('');
+      setVoidReason('');
       loadData();
     } catch (error) {
       toast.error(error.message || 'Error al anular');
@@ -648,13 +670,59 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
               <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
                 ¿Anular producto?
               </h3>
-              <p className="text-sm text-gray-500 text-center mb-6">
+              <p className="text-sm text-gray-500 text-center mb-4">
                 Estás por eliminar <strong>{itemToVoid.product_name}</strong> de la orden
               </p>
+              
+              {/* Warning for sent items */}
+              {itemToVoid.sent_at && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+                  <p className="text-sm text-amber-700 font-medium flex items-center gap-2">
+                    ⚠️ Este producto ya fue enviado a cocina
+                  </p>
+                  <p className="text-xs text-amber-600 mt-1">
+                    Se requiere PIN de autorización
+                  </p>
+                </div>
+              )}
+              
+              {/* PIN Input for sent items */}
+              {itemToVoid.sent_at && (
+                <div className="mb-4">
+                  <label className="text-xs text-gray-500 font-medium">PIN de Autorización *</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={voidPin}
+                    onChange={(e) => setVoidPin(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Ingresa tu PIN"
+                    maxLength={12}
+                    className="w-full mt-1 p-3 border border-gray-200 rounded-xl text-sm text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                  />
+                </div>
+              )}
+              
+              {/* Reason Input */}
+              <div className="mb-4">
+                <label className="text-xs text-gray-500 font-medium">Razón (opcional)</label>
+                <input
+                  type="text"
+                  value={voidReason}
+                  onChange={(e) => setVoidReason(e.target.value)}
+                  placeholder="Ej: Error en pedido, cliente canceló..."
+                  className="w-full mt-1 p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                />
+              </div>
+              
               <div className="flex gap-3">
                 <motion.button
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => setShowVoidModal(false)}
+                  onClick={() => {
+                    setShowVoidModal(false);
+                    setVoidPin('');
+                    setVoidReason('');
+                  }}
                   className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"
                 >
                   Cancelar
@@ -662,7 +730,12 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   onClick={confirmVoidItem}
-                  className="flex-1 py-3 bg-red-600 text-white rounded-xl font-medium text-sm"
+                  disabled={itemToVoid.sent_at && !voidPin.trim()}
+                  className={`flex-1 py-3 rounded-xl font-medium text-sm ${
+                    itemToVoid.sent_at && !voidPin.trim()
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-red-600 text-white'
+                  }`}
                 >
                   Anular
                 </motion.button>

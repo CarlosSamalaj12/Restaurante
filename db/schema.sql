@@ -221,6 +221,40 @@ CREATE TABLE IF NOT EXISTS app_settings (
   setting_value VARCHAR(255) NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS roles (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(80) NOT NULL,
+  slug VARCHAR(40) NOT NULL UNIQUE,
+  description VARCHAR(255) NULL,
+  is_system TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS permissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  slug VARCHAR(80) NOT NULL UNIQUE,
+  module_code VARCHAR(30) NULL,
+  description VARCHAR(255) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+  role_id INT NOT NULL,
+  permission_id INT NOT NULL,
+  PRIMARY KEY (role_id, permission_id),
+  CONSTRAINT fk_rp_role FOREIGN KEY (role_id) REFERENCES roles(id),
+  CONSTRAINT fk_rp_permission FOREIGN KEY (permission_id) REFERENCES permissions(id)
+);
+
+CREATE TABLE IF NOT EXISTS user_roles (
+  user_id INT NOT NULL,
+  role_id INT NOT NULL,
+  PRIMARY KEY (user_id, role_id),
+  CONSTRAINT fk_ur_user FOREIGN KEY (user_id) REFERENCES staff_users(id),
+  CONSTRAINT fk_ur_role FOREIGN KEY (role_id) REFERENCES roles(id)
+);
+
 CREATE TABLE IF NOT EXISTS app_modules (
   code VARCHAR(30) PRIMARY KEY,
   label VARCHAR(80) NOT NULL,

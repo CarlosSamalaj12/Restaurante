@@ -6,6 +6,22 @@ const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const { pool, query } = require("./src/db");
 
+// Migraciones de esquema — se ejecutan una vez al iniciar
+(async () => {
+  try {
+    await query(
+      `ALTER TABLE accounts ADD COLUMN merged_into_account_id INT NULL AFTER status`
+    );
+    console.log('[MIGRATION] Columna merged_into_account_id agregada a accounts');
+  } catch (e) {
+    if (e.code === 'ER_DUP_FIELDNAME') {
+      console.log('[MIGRATION] Columna merged_into_account_id ya existe — OK');
+    } else {
+      console.warn('[MIGRATION] Error al agregar columna:', e.message);
+    }
+  }
+})();
+
 const app = express();
 const IS_PROD = process.env.NODE_ENV === "production";
 
@@ -73,11 +89,16 @@ function clientIp(req) {
   return raw.replace("::ffff:", "");
 }
 
-function createAuthSession(user) {
+async function createAuthSession(user) {
   const token = crypto.randomUUID();
+  let permissions = [];
+  try {
+    permissions = await getUserPermissions(Number(user.id));
+  } catch (_) {}
   authSessions.set(token, {
     userId: Number(user.id),
     role: String(user.role || ""),
+    permissions,
     expiresAt: Date.now() + AUTH_SESSION_TTL_MS,
   });
   return token;
@@ -93,6 +114,13 @@ function getAuthSession(req) {
     return null;
   }
   return session;
+}
+
+async function requireAuth(req, res, next) {
+  const session = getAuthSession(req);
+  if (!session) return res.status(401).json({ error: "Sesion invalida o vencida" });
+  req.session = session;
+  next();
 }
 
 async function requireAdmin(req, res, next) {
@@ -167,6 +195,37 @@ async function getAllowedModulesForContext(user, ip) {
   const deviceAllowed = await getDeviceEnabledModuleCodes(ip, activeCodes);
   const finalSet = new Set(deviceAllowed);
   return activeModules.filter((m) => userAllowed.includes(String(m.code)) && finalSet.has(String(m.code)));
+}
+
+async function getUserPermissions(userId) {
+  const [rows] = await query(
+    `SELECT DISTINCT p.slug
+     FROM permissions p
+     INNER JOIN role_permissions rp ON rp.permission_id = p.id
+     INNER JOIN user_roles ur ON ur.role_id = rp.role_id
+     WHERE ur.user_id = ?
+     ORDER BY p.slug`,
+    [Number(userId)]
+  );
+  return rows.map(r => String(r.slug));
+}
+
+function hasPermission(session, slug) {
+  if (!session) return false;
+  return Array.isArray(session.permissions) && session.permissions.includes(slug);
+}
+
+async function requirePermission(slug) {
+  return async (req, res, next) => {
+    try {
+      const session = getAuthSession(req);
+      if (!session) return res.status(401).json({ error: "Sesion invalida o vencida" });
+      if (hasPermission(session, slug)) return next();
+      return res.status(403).json({ error: "No tienes permiso para esta accion" });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 async function safeExec(sql, params = []) {
@@ -270,6 +329,12 @@ async function ensureConfigTables() {
       PRIMARY KEY (ip_address, module_code)
     )`
   );
+  
+  // KDS: Add completed_at column to order_items if not exists
+  await safeExec(
+    `ALTER TABLE order_items ADD COLUMN completed_at DATETIME NULL AFTER sent_at`
+  );
+  
   await query(
     `INSERT INTO app_settings (setting_key, setting_value)
      VALUES ('tip_percent', '0')
@@ -302,8 +367,207 @@ async function ensureConfigTables() {
     );
   }
 
+  await query(
+    `CREATE TABLE IF NOT EXISTS roles (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(80) NOT NULL,
+      slug VARCHAR(40) NOT NULL UNIQUE,
+      description VARCHAR(255) NULL,
+      is_system TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`
+  );
+
+  await query(
+    `CREATE TABLE IF NOT EXISTS permissions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(120) NOT NULL,
+      slug VARCHAR(80) NOT NULL UNIQUE,
+      module_code VARCHAR(30) NULL,
+      description VARCHAR(255) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`
+  );
+
+  await query(
+    `CREATE TABLE IF NOT EXISTS role_permissions (
+      role_id INT NOT NULL,
+      permission_id INT NOT NULL,
+      PRIMARY KEY (role_id, permission_id),
+      CONSTRAINT fk_rp_role FOREIGN KEY (role_id) REFERENCES roles(id),
+      CONSTRAINT fk_rp_permission FOREIGN KEY (permission_id) REFERENCES permissions(id)
+    )`
+  );
+
+  await query(
+    `CREATE TABLE IF NOT EXISTS user_roles (
+      user_id INT NOT NULL,
+      role_id INT NOT NULL,
+      PRIMARY KEY (user_id, role_id),
+      CONSTRAINT fk_ur_user FOREIGN KEY (user_id) REFERENCES staff_users(id),
+      CONSTRAINT fk_ur_role FOREIGN KEY (role_id) REFERENCES roles(id)
+    )`
+  );
+
+  const [existingRoles] = await query(`SELECT COUNT(*) AS cnt FROM roles`);
+  if (Number(existingRoles[0].cnt) === 0) {
+    const permissionSeeds = [
+      { name: 'Ver productos', slug: 'products.view', module: 'restaurant' },
+      { name: 'Crear productos', slug: 'products.create', module: 'restaurant' },
+      { name: 'Editar productos', slug: 'products.edit', module: 'restaurant' },
+      { name: 'Eliminar productos', slug: 'products.delete', module: 'restaurant' },
+      { name: 'Gestionar categorías', slug: 'categories.manage', module: 'restaurant' },
+      { name: 'Ver mesas', slug: 'tables.view', module: 'restaurant' },
+      { name: 'Gestionar mesas', slug: 'tables.manage', module: 'restaurant' },
+      { name: 'Tomar órdenes', slug: 'orders.create', module: 'restaurant' },
+      { name: 'Modificar órdenes', slug: 'orders.edit', module: 'restaurant' },
+      { name: 'Anular items', slug: 'orders.void', module: 'restaurant' },
+      { name: 'Enviar a cocina', slug: 'orders.send', module: 'restaurant' },
+      { name: 'Aplicar descuentos', slug: 'orders.discount', module: 'restaurant' },
+      { name: 'Transferir items/cuentas', slug: 'orders.transfer', module: 'restaurant' },
+      { name: 'Cuenta compartida', slug: 'orders.shared', module: 'restaurant' },
+      { name: 'Cerrar cuentas', slug: 'accounts.close', module: 'restaurant' },
+      { name: 'Anular cuentas', slug: 'accounts.void', module: 'restaurant' },
+      { name: 'Reabrir cuentas', slug: 'accounts.reopen', module: 'restaurant' },
+      { name: 'Cobrar', slug: 'payments.create', module: 'restaurant' },
+      { name: 'Reembolsar', slug: 'payments.refund', module: 'restaurant' },
+      { name: 'Abrir turno', slug: 'shifts.open', module: 'restaurant' },
+      { name: 'Cerrar turno', slug: 'shifts.close', module: 'restaurant' },
+      { name: 'Ver reportes', slug: 'reports.view', module: 'restaurant' },
+      { name: 'Exportar reportes', slug: 'reports.export', module: 'restaurant' },
+      { name: 'Acceso a configuración', slug: 'settings.access', module: 'restaurant' },
+      { name: 'Gestionar usuarios', slug: 'users.manage', module: 'restaurant' },
+      { name: 'Gestionar roles/permisos', slug: 'roles.manage', module: 'restaurant' },
+      { name: 'Ver inventario', slug: 'inventory.view', module: 'erp' },
+      { name: 'Gestionar inventario', slug: 'inventory.manage', module: 'erp' },
+      { name: 'Ver CRM', slug: 'crm.view', module: 'crm' },
+      { name: 'Gestionar CRM', slug: 'crm.manage', module: 'crm' },
+      { name: 'Ver módulo PMS', slug: 'pms.view', module: 'pms' },
+    ];
+
+    const permIds = {};
+    for (const p of permissionSeeds) {
+      const [r] = await query(
+        `INSERT INTO permissions (name, slug, module_code, description) VALUES (?, ?, ?, ?)`,
+        [p.name, p.slug, p.module, p.name]
+      );
+      permIds[p.slug] = Number(r.insertId);
+    }
+
+    const roleSeeds = [
+      {
+        name: 'Administrador', slug: 'admin', description: 'Acceso total al sistema',
+        perms: permissionSeeds.map(p => p.slug),
+      },
+      {
+        name: 'Gerente', slug: 'manager', description: 'Gestión operativa del restaurante',
+        perms: [
+          'products.view','products.create','products.edit',
+          'categories.manage',
+          'tables.view','tables.manage',
+          'orders.create','orders.edit','orders.void','orders.send','orders.discount','orders.transfer','orders.shared',
+          'accounts.close','accounts.void','accounts.reopen',
+          'payments.create','payments.refund',
+          'shifts.open','shifts.close',
+          'reports.view','reports.export',
+          'settings.access',
+          'inventory.view','inventory.manage',
+          'crm.view','crm.manage',
+          'pms.view',
+        ],
+      },
+      {
+        name: 'Cajero', slug: 'cashier', description: 'Puede cobrar y gestionar turnos',
+        perms: [
+          'products.view',
+          'tables.view',
+          'orders.create','orders.edit','orders.discount','orders.transfer','orders.shared',
+          'accounts.close','accounts.void','accounts.reopen',
+          'payments.create','payments.refund',
+          'shifts.open','shifts.close',
+          'reports.view',
+        ],
+      },
+      {
+        name: 'Mesero', slug: 'waiter', description: 'Puede tomar órdenes',
+        perms: [
+          'products.view',
+          'tables.view',
+          'orders.create','orders.edit','orders.void','orders.send',
+          'orders.discount','orders.transfer',
+        ],
+      },
+    ];
+
+    for (const rs of roleSeeds) {
+      const [r] = await query(
+        `INSERT INTO roles (name, slug, description, is_system) VALUES (?, ?, ?, 1)`,
+        [rs.name, rs.slug, rs.description]
+      );
+      const roleId = Number(r.insertId);
+      for (const slug of rs.perms) {
+        const pid = permIds[slug];
+        if (pid) {
+          await query(
+            `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`,
+            [roleId, pid]
+          );
+        }
+      }
+    }
+
+    const [allUsers] = await query(`SELECT id, role FROM staff_users`);
+    const slugToRoleId = {};
+    for (const rs of roleSeeds) {
+      const [row] = await query(`SELECT id FROM roles WHERE slug = ? LIMIT 1`, [rs.slug]);
+      if (row.length) slugToRoleId[rs.slug] = Number(row[0].id);
+    }
+    for (const u of allUsers) {
+      const roleSlug = String(u.role || 'waiter');
+      const roleId = slugToRoleId[roleSlug] || slugToRoleId['waiter'];
+      if (roleId) {
+        await query(
+          `INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)`,
+          [Number(u.id), roleId]
+        );
+      }
+    }
+  }
+
+  await query(
+    `UPDATE roles SET
+      name = CASE slug
+        WHEN 'admin' THEN 'Administrador'
+        WHEN 'manager' THEN 'Gerente'
+        WHEN 'cashier' THEN 'Cajero'
+        WHEN 'waiter' THEN 'Mesero'
+        ELSE name
+      END,
+      description = CASE slug
+        WHEN 'admin' THEN 'Acceso total al sistema'
+        WHEN 'manager' THEN 'Gestión operativa del restaurante'
+        WHEN 'cashier' THEN 'Puede cobrar y gestionar turnos'
+        WHEN 'waiter' THEN 'Puede tomar órdenes'
+        ELSE description
+      END
+    WHERE is_system = 1`
+  );
+
+  // Always ensure new permissions are added (even on existing installs)
+  const newPermissions = [
+    { name: 'Cuenta compartida', slug: 'orders.shared', module: 'restaurant' },
+  ];
+  for (const p of newPermissions) {
+    await query(
+      `INSERT IGNORE INTO permissions (name, slug, module_code, description) VALUES (?, ?, ?, ?)`,
+      [p.name, p.slug, p.module, p.name]
+    );
+  }
+
   await safeExec(`ALTER TABLE restaurant_tables ADD COLUMN operation_center_id INT NULL`);
   await safeExec(`ALTER TABLE shifts ADD COLUMN operation_center_id INT NULL`);
+  await safeExec(`ALTER TABLE shifts ADD COLUMN opening_cash DECIMAL(10,2) NOT NULL DEFAULT 0`);
+  await safeExec(`ALTER TABLE shifts ADD COLUMN closing_cash DECIMAL(10,2) NULL`);
   await safeExec(
     `ALTER TABLE modifier_groups
      ADD COLUMN group_type ENUM('garnish', 'preparation', 'sauce', 'meat_term', 'milk_type', 'beverage_temp', 'ice', 'other')
@@ -624,7 +888,7 @@ app.post("/api/auth/pin-login", async (req, res) => {
   const user = rows[0];
   const ip = clientIp(req);
   const allowedModules = await getAllowedModulesForContext(user, ip);
-  const authToken = createAuthSession(user);
+  const authToken = await createAuthSession(user);
   res.json({ ok: true, user, allowedModules, authToken });
 });
 
@@ -713,9 +977,13 @@ app.get("/api/settings", async (_req, res) => {
      ORDER BY sort_order, code`
   );
   const [staffUsers] = await query(
-    `SELECT id, full_name, role
-     FROM staff_users
-     ORDER BY full_name`
+    `SELECT su.id, su.full_name, su.role, su.pin_code, su.operation_center_id,
+            GROUP_CONCAT(DISTINCT r.name SEPARATOR ', ') AS role_names
+     FROM staff_users su
+     LEFT JOIN user_roles ur ON ur.user_id = su.id
+     LEFT JOIN roles r ON r.id = ur.role_id
+     GROUP BY su.id
+     ORDER BY su.full_name`
   );
   const [userModulePermissions] = await query(
     `SELECT user_id, module_code, is_enabled
@@ -734,6 +1002,22 @@ app.get("/api/settings", async (_req, res) => {
      WHERE t.is_active = 1
      ORDER BY c.name, t.name`
   );
+  const [roles] = await query(`SELECT id, name, slug, description, is_system FROM roles ORDER BY id`);
+  const [permissions] = await query(`SELECT id, name, slug, module_code, description FROM permissions ORDER BY module_code, id`);
+  const [rolePerms] = await query(`SELECT role_id, permission_id FROM role_permissions`);
+  const [userRoles] = await query(`SELECT user_id, role_id FROM user_roles`);
+  const permByRole = {};
+  for (const rp of rolePerms) {
+    const rid = Number(rp.role_id);
+    if (!permByRole[rid]) permByRole[rid] = [];
+    permByRole[rid].push(Number(rp.permission_id));
+  }
+  const rolesByUser = {};
+  for (const ur of userRoles) {
+    const uid = Number(ur.user_id);
+    if (!rolesByUser[uid]) rolesByUser[uid] = [];
+    rolesByUser[uid].push(Number(ur.role_id));
+  }
   const tipPercent = await getTipPercent();
   const restaurantName = await getRestaurantName();
   const logoUrl = await getLogoUrl();
@@ -756,6 +1040,10 @@ app.get("/api/settings", async (_req, res) => {
     userModulePermissions,
     deviceModulePermissions,
     terminals,
+    roles,
+    permissions,
+    permByRole,
+    rolesByUser,
     currentIp,
     tipPercent,
     restaurantName,
@@ -857,6 +1145,34 @@ app.post("/api/settings/tip-config", async (req, res) => {
   res.json({ ok: true, tipPercent: Number(pct.toFixed(2)) });
 });
 
+app.get("/api/settings/tip-excluded-methods", async (_req, res) => {
+  try {
+    const [rows] = await query(
+      `SELECT setting_value FROM app_settings WHERE setting_key = 'tip_excluded_methods' LIMIT 1`
+    );
+    const methods = rows?.[0]?.setting_value || 'cxc';
+    res.json({ excludedMethods: methods.split(',').map(s => s.trim()).filter(Boolean) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/settings/tip-excluded-methods", async (req, res) => {
+  try {
+    const { excludedMethods = 'cxc' } = req.body || {};
+    const value = Array.isArray(excludedMethods) ? excludedMethods.join(',') : String(excludedMethods);
+    await query(
+      `INSERT INTO app_settings (setting_key, setting_value)
+       VALUES ('tip_excluded_methods', ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [value]
+    );
+    res.json({ ok: true, excludedMethods: value.split(',').map(s => s.trim()).filter(Boolean) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/settings/user-modules", async (req, res) => {
   const userId = Number(req.body?.userId || 0);
   const requestedCodes = Array.isArray(req.body?.moduleCodes) ? req.body.moduleCodes : [];
@@ -902,6 +1218,119 @@ app.post("/api/settings/device-modules", async (req, res) => {
     );
   }
   res.json({ ok: true, ipAddress: targetIp, enabledCount: selectedSet.size });
+});
+
+// Roles & Permissions API
+app.get("/api/settings/roles", async (_req, res) => {
+  const [roles] = await query(`SELECT id, name, slug, description, is_system FROM roles ORDER BY id`);
+  const [permissions] = await query(`SELECT id, name, slug, module_code, description FROM permissions ORDER BY module_code, id`);
+  const [rolePerms] = await query(`SELECT role_id, permission_id FROM role_permissions`);
+  const [userRoles] = await query(`SELECT user_id, role_id FROM user_roles`);
+  const permByRole = {};
+  for (const rp of rolePerms) {
+    const rid = Number(rp.role_id);
+    if (!permByRole[rid]) permByRole[rid] = [];
+    permByRole[rid].push(Number(rp.permission_id));
+  }
+  const rolesByUser = {};
+  for (const ur of userRoles) {
+    const uid = Number(ur.user_id);
+    if (!rolesByUser[uid]) rolesByUser[uid] = [];
+    rolesByUser[uid].push(Number(ur.role_id));
+  }
+  res.json({ roles, permissions, permByRole, rolesByUser });
+});
+
+app.post("/api/settings/roles", async (req, res) => {
+  const { name, slug, description } = req.body || {};
+  if (!name || !slug) return res.status(400).json({ error: "name y slug son requeridos" });
+  const cleanSlug = String(slug).trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+  if (!cleanSlug) return res.status(400).json({ error: "slug invalido" });
+  try {
+    const [r] = await query(
+      `INSERT INTO roles (name, slug, description) VALUES (?, ?, ?)`,
+      [String(name).trim(), cleanSlug, String(description || '').trim()]
+    );
+    res.status(201).json({ id: r.insertId, name: String(name).trim(), slug: cleanSlug });
+  } catch (e) {
+    if (String(e.message || '').includes('Duplicate')) {
+      return res.status(409).json({ error: "Ya existe un rol con ese slug" });
+    }
+    throw e;
+  }
+});
+
+app.put("/api/settings/roles/:roleId", async (req, res) => {
+  const roleId = Number(req.params.roleId);
+  const { name, description } = req.body || {};
+  if (!roleId || !name) return res.status(400).json({ error: "roleId y name son requeridos" });
+  const [existing] = await query(`SELECT is_system FROM roles WHERE id = ? LIMIT 1`, [roleId]);
+  if (!existing.length) return res.status(404).json({ error: "Rol no encontrado" });
+  await query(
+    `UPDATE roles SET name = ?, description = ? WHERE id = ?`,
+    [String(name).trim(), String(description || '').trim(), roleId]
+  );
+  res.json({ ok: true });
+});
+
+app.delete("/api/settings/roles/:roleId", async (req, res) => {
+  const roleId = Number(req.params.roleId);
+  if (!roleId) return res.status(400).json({ error: "roleId es requerido" });
+  const [existing] = await query(`SELECT is_system FROM roles WHERE id = ? LIMIT 1`, [roleId]);
+  if (!existing.length) return res.status(404).json({ error: "Rol no encontrado" });
+  if (Number(existing[0].is_system)) return res.status(400).json({ error: "No se puede eliminar un rol del sistema" });
+  await query(`DELETE FROM user_roles WHERE role_id = ?`, [roleId]);
+  await query(`DELETE FROM role_permissions WHERE role_id = ?`, [roleId]);
+  await query(`DELETE FROM roles WHERE id = ?`, [roleId]);
+  res.json({ ok: true });
+});
+
+app.post("/api/settings/roles/:roleId/permissions", async (req, res) => {
+  const roleId = Number(req.params.roleId);
+  const { permissionIds } = req.body || {};
+  if (!roleId || !Array.isArray(permissionIds)) {
+    return res.status(400).json({ error: "roleId y permissionIds son requeridos" });
+  }
+  const [existing] = await query(`SELECT id FROM roles WHERE id = ? LIMIT 1`, [roleId]);
+  if (!existing.length) return res.status(404).json({ error: "Rol no encontrado" });
+  await query(`DELETE FROM role_permissions WHERE role_id = ?`, [roleId]);
+  for (const pid of permissionIds) {
+    await query(
+      `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`,
+      [roleId, Number(pid)]
+    );
+  }
+  res.json({ ok: true });
+});
+
+app.post("/api/settings/users/:userId/roles", async (req, res) => {
+  const userId = Number(req.params.userId);
+  const { roleIds } = req.body || {};
+  if (!userId || !Array.isArray(roleIds)) {
+    return res.status(400).json({ error: "userId y roleIds son requeridos" });
+  }
+  const [userRows] = await query(`SELECT id FROM staff_users WHERE id = ? LIMIT 1`, [userId]);
+  if (!userRows.length) return res.status(404).json({ error: "Usuario no encontrado" });
+  await query(`DELETE FROM user_roles WHERE user_id = ?`, [userId]);
+  for (const rid of roleIds) {
+    await query(
+      `INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)`,
+      [userId, Number(rid)]
+    );
+  }
+  res.json({ ok: true });
+});
+
+// Endpoint to refresh session permissions (after role/permission changes)
+app.post("/api/auth/refresh-session", async (req, res) => {
+  const session = getAuthSession(req);
+  if (!session) return res.status(401).json({ error: "Sesion invalida" });
+  let permissions = [];
+  try {
+    permissions = await getUserPermissions(session.userId);
+  } catch (_) {}
+  session.permissions = permissions;
+  res.json({ ok: true, permissions });
 });
 
 app.post("/api/accounts/:accountId/remove-tip", async (req, res) => {
@@ -1464,6 +1893,39 @@ app.post("/api/settings/production-centers/:centerId", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Delete production center
+app.delete("/api/settings/production-centers/:centerId", async (req, res) => {
+  const centerId = Number(req.params.centerId);
+  if (!centerId) {
+    return res.status(400).json({ error: "centerId es requerido" });
+  }
+  
+  // Check if center is being used by any product
+  const [usage] = await query(
+    `SELECT COUNT(*) as cnt FROM product_production_centers WHERE center_id = ?`,
+    [centerId]
+  );
+  
+  if (Number(usage[0].cnt) > 0) {
+    return res.status(400).json({ 
+      error: "No se puede eliminar el centro porque hay productos asignados. Desasigna los productos primero." 
+    });
+  }
+  
+  await query(`DELETE FROM production_centers WHERE id = ?`, [centerId]);
+  res.json({ ok: true });
+});
+
+// Get all production centers
+app.get("/api/settings/production-centers", async (req, res) => {
+  const [centers] = await query(
+    `SELECT id, name, printer_name, is_active 
+     FROM production_centers 
+     ORDER BY id`
+  );
+  res.json({ centers });
+});
+
 // Link product to production centers
 app.post("/api/settings/products/:productId/production-centers", async (req, res) => {
   const productId = Number(req.params.productId);
@@ -1514,16 +1976,57 @@ app.post("/api/settings/discount-presets/:presetId", async (req, res) => {
   res.json({ ok: true });
 });
 
+async function checkDuplicatePin(pinCode, excludeUserId) {
+  if (!pinCode) return false;
+  const [rows] = await query(
+    `SELECT id FROM staff_users WHERE pin_code = ? AND (? IS NULL OR id != ?) LIMIT 1`,
+    [String(pinCode).trim(), excludeUserId || null, excludeUserId || null]
+  );
+  return rows.length > 0;
+}
+
 app.post("/api/settings/staff-users", async (req, res) => {
   const { fullName, pinCode, role = 'waiter', operationCenterId = null } = req.body || {};
   if (!fullName || !pinCode) {
     return res.status(400).json({ error: "fullName y pinCode son requeridos" });
+  }
+  if (await checkDuplicatePin(pinCode)) {
+    return res.status(409).json({ error: "Ya existe un usuario con ese PIN" });
   }
   const [result] = await query(
     `INSERT INTO staff_users (full_name, pin_code, role, operation_center_id) VALUES (?, ?, ?, ?)`,
     [String(fullName).trim(), String(pinCode).trim(), role, operationCenterId ? Number(operationCenterId) : null]
   );
   res.status(201).json({ userId: result.insertId });
+});
+
+app.put("/api/settings/staff-users/:userId", async (req, res) => {
+  const userId = Number(req.params.userId);
+  const { fullName, pinCode, role, operationCenterId } = req.body || {};
+  if (!userId) return res.status(400).json({ error: "userId es requerido" });
+  if (!fullName) return res.status(400).json({ error: "fullName es requerido" });
+  if (pinCode && await checkDuplicatePin(pinCode, userId)) {
+    return res.status(409).json({ error: "Ya existe otro usuario con ese PIN" });
+  }
+  const fields = [];
+  const params = [];
+  if (fullName) { fields.push('full_name = ?'); params.push(String(fullName).trim()); }
+  if (pinCode) { fields.push('pin_code = ?'); params.push(String(pinCode).trim()); }
+  if (role) { fields.push('role = ?'); params.push(role); }
+  if (operationCenterId !== undefined) { fields.push('operation_center_id = ?'); params.push(operationCenterId ? Number(operationCenterId) : null); }
+  if (!fields.length) return res.status(400).json({ error: "Sin datos para actualizar" });
+  params.push(userId);
+  await query(`UPDATE staff_users SET ${fields.join(', ')} WHERE id = ?`, params);
+  res.json({ ok: true });
+});
+
+app.delete("/api/settings/staff-users/:userId", async (req, res) => {
+  const userId = Number(req.params.userId);
+  if (!userId) return res.status(400).json({ error: "userId es requerido" });
+  await query(`DELETE FROM user_roles WHERE user_id = ?`, [userId]);
+  await query(`DELETE FROM user_module_permissions WHERE user_id = ?`, [userId]);
+  await query(`DELETE FROM staff_users WHERE id = ?`, [userId]);
+  res.json({ ok: true });
 });
 
 app.post("/api/settings/staff-users/:userId/center", async (req, res) => {
@@ -1864,7 +2367,111 @@ app.get("/api/config/data", async (req, res) => {
   const [productModifierGroups] = await query(
     `SELECT product_id, group_id, sort_order FROM product_modifier_groups`
   );
-  res.json({ products, categories, areas, centers, tables, productionCenters, productProductionCenters, groups, options, productModifierGroups });
+  const [staffUsers] = await query(
+    `SELECT su.id, su.full_name, su.role, su.pin_code, su.operation_center_id,
+            GROUP_CONCAT(DISTINCT r.name SEPARATOR ', ') AS role_names
+     FROM staff_users su
+     LEFT JOIN user_roles ur ON ur.user_id = su.id
+     LEFT JOIN roles r ON r.id = ur.role_id
+     GROUP BY su.id
+     ORDER BY su.full_name`
+  );
+  const [roles] = await query(`SELECT id, name, slug, description, is_system FROM roles ORDER BY id`);
+  const [permissions] = await query(`SELECT id, name, slug, module_code, description FROM permissions ORDER BY module_code, id`);
+  const [rolePerms] = await query(`SELECT role_id, permission_id FROM role_permissions`);
+  const [userRoles] = await query(`SELECT user_id, role_id FROM user_roles`);
+  const permByRole = {};
+  for (const rp of rolePerms) {
+    const rid = Number(rp.role_id);
+    if (!permByRole[rid]) permByRole[rid] = [];
+    permByRole[rid].push(Number(rp.permission_id));
+  }
+  const rolesByUser = {};
+  for (const ur of userRoles) {
+    const uid = Number(ur.user_id);
+    if (!rolesByUser[uid]) rolesByUser[uid] = [];
+    rolesByUser[uid].push(Number(ur.role_id));
+  }
+  res.json({ products, categories, areas, centers, tables, productionCenters, productProductionCenters, groups, options, productModifierGroups, staffUsers, roles, permissions, permByRole, rolesByUser });
+});
+
+// Search paid accounts by check number (optional) + optional date range
+app.get("/api/accounts/paid/search", async (req, res) => {
+  try {
+    const { q, centerId, startDate, endDate } = req.query;
+    if (!centerId) return res.status(400).json({ error: "centerId es requerido" });
+    let conditions = ['t.operation_center_id = ?', "a.status = 'paid'"];
+    let params = [Number(centerId)];
+    if (q && q.trim()) {
+      conditions.push('a.check_number LIKE ?');
+      params.push(`%${q.trim()}%`);
+    }
+    if (startDate) {
+      conditions.push('a.closed_at >= ?');
+      params.push(startDate);
+    }
+    if (endDate) {
+      conditions.push('a.closed_at <= ?');
+      params.push(endDate + ' 23:59:59');
+    }
+    const [rows] = await query(
+      `SELECT a.id, a.check_number, a.status, a.guest_count, a.closed_at, a.table_id, t.code AS table_code,
+              u.full_name AS waiter_name, oc.name AS center_name,
+              (SELECT COALESCE(SUM(oi.line_total), 0) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS total
+       FROM accounts a
+       INNER JOIN staff_users u ON u.id = a.waiter_id
+       INNER JOIN restaurant_tables t ON t.id = a.table_id
+       INNER JOIN operation_centers oc ON oc.id = t.operation_center_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY a.closed_at DESC
+       LIMIT 20`,
+      params
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Full receipt data for reprint (account + items + payments + totals)
+app.get("/api/accounts/:accountId/receipt", async (req, res) => {
+  try {
+    const accountId = Number(req.params.accountId);
+    const [accountRows] = await query(
+      `SELECT a.*, t.code AS table_code, u.full_name AS waiter_name,
+              oc.name AS center_name
+       FROM accounts a
+       INNER JOIN restaurant_tables t ON t.id = a.table_id
+       INNER JOIN staff_users u ON u.id = a.waiter_id
+       LEFT JOIN operation_centers oc ON oc.id = t.operation_center_id
+       WHERE a.id = ?`,
+      [accountId]
+    );
+    if (!accountRows.length) return res.status(404).json({ error: "Cuenta no encontrada" });
+
+    const [items] = await query(
+      `SELECT oi.*, p.name AS product_name
+       FROM order_items oi
+       INNER JOIN products p ON p.id = oi.product_id
+       WHERE oi.account_id = ? AND oi.status = 'active'
+       ORDER BY oi.created_at`,
+      [accountId]
+    );
+
+    const [payments] = await query(
+      `SELECT pm.label AS method_label, p.method, p.amount, p.reference_no, p.created_at
+       FROM account_payments p
+       LEFT JOIN payment_methods pm ON pm.code = p.method
+       WHERE p.account_id = ?
+       ORDER BY p.created_at`,
+      [accountId]
+    );
+
+    const totals = await getAccountTotals(accountId);
+    res.json({ account: accountRows[0], items, payments, totals });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get("/api/accounts/:accountId", async (req, res) => {
@@ -2516,6 +3123,95 @@ app.post("/api/accounts/:accountId/split-custom", async (req, res) => {
   res.json({ ok: true, splits: results });
 });
 
+// Cuenta compartida - cada persona paga lo mismo con los mismos productos fraccionados
+app.post("/api/accounts/:accountId/split-shared", async (req, res) => {
+  const sourceAccountId = Number(req.params.accountId);
+  const { peopleCount } = req.body || {};
+
+  if (!sourceAccountId || !peopleCount || peopleCount < 2) {
+    return res.status(400).json({ error: "peopleCount debe ser al menos 2" });
+  }
+
+  const [srcRows] = await query(
+    `SELECT id, table_id, waiter_id, operation_center_id, guest_count, status
+     FROM accounts WHERE id = ? LIMIT 1`,
+    [sourceAccountId]
+  );
+  if (!srcRows.length) return res.status(404).json({ error: "Cuenta origen no encontrada" });
+  if (String(srcRows[0].status) !== "open") return res.status(400).json({ error: "Cuenta origen no está abierta" });
+
+  const { table_id, waiter_id, operation_center_id } = srcRows[0];
+
+  const [items] = await query(
+    `SELECT * FROM order_items WHERE account_id = ? AND status = 'active' ORDER BY id`,
+    [sourceAccountId]
+  );
+
+  if (!items.length) {
+    return res.status(400).json({ error: "La cuenta no tiene productos" });
+  }
+
+  const [openShift] = await query(
+    `SELECT id FROM shifts WHERE status = 'open' AND operation_center_id = ? ORDER BY id DESC LIMIT 1`,
+    [operation_center_id]
+  );
+  const shiftId = openShift.length ? openShift[0].id : null;
+
+  const fractionalQty = 1 / peopleCount;
+
+  const results = [];
+
+  for (let i = 0; i < peopleCount; i++) {
+    const tempCheckNumber = `TMP-${Date.now().toString().slice(-8)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
+    const [insertResult] = await query(
+      `INSERT INTO accounts (table_id, operation_center_id, waiter_id, shift_id, status, guest_count, check_number, opened_at)
+       VALUES (?, ?, ?, ?, 'open', 1, ?, ?)`,
+      [table_id, operation_center_id, waiter_id, shiftId, tempCheckNumber, nowSql()]
+    );
+    const newAccountId = Number(insertResult.insertId);
+    const checkNumber = `CHK-${String(newAccountId).padStart(4, "0")}`;
+    await query(`UPDATE accounts SET check_number = ? WHERE id = ?`, [checkNumber, newAccountId]);
+
+    // Insert all items with 1/n quantity and 1/n price
+    for (const item of items) {
+      const unitPrice = Number(item.unit_price) || 0;
+      const fractionalTotal = Number((unitPrice * fractionalQty).toFixed(2));
+
+      await query(
+        `INSERT INTO order_items (account_id, product_id, seat_no, qty, unit_price, line_total, notes, sent_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newAccountId,
+          Number(item.product_id),
+          Number(item.seat_no || 1),
+          fractionalQty,
+          unitPrice,
+          fractionalTotal,
+          item.notes || "",
+          item.sent_at || null,
+          nowSql(),
+        ]
+      );
+    }
+
+    await addAccountEvent(newAccountId, "account_opened", { source: sourceAccountId, shared: true, peopleCount }, waiter_id);
+    results.push({
+      accountId: newAccountId,
+      checkNumber,
+      name: `Persona ${i + 1}`,
+    });
+  }
+
+  // Close the source account
+  await query(
+    `UPDATE accounts SET status = 'shared_split', closed_at = ? WHERE id = ?`,
+    [nowSql(), sourceAccountId]
+  );
+  await addAccountEvent(sourceAccountId, "account_shared", { peopleCount, newAccounts: results.length }, null);
+
+  res.json({ ok: true, peopleCount, accounts: results });
+});
+
 // Transferir cuenta a otra cuenta (puede ser otro centro)
 app.post("/api/accounts/:accountId/transfer-account", async (req, res) => {
   const sourceAccountId = Number(req.params.accountId);
@@ -2592,7 +3288,11 @@ app.post("/api/accounts/:accountId/join-with", async (req, res) => {
     );
   }
 
-  await query(`UPDATE accounts SET status = 'void' WHERE id = ?`, [sourceAccountId]);
+  // Marcar la cuenta origen como void Y guardar a cuál cuenta se unió
+  await query(
+    `UPDATE accounts SET status = 'void', merged_into_account_id = ? WHERE id = ?`,
+    [targetAccountId, sourceAccountId]
+  );
   await addAccountEvent(sourceAccountId, "joined_with", { targetAccountId }, null);
   await addAccountEvent(targetAccountId, "joined_with", { sourceAccountId }, null);
   res.json({ ok: true, joinedItems: items.length });
@@ -2637,6 +3337,467 @@ app.post("/api/items/:itemId/qty", async (req, res) => {
   );
   await addAccountEvent(accountId, "item_qty_updated", { itemId, qty: nextQty }, null);
   res.json({ ok: true });
+});
+
+// =============================================
+// KDS - Kitchen Display System Endpoints
+// =============================================
+
+// Get all active orders for KDS (sent items not yet done)
+app.get("/api/kds/orders", async (req, res) => {
+  const { centerId } = req.query;
+  
+  // Get all sent, active items from open accounts (without completed_at filter to avoid column issues)
+  let whereClause = `a.status = 'open' AND oi.status = 'active' AND oi.sent_at IS NOT NULL`;
+  let params = [];
+  
+  if (centerId) {
+    whereClause += ` AND pc.id = ?`;
+    params.push(Number(centerId));
+  }
+  
+  const [items] = await query(
+    `SELECT 
+      oi.id AS item_id,
+      oi.qty,
+      oi.seat_no,
+      oi.notes,
+      oi.created_at,
+      oi.sent_at,
+      oi.completed_at,
+      p.name AS product_name,
+      pc.id AS center_id,
+      pc.name AS center_name,
+      a.id AS account_id,
+      a.check_number,
+      rt.code AS table_code,
+      su.full_name AS waiter_name,
+      a.guest_count
+     FROM order_items oi
+     INNER JOIN products p ON p.id = oi.product_id
+     INNER JOIN accounts a ON a.id = oi.account_id
+     INNER JOIN restaurant_tables rt ON rt.id = a.table_id
+     INNER JOIN staff_users su ON su.id = a.waiter_id
+     LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
+     LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+     WHERE ${whereClause}
+     ORDER BY pc.name, oi.sent_at ASC`,
+    params
+  );
+  
+  // Filter out completed items in JS (safer than column check)
+  const activeItems = items.filter(i => !i.completed_at);
+  
+  // Get modifiers for each item
+  if (!activeItems.length) {
+    return res.json({ orders: [], categories: [] });
+  }
+  
+  const itemIds = activeItems.map(i => Number(i.item_id));
+  const [mods] = await query(
+    `SELECT oim.item_id, mo.name 
+     FROM order_item_modifiers oim
+     INNER JOIN modifier_options mo ON mo.id = oim.option_id
+     WHERE oim.item_id IN (${itemIds.map(() => '?').join(',')})`,
+    itemIds
+  );
+  
+  const modsByItem = mods.reduce((acc, m) => {
+    const key = Number(m.item_id);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(m.name);
+    return acc;
+  }, {});
+  
+  // Group items by account + table
+  const ticketsMap = new Map();
+  const categoryCounts = {};
+  
+  for (const item of items) {
+    const key = `A-${item.account_id}`;
+    const centerName = item.center_name || 'Restaurante';
+    
+    // Count by category
+    categoryCounts[centerName] = (categoryCounts[centerName] || 0) + Number(item.qty);
+    
+    if (!ticketsMap.has(key)) {
+      ticketsMap.set(key, {
+        accountId: Number(item.account_id),
+        checkNumber: item.check_number,
+        tableCode: item.table_code,
+        waiterName: item.waiter_name,
+        guestCount: item.guest_count,
+        centerName,
+        sentAt: item.sent_at,
+        items: []
+      });
+    }
+    
+    ticketsMap.get(key).items.push({
+      itemId: Number(item.item_id),
+      productName: item.product_name,
+      qty: Number(item.qty),
+      seatNo: Number(item.seat_no),
+      notes: item.notes || '',
+      modifiers: modsByItem[Number(item.item_id)] || [],
+      sentAt: item.sent_at
+    });
+  }
+  
+  const tickets = [...ticketsMap.values()];
+  
+  // Build categories list
+  const categories = Object.entries(categoryCounts).map(([name, count]) => ({
+    name,
+    count
+  }));
+  
+  res.json({ orders: tickets, categories });
+});
+
+// Get orders WITH voided items included (for KDS display)
+app.get("/api/kds/orders-with-voided", async (req, res) => {
+  const { centerId } = req.query;
+  
+  // Get all sent items (active and voided) from open accounts
+  let whereClause = `a.status = 'open' AND oi.sent_at IS NOT NULL AND (oi.status = 'active' OR oi.status = 'void')`;
+  let params = [];
+  
+  if (centerId) {
+    whereClause += ` AND pc.id = ?`;
+    params.push(Number(centerId));
+  }
+  
+  const [items] = await query(
+    `SELECT 
+      oi.id AS item_id,
+      oi.qty,
+      oi.seat_no,
+      oi.notes,
+      oi.created_at,
+      oi.sent_at,
+      oi.status AS item_status,
+      oi.void_reason,
+      oi.voided_at,
+      COALESCE(oi.completed_at, 'null') AS completed_at,
+      p.name AS product_name,
+      pc.id AS center_id,
+      pc.name AS center_name,
+      a.id AS account_id,
+      a.check_number,
+      rt.code AS table_code,
+      su.full_name AS waiter_name,
+      a.guest_count,
+      c.name AS category_name
+     FROM order_items oi
+     INNER JOIN products p ON p.id = oi.product_id
+     INNER JOIN accounts a ON a.id = oi.account_id
+     INNER JOIN restaurant_tables rt ON rt.id = a.table_id
+     INNER JOIN staff_users su ON su.id = a.waiter_id
+     INNER JOIN product_categories c ON c.id = p.category_id
+     LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
+     LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+     WHERE ${whereClause}
+     ORDER BY pc.name, oi.sent_at ASC`,
+    params
+  );
+  
+  // Get modifiers for each item
+  if (!items.length) {
+    return res.json({ orders: [], categories: [] });
+  }
+  
+  const itemIds = items.map(i => Number(i.item_id));
+  const [mods] = await query(
+    `SELECT oim.item_id, mo.name 
+     FROM order_item_modifiers oim
+     INNER JOIN modifier_options mo ON mo.id = oim.option_id
+     WHERE oim.item_id IN (${itemIds.map(() => '?').join(',')})`,
+    itemIds
+  );
+  
+  const modsByItem = mods.reduce((acc, m) => {
+    const key = Number(m.item_id);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(m.name);
+    return acc;
+  }, {});
+  
+  // Group items by account + table
+  const ticketsMap = new Map();
+  const categoryCounts = {};
+  
+  for (const item of items) {
+    const key = `A-${item.account_id}`;
+    const centerName = item.center_name || 'Restaurante';
+    
+    // Count only active items by category
+    if (item.item_status === 'active') {
+      categoryCounts[centerName] = (categoryCounts[centerName] || 0) + Number(item.qty);
+    }
+    
+    if (!ticketsMap.has(key)) {
+      ticketsMap.set(key, {
+        accountId: Number(item.account_id),
+        checkNumber: item.check_number,
+        tableCode: item.table_code,
+        waiterName: item.waiter_name,
+        guestCount: item.guest_count,
+        centerName,
+        sentAt: item.sent_at,
+        items: []
+      });
+    }
+    
+    const isCompleted = item.item_status === 'active' && item.completed_at && item.completed_at !== 'null';
+    
+    ticketsMap.get(key).items.push({
+      itemId: Number(item.item_id),
+      productName: item.product_name,
+      qty: Number(item.qty),
+      seatNo: Number(item.seat_no),
+      notes: item.notes || '',
+      modifiers: modsByItem[Number(item.item_id)] || [],
+      sentAt: item.sent_at,
+      voided: item.item_status === 'void',
+      voidReason: item.void_reason || '',
+      voidedAt: item.voided_at,
+      completed: isCompleted,
+      categoryName: item.category_name || 'Otros',
+      centerId: Number(item.center_id) || null,
+      centerName: item.center_name || 'Restaurante'
+    });
+  }
+  
+  const tickets = [...ticketsMap.values()];
+  
+  // Build categories list
+  const categories = Object.entries(categoryCounts).map(([name, count]) => ({
+    name,
+    count
+  }));
+  
+  res.json({ orders: tickets, categories });
+});
+
+// Mark item as done (completed)
+app.post("/api/kds/items/:itemId/done", async (req, res) => {
+  const itemId = Number(req.params.itemId);
+  
+  const [rows] = await query(
+    `SELECT id, account_id, status FROM order_items WHERE id = ?`,
+    [itemId]
+  );
+  
+  if (!rows.length) return res.status(404).json({ error: "Item no encontrado" });
+  if (rows[0].status !== 'active') return res.status(400).json({ error: "El item no esta activo" });
+  
+  await query(
+    `UPDATE order_items SET completed_at = ? WHERE id = ?`,
+    [nowSql(), itemId]
+  );
+  
+  await addAccountEvent(rows[0].account_id, "kds_item_done", { itemId }, null);
+  
+  res.json({ ok: true });
+});
+
+// Mark all items for an account as done
+app.post("/api/kds/accounts/:accountId/done-all", async (req, res) => {
+  const accountId = Number(req.params.accountId);
+  
+  const [result] = await query(
+    `UPDATE order_items 
+     SET completed_at = ? 
+     WHERE account_id = ? AND status = 'active' AND sent_at IS NOT NULL AND completed_at IS NULL`,
+    [nowSql(), accountId]
+  );
+  
+  await addAccountEvent(accountId, "kds_all_done", { affectedRows: result.affectedRows }, null);
+  
+  res.json({ ok: true, affectedRows: result.affectedRows });
+});
+
+// Get completed items (history)
+app.get("/api/kds/completed", async (req, res) => {
+  const { centerId, limit = 50 } = req.query;
+  
+  let whereClause = `a.status = 'open' AND oi.status = 'active' AND oi.completed_at IS NOT NULL`;
+  let params = [Number(limit)];
+  
+  if (centerId) {
+    whereClause += ` AND pc.id = ?`;
+    params.unshift(Number(centerId));
+  }
+  
+  const [items] = await query(
+    `SELECT 
+      oi.id AS item_id,
+      oi.qty,
+      oi.seat_no,
+      oi.notes,
+      oi.sent_at,
+      oi.completed_at,
+      p.name AS product_name,
+      pc.name AS center_name,
+      a.id AS account_id,
+      a.check_number,
+      rt.code AS table_code
+     FROM order_items oi
+     INNER JOIN products p ON p.id = oi.product_id
+     INNER JOIN accounts a ON a.id = oi.account_id
+     INNER JOIN restaurant_tables rt ON rt.id = a.table_id
+     LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
+     LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+     WHERE ${whereClause}
+     ORDER BY oi.completed_at DESC
+     LIMIT ?`,
+    params
+  );
+  
+  res.json({ items });
+});
+
+// Get voided items (for KDS visibility)
+app.get("/api/kds/voided", async (req, res) => {
+  const { centerId, limit = 20 } = req.query;
+  
+  let whereClause = `oi.status = 'void'`;
+  let params = [Number(limit)];
+  
+  if (centerId) {
+    whereClause += ` AND pc.id = ?`;
+    params.unshift(Number(centerId));
+  }
+  
+  const [items] = await query(
+    `SELECT 
+      oi.id AS item_id,
+      oi.qty,
+      oi.seat_no,
+      oi.notes,
+      oi.voided_at,
+      oi.void_reason,
+      p.name AS product_name,
+      pc.name AS center_name,
+      a.id AS account_id,
+      a.check_number,
+      rt.code AS table_code
+     FROM order_items oi
+     INNER JOIN products p ON p.id = oi.product_id
+     INNER JOIN accounts a ON a.id = oi.account_id
+     INNER JOIN restaurant_tables rt ON rt.id = a.table_id
+     LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
+     LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+     WHERE ${whereClause}
+     ORDER BY oi.voided_at DESC
+     LIMIT ?`,
+    params
+  );
+  
+  res.json({ items });
+});
+
+// Production Centers list
+app.get("/api/kds/production-centers", async (req, res) => {
+  const [centers] = await query(
+    `SELECT id, name, printer_name, is_active
+     FROM production_centers
+     WHERE is_active = 1
+     ORDER BY id`
+  );
+  res.json({ centers });
+});
+
+// KDS Report: Get completed items with times
+app.get("/api/kds/report", async (req, res) => {
+  const { date, centerId, limit = 100 } = req.query;
+  
+  let dateFilter = '';
+  let params = [];
+  
+  if (date) {
+    dateFilter = ` AND DATE(oi.completed_at) = ?`;
+    params.push(date);
+  }
+  
+  let centerFilter = '';
+  if (centerId) {
+    centerFilter = ` AND pc.id = ?`;
+    params.push(Number(centerId));
+  }
+  
+  params.push(Number(limit));
+  
+  const [items] = await query(
+    `SELECT
+      oi.id AS item_id,
+      oi.qty,
+      oi.seat_no,
+      oi.sent_at,
+      oi.completed_at,
+      p.name AS product_name,
+      c.name AS category_name,
+      pc.name AS center_name,
+      a.id AS account_id,
+      rt.code AS table_code,
+      su.full_name AS waiter_name,
+      TIMESTAMPDIFF(MINUTE, oi.sent_at, oi.completed_at) AS prep_time_minutes
+     FROM order_items oi
+     INNER JOIN products p ON p.id = oi.product_id
+     INNER JOIN accounts a ON a.id = oi.account_id
+     INNER JOIN restaurant_tables rt ON rt.id = a.table_id
+     INNER JOIN staff_users su ON su.id = a.waiter_id
+     INNER JOIN product_categories c ON c.id = p.category_id
+     LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
+     LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+     WHERE oi.status = 'active'
+       AND oi.sent_at IS NOT NULL
+       AND oi.completed_at IS NOT NULL
+       ${dateFilter}
+       ${centerFilter}
+     ORDER BY oi.completed_at DESC
+     LIMIT ?`,
+    params
+  );
+  
+  // Calculate stats
+  const totalItems = items.length;
+  const totalQty = items.reduce((sum, i) => sum + Number(i.qty), 0);
+  const avgTime = totalItems > 0 
+    ? Math.round(items.reduce((sum, i) => sum + Number(i.prep_time_minutes || 0), 0) / totalItems)
+    : 0;
+  const minTime = totalItems > 0 ? Math.min(...items.map(i => Number(i.prep_time_minutes || 0))) : 0;
+  const maxTime = totalItems > 0 ? Math.max(...items.map(i => Number(i.prep_time_minutes || 0))) : 0;
+  
+  // Stats by category
+  const byCategory = {};
+  items.forEach(item => {
+    const cat = item.category_name || 'Otros';
+    if (!byCategory[cat]) {
+      byCategory[cat] = { count: 0, totalTime: 0 };
+    }
+    byCategory[cat].count += Number(item.qty);
+    byCategory[cat].totalTime += Number(item.prep_time_minutes || 0);
+  });
+  
+  const categoryStats = Object.entries(byCategory).map(([name, data]) => ({
+    category: name,
+    items: data.count,
+    avgTime: data.count > 0 ? Math.round(data.totalTime / data.count) : 0
+  })).sort((a, b) => b.items - a.items);
+  
+  res.json({
+    items,
+    stats: {
+      totalItems,
+      totalQty,
+      avgTime,
+      minTime,
+      maxTime,
+      byCategory: categoryStats
+    }
+  });
 });
 
 app.post("/api/items/:itemId/void", async (req, res) => {
@@ -3840,35 +5001,49 @@ app.get("/api/cxc/export-pending-summary", async (req, res) => {
   }
 });
 
-app.post("/api/shifts/open", async (req, res) => {
-  const { cashierId, note = "", centerId } = req.body || {};
+app.get("/api/shifts/active", requireAuth, async (req, res) => {
+  const { centerId } = req.query;
+  if (!centerId) return res.status(400).json({ error: "centerId es requerido" });
+  const [rows] = await query(
+    `SELECT id, cashier_id, opened_at, opening_cash FROM shifts WHERE status = 'open' AND operation_center_id = ? ORDER BY id DESC LIMIT 1`,
+    [Number(centerId)]
+  );
+  res.json({ active: rows.length > 0, shift: rows[0] || null });
+});
+
+app.post("/api/shifts/open", requireAuth, async (req, res) => {
+  if (!hasPermission(req.session, 'shifts.open')) {
+    return res.status(403).json({ error: "No tienes permiso para abrir turnos" });
+  }
+  const { cashierId, note = "", centerId, openingCash = 0 } = req.body || {};
   if (!cashierId || !centerId) return res.status(400).json({ error: "cashierId y centerId son requeridos" });
 
   const [openShift] = await query(`SELECT id FROM shifts WHERE status = 'open' AND operation_center_id = ? LIMIT 1`, [Number(centerId)]);
   if (openShift.length) return res.status(400).json({ error: "Ya existe un turno abierto en este centro" });
 
   const [result] = await query(
-    `INSERT INTO shifts (cashier_id, operation_center_id, opened_at, opening_note, status) VALUES (?, ?, ?, ?, 'open')`,
-    [cashierId, Number(centerId), nowSql(), note]
+    `INSERT INTO shifts (cashier_id, operation_center_id, opened_at, opening_note, opening_cash, status) VALUES (?, ?, ?, ?, ?, 'open')`,
+    [cashierId, Number(centerId), nowSql(), note, money(Number(openingCash))]
   );
   res.status(201).json({ shiftId: result.insertId });
 });
 
-app.post("/api/shifts/close", async (req, res) => {
-  const { cashierId, note = "", centerId } = req.body || {};
-  if (!centerId) return res.status(400).json({ error: "centerId es requerido" });
+async function getShiftSummary(shiftId, closingCash) {
   const [openShift] = await query(
-    `SELECT id, opened_at FROM shifts WHERE status = 'open' AND operation_center_id = ? ORDER BY id DESC LIMIT 1`,
-    [Number(centerId)]
+    `SELECT id, opened_at, opening_cash FROM shifts WHERE id = ? LIMIT 1`,
+    [shiftId]
   );
-  if (!openShift.length) return res.status(400).json({ error: "No hay turno abierto en este centro" });
-  const shiftId = openShift[0].id;
+  if (!openShift.length) return null;
+  const openingCash = money(Number(openShift[0].opening_cash || 0));
 
   const [summary] = await query(
     `SELECT
       COUNT(a.id) AS total_checks,
       COALESCE(SUM(CASE WHEN p.method = 'cash' THEN p.amount ELSE 0 END), 0) AS cash_total,
       COALESCE(SUM(CASE WHEN p.method = 'card' THEN p.amount ELSE 0 END), 0) AS card_total,
+      COALESCE(SUM(CASE WHEN p.method = 'transfer' THEN p.amount ELSE 0 END), 0) AS transfer_total,
+      COALESCE(SUM(CASE WHEN p.method = 'cxc' THEN p.amount ELSE 0 END), 0) AS cxc_total,
+      COALESCE(SUM(CASE WHEN p.method = 'other' THEN p.amount ELSE 0 END), 0) AS other_total,
       COALESCE(SUM(p.amount), 0) AS grand_total
      FROM accounts a
      LEFT JOIN account_payments p ON p.account_id = a.id
@@ -3876,27 +5051,306 @@ app.post("/api/shifts/close", async (req, res) => {
     [shiftId]
   );
 
-  await query(
-    `UPDATE shifts SET status = 'closed', closed_at = ?, closing_note = ?, cashier_id = ? WHERE id = ?`,
-    [nowSql(), note, cashierId, shiftId]
+  const methodsMeta = await query(
+    `SELECT code, label FROM payment_methods WHERE is_active = 1 ORDER BY sort_order`
   );
-  res.json({ shiftId, openedAt: openShift[0].opened_at, closedAt: nowSql(), summary: summary[0] });
-});
+  const [methods] = methodsMeta;
 
-app.get("/api/reports/voided-items", async (_req, res) => {
-  const [rows] = await query(
-    `SELECT oi.id, a.check_number, p.name AS product_name, oi.void_reason, oi.voided_at
+  const [paymentsDetail] = await query(
+    `SELECT p.method, p.amount, p.reference_no, a.check_number, a.id AS account_id
+     FROM account_payments p
+     INNER JOIN accounts a ON a.id = p.account_id
+     WHERE a.shift_id = ?
+     ORDER BY p.method, a.check_number`,
+    [shiftId]
+  );
+
+  const [voidedItems] = await query(
+    `SELECT oi.id, a.check_number, p.name AS product_name, oi.qty, oi.line_total, oi.void_reason, oi.voided_at
      FROM order_items oi
      INNER JOIN accounts a ON a.id = oi.account_id
      INNER JOIN products p ON p.id = oi.product_id
+     WHERE a.shift_id = ? AND oi.status = 'void'
+     ORDER BY oi.voided_at`,
+    [shiftId]
+  );
+
+  const [openAccounts] = await query(
+    `SELECT a.id, a.check_number, a.guest_count, u.full_name AS waiter_name,
+            COALESCE(SUM(oi.line_total), 0) AS total
+     FROM accounts a
+     LEFT JOIN order_items oi ON oi.account_id = a.id AND oi.status = 'active'
+     LEFT JOIN staff_users u ON u.id = a.waiter_id
+      WHERE a.shift_id = ? AND a.status = 'open'
+      GROUP BY a.id
+      ORDER BY a.check_number`,
+    [shiftId]
+  );
+
+  const [paidAccounts] = await query(
+    `SELECT a.id, a.check_number, a.guest_count, a.closed_at, u.full_name AS waiter_name,
+            COALESCE(SUM(oi.line_total), 0) AS total,
+            COALESCE((SELECT GROUP_CONCAT(DISTINCT p.method ORDER BY p.method SEPARATOR ', ') FROM account_payments p WHERE p.account_id = a.id), '') AS payment_methods
+     FROM accounts a
+     LEFT JOIN order_items oi ON oi.account_id = a.id AND oi.status = 'active'
+     LEFT JOIN staff_users u ON u.id = a.waiter_id
+     WHERE a.shift_id = ? AND a.status = 'paid'
+     GROUP BY a.id
+     ORDER BY a.check_number`,
+    [shiftId]
+  );
+
+  const cashTotal = money(Number(summary[0].cash_total || 0));
+  const expectedCash = money(openingCash + cashTotal);
+
+  return {
+    ...summary[0],
+    openingCash,
+    cashTotal,
+    expectedCash,
+    closingCash: closingCash !== null && closingCash !== undefined ? money(Number(closingCash)) : null,
+    methods,
+    paymentsDetail,
+    voidedItems,
+    openAccounts,
+    paidAccounts,
+  };
+}
+
+app.get("/api/shifts/preview", requireAuth, async (req, res) => {
+  try {
+    const { centerId, closingCash } = req.query;
+    if (!centerId) return res.status(400).json({ error: "centerId es requerido" });
+    const [openShift] = await query(
+      `SELECT id, opened_at FROM shifts WHERE status = 'open' AND operation_center_id = ? ORDER BY id DESC LIMIT 1`,
+      [Number(centerId)]
+    );
+    if (!openShift.length) return res.status(400).json({ error: "No hay turno abierto en este centro" });
+    const summaryData = await getShiftSummary(openShift[0].id, closingCash !== undefined ? Number(closingCash) : null);
+    res.json({ shiftId: openShift[0].id, openedAt: openShift[0].opened_at, summary: summaryData });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/shifts/close", requireAuth, async (req, res) => {
+  if (!hasPermission(req.session, 'shifts.close')) {
+    return res.status(403).json({ error: "No tienes permiso para cerrar turnos" });
+  }
+  const { cashierId, note = "", centerId, closingCash = null } = req.body || {};
+  if (!centerId) return res.status(400).json({ error: "centerId es requerido" });
+  const [openShift] = await query(
+    `SELECT id, opened_at, opening_cash FROM shifts WHERE status = 'open' AND operation_center_id = ? ORDER BY id DESC LIMIT 1`,
+    [Number(centerId)]
+  );
+  if (!openShift.length) return res.status(400).json({ error: "No hay turno abierto en este centro" });
+  const shiftId = openShift[0].id;
+
+  const closeParams = [nowSql(), note, cashierId];
+  let closeSql = `UPDATE shifts SET status = 'closed', closed_at = ?, closing_note = ?, cashier_id = ?`;
+  if (closingCash !== null && closingCash !== undefined) {
+    closeSql += `, closing_cash = ?`;
+    closeParams.push(money(Number(closingCash)));
+  }
+  closeParams.push(shiftId);
+  await query(closeSql + ` WHERE id = ?`, closeParams);
+
+  const summaryData = await getShiftSummary(shiftId, closingCash);
+  res.json({ shiftId, openedAt: openShift[0].opened_at, closedAt: nowSql(), summary: summaryData });
+});
+
+// List closed shifts for a center
+app.get("/api/shifts/closed", requireAuth, async (req, res) => {
+  try {
+    const { centerId, limit = 20 } = req.query;
+    if (!centerId) return res.status(400).json({ error: "centerId es requerido" });
+    const [rows] = await query(
+      `SELECT s.id, s.opened_at, s.closed_at, s.opening_cash, s.closing_cash,
+              s.closing_note, u.full_name AS cashier_name
+       FROM shifts s
+       LEFT JOIN staff_users u ON u.id = s.cashier_id
+       WHERE s.status = 'closed' AND s.operation_center_id = ?
+       ORDER BY s.closed_at DESC
+       LIMIT ?`,
+      [Number(centerId), Number(limit)]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get shift report by ID (for reprint)
+app.get("/api/shifts/:shiftId/report", requireAuth, async (req, res) => {
+  try {
+    const shiftId = Number(req.params.shiftId);
+    const [shiftRows] = await query(
+      `SELECT s.*, u.full_name AS cashier_name
+       FROM shifts s
+       LEFT JOIN staff_users u ON u.id = s.cashier_id
+       WHERE s.id = ?`,
+      [shiftId]
+    );
+    if (!shiftRows.length) return res.status(404).json({ error: "Turno no encontrado" });
+    const summaryData = await getShiftSummary(shiftId, shiftRows[0].closing_cash);
+    res.json({ shift: shiftRows[0], summary: summaryData });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/reports/voided-items", async (_req, res) => {
+  // Get voided items with authorization info
+  const [voidedRows] = await query(
+    `SELECT
+       oi.id,
+       a.id AS account_id,
+       a.check_number,
+       p.name AS product_name,
+       oi.qty AS void_qty,
+       oi.line_total AS void_total,
+       oi.void_reason,
+       oi.voided_at,
+       oi.void_authorized_by,
+       u.full_name AS authorized_by_name
+     FROM order_items oi
+     INNER JOIN accounts a ON a.id = oi.account_id
+     INNER JOIN products p ON p.id = oi.product_id
+     LEFT JOIN staff_users u ON u.id = oi.void_authorized_by
      WHERE oi.status = 'void'
      ORDER BY oi.voided_at DESC`
   );
-  res.json(rows);
+
+  if (!voidedRows.length) {
+    return res.json([]);
+  }
+
+  // Get all account IDs from voided items
+  const accountIds = [...new Set(voidedRows.map(r => r.account_id))];
+
+  // Get all products per account (including voided ones)
+  const [allItems] = await query(
+    `SELECT
+       oi.account_id,
+       p.name AS product_name,
+       oi.qty,
+       oi.line_total,
+       oi.status
+     FROM order_items oi
+     INNER JOIN products p ON p.id = oi.product_id
+     WHERE oi.account_id IN (${accountIds.map(() => '?').join(',')})
+     ORDER BY oi.id ASC`,
+    accountIds
+  );
+
+  // Group products by account_id
+  const itemsByAccount = {};
+  allItems.forEach(item => {
+    if (!itemsByAccount[item.account_id]) itemsByAccount[item.account_id] = [];
+    itemsByAccount[item.account_id].push(item);
+  });
+
+  // Attach account products to each voided row
+  const result = voidedRows.map(row => ({
+    ...row,
+    account_products: itemsByAccount[row.account_id] || [],
+  }));
+
+  res.json(result);
 });
 
-app.get("/api/reports/waiter-tips", async (_req, res) => {
-  res.json([]);
+app.get("/api/reports/waiter-tips", async (req, res) => {
+  try {
+    const { startDate, endDate, waiterId, centerId } = req.query;
+    if (!startDate || !endDate) {
+      return res.status(400).json({ error: "startDate y endDate son requeridos" });
+    }
+
+    const globalTipPercent = await getTipPercent();
+
+    const [excludedRows] = await query(
+      `SELECT setting_value FROM app_settings WHERE setting_key = 'tip_excluded_methods' LIMIT 1`
+    );
+    const excludedMethods = (excludedRows?.[0]?.setting_value || 'cxc')
+      .split(',').map(s => s.trim()).filter(Boolean);
+
+    const [accounts] = await query(
+      `SELECT a.id, a.waiter_id, a.operation_center_id, a.check_number, a.closed_at, a.tip_percent_override,
+              u.full_name AS waiter_name, oc.name AS center_name
+       FROM accounts a
+       JOIN staff_users u ON u.id = a.waiter_id
+       JOIN operation_centers oc ON oc.id = a.operation_center_id
+       WHERE a.status = 'paid'
+         AND a.closed_at >= ? AND a.closed_at < DATE_ADD(?, INTERVAL 1 DAY)
+         AND (? IS NULL OR a.waiter_id = ?)
+         AND (? IS NULL OR a.operation_center_id = ?)
+       ORDER BY u.full_name, a.closed_at`,
+      [startDate, endDate, waiterId || null, waiterId || null, centerId || null, centerId || null]
+    );
+
+    const details = [];
+    const byWaiter = {};
+
+    for (const acc of accounts) {
+      const [paymentMethods] = await query(
+        `SELECT DISTINCT method FROM account_payments WHERE account_id = ?`,
+        [acc.id]
+      );
+      const methodsUsed = paymentMethods.map(r => String(r.method).trim());
+      const hasEligiblePayment = methodsUsed.some(m => !excludedMethods.includes(m));
+      const totals = await getAccountTotals(acc.id);
+      const effectiveTip = hasEligiblePayment ? totals.tipAmount : 0;
+
+      const row = {
+        accountId: acc.id,
+        checkNumber: acc.check_number,
+        closedAt: acc.closed_at,
+        waiterId: acc.waiter_id,
+        waiterName: acc.waiter_name,
+        centerId: acc.operation_center_id,
+        centerName: acc.center_name,
+        subtotal: totals.subtotal,
+        discountTotal: totals.discountTotal,
+        tipPercent: totals.tipPercent,
+        tipAmount: effectiveTip,
+        tipEligible: hasEligiblePayment,
+        paymentMethods: methodsUsed,
+        total: totals.total,
+      };
+      details.push(row);
+
+      const key = `${acc.waiter_id}-${acc.operation_center_id}`;
+      if (!byWaiter[key]) {
+        byWaiter[key] = {
+          waiterId: acc.waiter_id,
+          waiterName: acc.waiter_name,
+          centerId: acc.operation_center_id,
+          centerName: acc.center_name,
+          accountCount: 0,
+          eligibleCount: 0,
+          totalSubtotal: 0,
+          totalDiscounts: 0,
+          totalTips: 0,
+          totalGeneral: 0,
+        };
+      }
+      byWaiter[key].accountCount++;
+      if (hasEligiblePayment) byWaiter[key].eligibleCount++;
+      byWaiter[key].totalSubtotal += totals.subtotal;
+      byWaiter[key].totalDiscounts += totals.discountTotal;
+      byWaiter[key].totalTips += effectiveTip;
+      byWaiter[key].totalGeneral += totals.total;
+    }
+
+    res.json({
+      globalTipPercent,
+      excludedMethods,
+      details,
+      summary: Object.values(byWaiter),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get("/api/reports/account-trace/:accountId", async (req, res) => {
@@ -3909,6 +5363,578 @@ app.get("/api/reports/account-trace/:accountId", async (req, res) => {
     [accountId]
   );
   res.json(rows);
+});
+
+// Product sales by category report
+app.get("/api/reports/product-sales", async (req, res) => {
+  try {
+    const { startDate, endDate, centerId, categoryId, productName } = req.query;
+    const conditions = ["oi.status = 'active'", "a.status = 'paid'"];
+    const params = [];
+    if (startDate) {
+      conditions.push('a.closed_at >= ?');
+      params.push(startDate);
+    }
+    if (endDate) {
+      conditions.push('a.closed_at <= ?');
+      params.push(endDate + ' 23:59:59');
+    }
+    if (centerId) {
+      conditions.push('a.operation_center_id = ?');
+      params.push(Number(centerId));
+    }
+    if (categoryId) {
+      conditions.push('p.category_id = ?');
+      params.push(Number(categoryId));
+    }
+    if (productName && productName.trim()) {
+      conditions.push('p.name LIKE ?');
+      params.push(`%${productName.trim()}%`);
+    }
+
+    const [rows] = await query(
+      `SELECT pc.id AS category_id, pc.name AS category_name,
+              p.id AS product_id, p.name AS product_name,
+              SUM(oi.qty) AS total_qty,
+              SUM(oi.line_total) AS total_sales,
+              COUNT(DISTINCT a.id) AS account_count
+       FROM order_items oi
+       INNER JOIN products p ON p.id = oi.product_id
+       INNER JOIN product_categories pc ON pc.id = p.category_id
+       INNER JOIN accounts a ON a.id = oi.account_id
+       WHERE ${conditions.join(' AND ')}
+       GROUP BY pc.id, p.id
+       ORDER BY pc.name, total_sales DESC`,
+      params
+    );
+
+    const [totals] = await query(
+      `SELECT COUNT(DISTINCT a.id) AS total_accounts,
+              SUM(oi.qty) AS grand_qty,
+              SUM(oi.line_total) AS grand_total
+       FROM order_items oi
+       INNER JOIN products p ON p.id = oi.product_id
+       INNER JOIN accounts a ON a.id = oi.account_id
+       WHERE ${conditions.join(' AND ')}`,
+      params
+    );
+
+    const [categories] = await query(
+      `SELECT id, name FROM product_categories WHERE is_active = 1 ORDER BY sort_order, name`
+    );
+
+    res.json({ rows, totals: totals[0] || { total_accounts: 0, grand_qty: 0, grand_total: 0 }, categories });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// SALES BY PAYMENT METHOD
+// ============================================================
+app.get("/api/reports/sales-by-payment-method", async (req, res) => {
+  try {
+    const { startDate, endDate, centerId, method } = req.query;
+    const whereClauses = ["a.status = 'paid'"];
+    const params = [];
+
+    if (startDate) {
+      whereClauses.push('a.closed_at >= ?');
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClauses.push('a.closed_at <= ?');
+      params.push(endDate + ' 23:59:59');
+    }
+    if (centerId) {
+      whereClauses.push('a.operation_center_id = ?');
+      params.push(Number(centerId));
+    }
+
+    const where = whereClauses.join(' AND ');
+
+    // Summary by payment method
+    const [methodSummary] = await query(
+      `SELECT
+         ap.method,
+         COUNT(*) AS transaction_count,
+         SUM(ap.amount) AS total_amount
+       FROM account_payments ap
+       INNER JOIN accounts a ON ap.account_id = a.id
+       WHERE ${where}
+       GROUP BY ap.method
+       ORDER BY total_amount DESC`,
+      params
+    );
+
+    // Grand total
+    const [grandTotal] = await query(
+      `SELECT COALESCE(SUM(ap.amount), 0) AS grand_total
+       FROM account_payments ap
+       INNER JOIN accounts a ON ap.account_id = a.id
+       WHERE ${where}`,
+      params
+    );
+
+    // Detail query with optional method filter
+    let detailWhere = where;
+    let detailParams = [...params];
+    if (method && method.trim()) {
+      detailWhere += ` AND ap.method = ?`;
+      detailParams.push(method.trim());
+    }
+
+    const [paymentDetails] = await query(
+      `SELECT
+         ap.method,
+         ap.amount,
+         ap.reference_no,
+         ap.created_at,
+         a.check_number,
+         a.id AS account_id,
+         a.closed_at,
+         oc.name AS center_name,
+         (SELECT SUM(oi.line_total) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS account_total
+       FROM account_payments ap
+       INNER JOIN accounts a ON ap.account_id = a.id
+       LEFT JOIN operation_centers oc ON oc.id = a.operation_center_id
+       WHERE ${detailWhere}
+       ORDER BY ap.created_at DESC
+       LIMIT 500`,
+      detailParams
+    );
+
+    // Group by method for the filtered/all detail view
+    const detailByMethod = {};
+    for (const p of paymentDetails) {
+      if (!detailByMethod[p.method]) detailByMethod[p.method] = [];
+      detailByMethod[p.method].push(p);
+    }
+
+    res.json({
+      methods: methodSummary || [],
+      grand_total: grandTotal?.[0]?.grand_total || 0,
+      payment_details: paymentDetails || [],
+      detail_by_method: detailByMethod,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// SALES BY CENTER COMPARISON
+// ============================================================
+app.get("/api/reports/sales-by-center", async (req, res) => {
+  try {
+    const { startDate, endDate, centerId, productName, productIds } = req.query;
+    const conditions = ["oi.status = 'active'", "a.status = 'paid'"];
+    const params = [];
+
+    if (startDate) {
+      conditions.push('a.closed_at >= ?');
+      params.push(startDate);
+    }
+    if (endDate) {
+      conditions.push('a.closed_at <= ?');
+      params.push(endDate + ' 23:59:59');
+    }
+    if (centerId) {
+      conditions.push('a.operation_center_id = ?');
+      params.push(Number(centerId));
+    }
+    if (productName && productName.trim()) {
+      conditions.push('p.name LIKE ?');
+      params.push(`%${productName.trim()}%`);
+    }
+    if (productIds && productIds.trim()) {
+      const ids = productIds.split(',').map(id => Number(id.trim())).filter(id => id > 0);
+      if (ids.length > 0) {
+        conditions.push(`p.id IN (${ids.map(() => '?').join(',')})`);
+        params.push(...ids);
+      }
+    }
+
+    const where = conditions.join(' AND ');
+
+    // Totals by center
+    const [centerTotals] = await query(
+      `SELECT
+         oc.id AS center_id,
+         oc.name AS center_name,
+         COUNT(DISTINCT a.id) AS account_count,
+         COALESCE(SUM(oi.qty), 0) AS total_qty,
+         COALESCE(SUM(oi.line_total), 0) AS total_sales
+       FROM order_items oi
+       INNER JOIN accounts a ON a.id = oi.account_id
+       LEFT JOIN operation_centers oc ON oc.id = a.operation_center_id
+       WHERE ${where}
+       GROUP BY oc.id
+       ORDER BY total_sales DESC`,
+      params
+    );
+
+    // Detailed rows — each individual product sale
+    const [detailRows] = await query(
+      `SELECT
+         oc.id AS center_id,
+         oc.name AS center_name,
+         pc.id AS category_id,
+         pc.name AS category_name,
+         p.id AS product_id,
+         p.name AS product_name,
+         a.check_number,
+         a.id AS account_id,
+         a.closed_at,
+         a.merged_into_account_id,
+         u.full_name AS waiter_name,
+         oi.qty,
+         oi.line_total
+       FROM order_items oi
+       INNER JOIN products p ON p.id = oi.product_id
+       INNER JOIN product_categories pc ON pc.id = p.category_id
+       INNER JOIN accounts a ON a.id = oi.account_id
+       LEFT JOIN operation_centers oc ON oc.id = a.operation_center_id
+       LEFT JOIN staff_users u ON u.id = a.waiter_id
+       WHERE ${where}
+       ORDER BY oc.name, pc.name, p.name, a.closed_at DESC
+       LIMIT 2000`,
+      params
+    );
+
+    // Grouped summary: product x center
+    const [groupedRows] = await query(
+      `SELECT
+         oc.id AS center_id,
+         oc.name AS center_name,
+         pc.id AS category_id,
+         pc.name AS category_name,
+         p.id AS product_id,
+         p.name AS product_name,
+         SUM(oi.qty) AS total_qty,
+         SUM(oi.line_total) AS total_sales,
+         COUNT(DISTINCT a.id) AS account_count
+       FROM order_items oi
+       INNER JOIN products p ON p.id = oi.product_id
+       INNER JOIN product_categories pc ON pc.id = p.category_id
+       INNER JOIN accounts a ON a.id = oi.account_id
+       LEFT JOIN operation_centers oc ON oc.id = a.operation_center_id
+       WHERE ${where}
+       GROUP BY oc.id, pc.id, p.id
+       ORDER BY oc.name, pc.name, total_sales DESC`,
+      params
+    );
+
+    // Cuentas unidas (status=void con merged_into_account_id) — mostrarlas con Q0 para rastreo
+    // Reconstruir condiciones y params sin las referencias a oi (order_items)
+    const mergedConds = [];
+    const mergedParams = [];
+    if (startDate) {
+      mergedConds.push('a.closed_at >= ?');
+      mergedParams.push(startDate);
+    }
+    if (endDate) {
+      mergedConds.push('a.closed_at <= ?');
+      mergedParams.push(endDate + ' 23:59:59');
+    }
+    if (centerId) {
+      mergedConds.push('a.operation_center_id = ?');
+      mergedParams.push(Number(centerId));
+    }
+    mergedConds.push("a.status = 'void'", "a.merged_into_account_id IS NOT NULL");
+    const mergedWhere = mergedConds.join(' AND ');
+    const [mergedAccounts] = await query(
+      `SELECT
+         a.id AS account_id,
+         a.check_number,
+         a.closed_at,
+         a.merged_into_account_id,
+         oc.name AS center_name,
+         oc.id AS center_id,
+         u.full_name AS waiter_name
+       FROM accounts a
+       LEFT JOIN operation_centers oc ON oc.id = a.operation_center_id
+       LEFT JOIN staff_users u ON u.id = a.waiter_id
+       WHERE ${mergedWhere}
+       ORDER BY a.closed_at DESC
+       LIMIT 500`,
+      mergedParams
+    );
+
+    // Categorize grouped as shared / exclusive
+    const productMap = {};
+    groupedRows.forEach(r => {
+      if (!productMap[r.product_id]) {
+        productMap[r.product_id] = {
+          product_id: r.product_id,
+          product_name: r.product_name,
+          category_name: r.category_name,
+          centers: [],
+          total_qty: 0,
+          total_sales: 0,
+        };
+      }
+      productMap[r.product_id].centers.push({
+        center_id: r.center_id,
+        center_name: r.center_name,
+        qty: Number(r.total_qty),
+        sales: Number(r.total_sales),
+        account_count: Number(r.account_count),
+      });
+      productMap[r.product_id].total_qty += Number(r.total_qty);
+      productMap[r.product_id].total_sales += Number(r.total_sales);
+    });
+
+    const products = Object.values(productMap);
+    const sharedProducts = products.filter(p => p.centers.length > 1);
+    const exclusiveProducts = products.filter(p => p.centers.length === 1);
+
+    const [grandTotal] = await query(
+      `SELECT COALESCE(SUM(oi.line_total), 0) AS grand_total,
+              COALESCE(SUM(oi.qty), 0) AS grand_qty
+       FROM order_items oi
+       INNER JOIN accounts a ON a.id = oi.account_id
+       WHERE ${where}`,
+      params
+    );
+
+    res.json({
+      center_totals: centerTotals || [],
+      products: products,
+      shared_products: sharedProducts,
+      exclusive_products: exclusiveProducts,
+      detail_rows: detailRows || [],
+      merged_accounts: mergedAccounts || [],
+      grand_total: grandTotal?.[0]?.grand_total || 0,
+      grand_qty: grandTotal?.[0]?.grand_qty || 0,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// SALES BY USER / EMPLOYEE
+// ============================================================
+app.get("/api/reports/sales-by-user", async (req, res) => {
+  try {
+    const {
+      startDate, endDate,
+      centerId,
+      productIds,   // comma-separated product IDs
+      productName,  // text search
+      categoryId,
+      userIds,      // comma-separated user IDs
+    } = req.query;
+
+    const conditions = ["oi.status = 'active'", "a.status = 'paid'", "u.id IS NOT NULL"];
+    const params = [];
+
+    if (startDate) {
+      conditions.push('a.closed_at >= ?');
+      params.push(startDate);
+    }
+    if (endDate) {
+      conditions.push('a.closed_at <= ?');
+      params.push(endDate + ' 23:59:59');
+    }
+    if (centerId) {
+      conditions.push('a.operation_center_id = ?');
+      params.push(Number(centerId));
+    }
+    if (categoryId) {
+      conditions.push('p.category_id = ?');
+      params.push(Number(categoryId));
+    }
+    if (productIds && productIds.trim()) {
+      const ids = productIds.split(',').map(id => Number(id.trim())).filter(id => id > 0);
+      if (ids.length > 0) {
+        conditions.push(`p.id IN (${ids.map(() => '?').join(',')})`);
+        params.push(...ids);
+      }
+    }
+    if (productName && productName.trim()) {
+      conditions.push('p.name LIKE ?');
+      params.push(`%${productName.trim()}%`);
+    }
+    if (userIds && userIds.trim()) {
+      const ids = userIds.split(',').map(id => Number(id.trim())).filter(id => id > 0);
+      if (ids.length > 0) {
+        conditions.push(`a.waiter_id IN (${ids.map(() => '?').join(',')})`);
+        params.push(...ids);
+      }
+    }
+
+    const where = conditions.join(' AND ');
+
+    // Detail: each individual product sale with user info
+    const [detailRows] = await query(
+      `SELECT
+         u.id AS user_id,
+         u.full_name AS user_name,
+         u.role AS user_role,
+         oc.id AS center_id,
+         oc.name AS center_name,
+         pc.id AS category_id,
+         pc.name AS category_name,
+         p.id AS product_id,
+         p.name AS product_name,
+         a.check_number,
+         a.id AS account_id,
+         a.closed_at,
+         a.merged_into_account_id,
+         oi.qty,
+         oi.line_total
+       FROM order_items oi
+       INNER JOIN products p ON p.id = oi.product_id
+       INNER JOIN product_categories pc ON pc.id = p.category_id
+       INNER JOIN accounts a ON a.id = oi.account_id
+       INNER JOIN staff_users u ON u.id = a.waiter_id
+       LEFT JOIN operation_centers oc ON oc.id = a.operation_center_id
+       WHERE ${where}
+       ORDER BY u.full_name, pc.name, p.name, a.closed_at DESC
+       LIMIT 3000`,
+      params
+    );
+
+    // Cuentas unidas (status=void con merged_into_account_id)
+    const mergedConds2 = [];
+    const mergedParams2 = [];
+    if (startDate) {
+      mergedConds2.push('a.closed_at >= ?');
+      mergedParams2.push(startDate);
+    }
+    if (endDate) {
+      mergedConds2.push('a.closed_at <= ?');
+      mergedParams2.push(endDate + ' 23:59:59');
+    }
+    if (centerId) {
+      mergedConds2.push('a.operation_center_id = ?');
+      mergedParams2.push(Number(centerId));
+    }
+    if (userIds && userIds.trim()) {
+      const ids = userIds.split(',').map(id => Number(id.trim())).filter(id => id > 0);
+      if (ids.length > 0) {
+        mergedConds2.push(`a.waiter_id IN (${ids.map(() => '?').join(',')})`);
+        mergedParams2.push(...ids);
+      }
+    }
+    mergedConds2.push("a.status = 'void'", "a.merged_into_account_id IS NOT NULL");
+    const mergedWhere = mergedConds2.join(' AND ');
+    const [mergedAccounts] = await query(
+      `SELECT
+         a.id AS account_id,
+         a.check_number,
+         a.closed_at,
+         a.merged_into_account_id,
+         u.id AS user_id,
+         u.full_name AS user_name,
+         u.role AS user_role,
+         oc.id AS center_id,
+         oc.name AS center_name
+       FROM accounts a
+       INNER JOIN staff_users u ON u.id = a.waiter_id
+       LEFT JOIN operation_centers oc ON oc.id = a.operation_center_id
+       WHERE ${mergedWhere}
+       ORDER BY a.closed_at DESC
+       LIMIT 500`,
+      mergedParams2
+    );
+
+    // Grouped by user
+    const userMap = {};
+    detailRows.forEach(r => {
+      if (!userMap[r.user_id]) {
+        userMap[r.user_id] = {
+          user_id: r.user_id,
+          user_name: r.user_name,
+          user_role: r.user_role,
+          center_name: r.center_name,
+          total_qty: 0,
+          total_sales: 0,
+          product_count: 0,
+          products: {},
+        };
+      }
+      if (!userMap[r.user_id].products[r.product_id]) {
+        userMap[r.user_id].products[r.product_id] = {
+          product_id: r.product_id,
+          product_name: r.product_name,
+          category_name: r.category_name,
+          qty: 0,
+          sales: 0,
+        };
+        userMap[r.user_id].product_count++;
+      }
+      userMap[r.user_id].products[r.product_id].qty += Number(r.qty);
+      userMap[r.user_id].products[r.product_id].sales += Number(r.line_total);
+      userMap[r.user_id].total_qty += Number(r.qty);
+      userMap[r.user_id].total_sales += Number(r.line_total);
+    });
+
+    const users = Object.values(userMap)
+      .map(u => ({
+        ...u,
+        products: Object.values(u.products),
+      }))
+      .sort((a, b) => b.total_sales - a.total_sales);
+
+    // Grouped by product for comparison
+    const productMap = {};
+    detailRows.forEach(r => {
+      if (!productMap[r.product_id]) {
+        productMap[r.product_id] = {
+          product_id: r.product_id,
+          product_name: r.product_name,
+          category_name: r.category_name,
+          center_name: r.center_name,
+          total_qty: 0,
+          total_sales: 0,
+          sellers: [],
+        };
+      }
+      if (!productMap[r.product_id].sellers.find(s => s.user_id === r.user_id)) {
+        productMap[r.product_id].sellers.push({
+          user_id: r.user_id,
+          user_name: r.user_name,
+          qty: 0,
+          sales: 0,
+        });
+      }
+      const seller = productMap[r.product_id].sellers.find(s => s.user_id === r.user_id);
+      seller.qty += Number(r.qty);
+      seller.sales += Number(r.line_total);
+      productMap[r.product_id].total_qty += Number(r.qty);
+      productMap[r.product_id].total_sales += Number(r.line_total);
+    });
+
+    const productComparison = Object.values(productMap)
+      .sort((a, b) => b.total_sales - a.total_sales);
+
+    // Grand totals
+    const [grandTotal] = await query(
+      `SELECT COALESCE(SUM(oi.line_total), 0) AS grand_total,
+              COALESCE(SUM(oi.qty), 0) AS grand_qty
+       FROM order_items oi
+       INNER JOIN accounts a ON a.id = oi.account_id
+       INNER JOIN staff_users u ON u.id = a.waiter_id
+       INNER JOIN products p ON p.id = oi.product_id
+       LEFT JOIN operation_centers oc ON oc.id = a.operation_center_id
+       WHERE ${where}`,
+      params
+    );
+
+    res.json({
+      users,
+      product_comparison: productComparison,
+      detail_rows: detailRows || [],
+      merged_accounts: mergedAccounts || [],
+      grand_total: grandTotal?.[0]?.grand_total || 0,
+      grand_qty: grandTotal?.[0]?.grand_qty || 0,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Inventory items CRUD
