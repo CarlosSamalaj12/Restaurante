@@ -19,7 +19,8 @@ import {
   Save,
   Monitor,
   List,
-  Shield
+  Shield,
+  Store
 } from 'lucide-react';
 
 const TABS = [
@@ -158,17 +159,18 @@ export function SettingsPage({ onBack }) {
             productProductionCenters={data.productProductionCenters}
             modifierGroups={data.modifierGroups}
             productModifierGroups={data.productModifierGroups}
+            centers={data.centers}
             onReload={loadData}
           />
         )}
         {activeTab === 'categories' && (
-          <CategoriesSection categories={data.categories} />
+          <CategoriesSection categories={data.categories} centers={data.centers} onReload={loadData} />
         )}
         {activeTab === 'centers' && (
           <CentersSection centers={data.centers} onReload={loadData} />
         )}
         {activeTab === 'production' && (
-          <ProductionCentersSection productionCenters={data.productionCenters} onReload={loadData} />
+          <ProductionCentersSection productionCenters={data.productionCenters} centers={data.centers} onReload={loadData} />
         )}
         {activeTab === 'tables' && (
           <TablesSection tables={data.tables} centers={data.centers} onReload={loadData} />
@@ -215,7 +217,7 @@ export function SettingsPage({ onBack }) {
 }
 
 // Products Section
-function ProductsSection({ products, categories, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, onReload }) {
+function ProductsSection({ products, categories, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, onReload }) {
   const [showWizard, setShowWizard] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -354,6 +356,7 @@ function ProductsSection({ products, categories, productionCenters, productProdu
           productProductionCenters={productProductionCenters}
           modifierGroups={modifierGroups}
           productModifierGroups={productModifierGroups}
+          centers={centers}
           onClose={() => {
             setShowWizard(false);
             setEditingProduct(null);
@@ -400,7 +403,7 @@ function ProductsSection({ products, categories, productionCenters, productProdu
 }
 
 // Product Creation Wizard
-function ProductWizardModal({ categories, editingProduct, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, onClose, onCreated }) {
+function ProductWizardModal({ categories, editingProduct, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, onClose, onCreated }) {
   const existingProductionCenters = editingProduct
     ? (productProductionCenters?.filter(ppc => Number(ppc.product_id) === Number(editingProduct.id)).map(ppc => Number(ppc.center_id)) || [])
     : [];
@@ -408,7 +411,16 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
     ? (productModifierGroups?.filter(pmg => Number(pmg.product_id) === Number(editingProduct.id)).map(pmg => Number(pmg.group_id)) || [])
     : [];
 
-  const [step, setStep] = useState(editingProduct ? 7 : 1);
+  // Get the operation center for existing production centers (for edit mode)
+  const getExistingCenterId = () => {
+    if (editingProduct && existingProductionCenters.length > 0) {
+      const prodCenter = productionCenters?.find(pc => pc.id === existingProductionCenters[0]);
+      return prodCenter?.operation_center_id || '';
+    }
+    return '';
+  };
+
+  const [step, setStep] = useState(editingProduct ? 8 : 1);
   const [form, setForm] = useState({
     name: editingProduct?.name || '',
     categoryId: editingProduct?.category_id || '',
@@ -417,7 +429,8 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
     trackInventory: editingProduct?.track_inventory ?? false,
     productionCenterIds: existingProductionCenters,
     modifierGroupIds: existingModifierGroupIds,
-    recipe: []
+    recipe: [],
+    operationCenterId: editingProduct?.operation_center_id || getExistingCenterId() || ''
   });
   const [loading, setLoading] = useState(false);
   const [modifierSearch, setModifierSearch] = useState('');
@@ -425,6 +438,11 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
   const toast = useToast();
 
   const isEditing = !!editingProduct;
+
+  // Filter production centers by selected operation center
+  const filteredProductionCenters = form.operationCenterId
+    ? productionCenters?.filter(pc => Number(pc.operation_center_id) === Number(form.operationCenterId)) || []
+    : productionCenters || [];
 
   useEffect(() => {
     if (editingProduct && editingProduct.track_inventory) {
@@ -451,10 +469,11 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
     { num: 1, label: 'Nombre' },
     { num: 2, label: 'Categoría' },
     { num: 3, label: 'Precio' },
-    { num: 4, label: 'Producción' },
-    { num: 5, label: 'Receta' },
-    { num: 6, label: 'Modificadores' },
-    { num: 7, label: 'Confirmar' }
+    { num: 4, label: 'Centro' },
+    { num: 5, label: 'Producción' },
+    { num: 6, label: 'Receta' },
+    { num: 7, label: 'Modificadores' },
+    { num: 8, label: 'Confirmar' }
   ];
 
   const handleNext = () => {
@@ -481,10 +500,15 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
     setLoading(true);
     try {
       let productId = editingProduct?.id;
+      const payload = { 
+        ...form, 
+        isActive: 1,
+        centerId: form.operationCenterId || null 
+      };
       if (isEditing) {
-        await api.settings.updateProduct(editingProduct.id, { ...form, isActive: 1 });
+        await api.settings.updateProduct(editingProduct.id, payload);
       } else {
-        const result = await api.settings.createProduct(form);
+        const result = await api.settings.createProduct(payload);
         productId = result.productId;
       }
       await api.updateProductProductionCenters(productId, form.productionCenterIds);
@@ -534,47 +558,51 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="bg-white w-full sm:max-w-lg lg:max-w-xl sm:rounded-2xl rounded-t-3xl max-h-[95vh] overflow-hidden"
+        className="bg-white w-full sm:max-w-lg lg:max-w-xl sm:rounded-2xl rounded-t-3xl max-h-[95vh] overflow-hidden flex flex-col"
       >
         {/* Handle */}
-        <div className="flex justify-center pt-3 pb-2">
+        <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
           <div className="w-10 h-1 bg-gray-300 rounded-full" />
         </div>
 
         {/* Header */}
-        <div className="px-5 pb-3 border-b border-gray-100">
+        <div className="px-6 pb-3 border-b border-gray-100 flex-shrink-0">
           <h3 className="font-bold text-gray-900 text-lg">{isEditing ? 'Editar Producto' : 'Nuevo Producto'}</h3>
-          {/* Step Indicator */}
+          {/* Compact Step Indicator */}
           {!isEditing && (
-            <div className="flex items-center justify-between mt-3">
-              {steps.map(s => (
-                <div key={s.num} className="flex items-center">
+            <div className="flex items-center gap-1 mt-3 overflow-x-auto pb-1">
+              {steps.slice(0, -1).map((s, idx) => (
+                <div key={s.num} className="flex items-center flex-shrink-0">
                   <div className={`
-                    w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
-                    ${step >= s.num ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'}
+                    min-w-[28px] h-7 rounded-full flex items-center justify-center text-xs font-bold px-2
+                    ${step > s.num ? 'bg-emerald-500 text-white' : step === s.num ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-400'}
                   `}>
-                    {step > s.num ? <Check className="w-4 h-4" /> : s.num}
+                    {step > s.num ? <Check className="w-3.5 h-3.5" /> : s.num}
                   </div>
-                  <span className={`ml-2 text-xs font-medium ${step >= s.num ? 'text-primary-600' : 'text-gray-400'}`}>
-                    {s.label}
-                  </span>
+                  {idx < steps.slice(0, -1).length - 1 && (
+                    <div className={`w-4 h-0.5 mx-0.5 ${step > s.num ? 'bg-emerald-500' : 'bg-gray-200'}`} />
+                  )}
                 </div>
               ))}
+              <span className="text-xs text-gray-500 ml-2 flex-shrink-0">Paso {step} de {steps.length - 1}</span>
             </div>
           )}
         </div>
 
         {/* Content */}
-        <div className="p-5">
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
           {step === 1 && (
-            <div className="space-y-4">
-              <p className="text-gray-500 text-sm">¿Cómo se llama el producto?</p>
+            <div className="space-y-6">
+              <div>
+                <p className="text-gray-500 text-sm mb-1">Paso 1 de 7</p>
+                <h4 className="text-lg font-semibold text-gray-900">¿Cómo se llama el producto?</h4>
+              </div>
               <input
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-lg focus:border-primary-500 focus:outline-none transition-colors"
+                className="w-full px-4 py-4 border-2 border-gray-200 rounded-xl text-lg focus:border-primary-500 focus:outline-none transition-colors"
                 placeholder="Ej: Hamburguesa clasica"
                 autoFocus
               />
@@ -582,8 +610,11 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
           )}
 
           {step === 2 && (
-            <div className="space-y-4">
-              <p className="text-gray-500 text-sm">¿A qué categoría pertenece?</p>
+            <div className="space-y-6">
+              <div>
+                <p className="text-gray-500 text-sm mb-1">Paso 2 de 7</p>
+                <h4 className="text-lg font-semibold text-gray-900">¿A qué categoría pertenece?</h4>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 {categories.map(cat => (
                   <button
@@ -610,8 +641,11 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
           )}
 
           {step === 3 && (
-            <div className="space-y-4">
-              <p className="text-gray-500 text-sm">¿Cuál es el precio?</p>
+            <div className="space-y-6">
+              <div>
+                <p className="text-gray-500 text-sm mb-1">Paso 3 de 7</p>
+                <h4 className="text-lg font-semibold text-gray-900">¿Cuál es el precio?</h4>
+              </div>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-gray-400">Q</span>
                 <input
@@ -625,12 +659,12 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                       setForm({ ...form, basePrice: val });
                     }
                   }}
-                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl text-2xl font-bold focus:border-primary-500 focus:outline-none transition-colors"
+                  className="w-full pl-10 pr-4 py-4 border-2 border-gray-200 rounded-xl text-2xl font-bold focus:border-primary-500 focus:outline-none transition-colors"
                   placeholder="0.00"
                   autoFocus
                 />
               </div>
-              <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+              <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
                 <input
                   type="checkbox"
                   checked={form.allowDiscount}
@@ -643,17 +677,77 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
           )}
 
           {step === 4 && (
-            <div className="space-y-4">
-              <p className="text-gray-500 text-sm">¿Dónde se elabora?</p>
-              <p className="text-xs text-gray-400">Selecciona los centros de producción donde se prepara este producto</p>
-              {!productionCenters?.length ? (
-                <div className="text-center py-8 text-gray-500">
-                  <p>No hay centros de producción configurados.</p>
-                  <p className="text-xs mt-1">Crea centros en la pestaña "Producción"</p>
+            <div className="space-y-6">
+              <div>
+                <p className="text-gray-500 text-sm mb-1">Paso 4 de 7</p>
+                <h4 className="text-lg font-semibold text-gray-900">¿A qué centro pertenece?</h4>
+                <p className="text-xs text-gray-400 mt-1">Selecciona el local/restaurant donde estará disponible este producto</p>
+              </div>
+              {!centers?.length ? (
+                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl">
+                  <p>No hay centros configurados.</p>
+                  <p className="text-xs mt-1">Crea centros en la pestaña "Centros"</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {productionCenters.map(center => (
+                <div className="space-y-3">
+                  {centers.map(center => (
+                    <button
+                      key={center.id}
+                      onClick={() => {
+                        setForm({ ...form, operationCenterId: center.id, productionCenterIds: [] });
+                      }}
+                      className={`w-full p-4 rounded-xl border-2 text-left transition-all flex items-center gap-3 ${
+                        form.operationCenterId === center.id
+                          ? 'border-primary-500 bg-primary-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        form.operationCenterId === center.id
+                          ? 'border-primary-500 bg-primary-500'
+                          : 'border-gray-300'
+                      }`}>
+                        {form.operationCenterId === center.id && (
+                          <Check className="w-3 h-3 text-white" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{center.name}</p>
+                        <p className="text-xs text-gray-500">Centro de consumo</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-gray-400 text-center">Los centros de producción se mostrarán en el siguiente paso según el centro seleccionado</p>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="space-y-6">
+              <div>
+                <p className="text-gray-500 text-sm mb-1">Paso 5 de 7</p>
+                <h4 className="text-lg font-semibold text-gray-900">¿Dónde se elabora?</h4>
+                <p className="text-xs text-gray-400 mt-1">
+                  {form.operationCenterId 
+                    ? `Centros de producción disponibles en ${centers?.find(c => c.id === form.operationCenterId)?.name || 'este centro'}`
+                    : 'Selecciona primero un centro en el paso anterior'
+                  }
+                </p>
+              </div>
+              {!form.operationCenterId ? (
+                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl">
+                  <p>Selecciona un centro primero</p>
+                  <p className="text-xs mt-1">Ve al paso anterior para elegir el centro</p>
+                </div>
+              ) : !filteredProductionCenters.length ? (
+                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl">
+                  <p>No hay centros de producción en este centro.</p>
+                  <p className="text-xs mt-1">Crea centros de producción asociados a este centro en "Producción"</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredProductionCenters.map(center => (
                     <button
                       key={center.id}
                       onClick={() => toggleProductionCenter(center.id)}
@@ -685,10 +779,13 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
             </div>
           )}
 
-          {step === 5 && (
-            <div className="space-y-4">
-              <p className="text-gray-500 text-sm">¿Controlar inventario?</p>
-              <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+          {step === 6 && (
+            <div className="space-y-6">
+              <div>
+                <p className="text-gray-500 text-sm mb-1">Paso 6 de 7</p>
+                <h4 className="text-lg font-semibold text-gray-900">¿Controlar inventario?</h4>
+              </div>
+              <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
                 <input
                   type="checkbox"
                   checked={form.trackInventory}
@@ -700,11 +797,11 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
 
               {form.trackInventory && (
                 <>
-                  <p className="text-xs text-gray-400 mt-2">Agrega los insumos que consume este producto</p>
+                  <p className="text-xs text-gray-400">Agrega los insumos que consume este producto</p>
                   {inventoryItems.length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-4">No hay insumos registrados. Crea insumos en Reportes &gt; Inventario</p>
+                    <p className="text-sm text-gray-500 text-center py-6 bg-gray-50 rounded-xl">No hay insumos registrados. Crea insumos en Reportes &gt; Inventario</p>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {form.recipe.map((ing, idx) => (
                         <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-xl p-3">
                           <select
@@ -744,7 +841,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                       ))}
                       <button
                         onClick={() => setForm({ ...form, recipe: [...form.recipe, { inventoryItemId: '', quantity: 0 }] })}
-                        className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
+                        className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
                       >
                         + Agregar insumo
                       </button>
@@ -755,26 +852,29 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
             </div>
           )}
 
-          {step === 6 && (
-            <div className="space-y-4">
-              <p className="text-gray-500 text-sm">¿Qué modificadores necesita?</p>
-              <p className="text-xs text-gray-400">Selecciona los grupos de opciones que estarán disponibles para este producto</p>
+          {step === 7 && (
+            <div className="space-y-6">
+              <div>
+                <p className="text-gray-500 text-sm mb-1">Paso 7 de 7</p>
+                <h4 className="text-lg font-semibold text-gray-900">¿Qué modificadores necesita?</h4>
+                <p className="text-xs text-gray-400 mt-1">Selecciona los grupos de opciones disponibles para este producto</p>
+              </div>
               {modifierGroups?.length > 5 && (
                 <input
                   type="text"
                   value={modifierSearch}
                   onChange={(e) => setModifierSearch(e.target.value)}
                   placeholder="Buscar modificador..."
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 />
               )}
               {!modifierGroups?.length ? (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl">
                   <p>No hay modificadores configurados.</p>
                   <p className="text-xs mt-1">Crea modificadores en la pestaña "Modificadores"</p>
                 </div>
               ) : (
-                <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
                   {modifierGroups?.filter(g => g.name.toLowerCase().includes(modifierSearch.toLowerCase())).map(group => (
                     <button
                       key={group.id}
@@ -807,39 +907,47 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
             </div>
           )}
 
-          {step === 7 && (
-            <div className="space-y-4">
-              <p className="text-gray-500 text-sm">Confirma los datos</p>
-              <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-                <div className="flex justify-between">
+          {step === 8 && (
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900">Confirma los datos</h4>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-5 space-y-4">
+                <div className="flex justify-between items-center">
                   <span className="text-gray-500">Producto</span>
                   <span className="font-bold text-gray-900">{form.name}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">Centro</span>
+                  <span className="font-medium text-gray-900">
+                    {centers?.find(c => c.id === form.operationCenterId)?.name || 'No asignado'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
                   <span className="text-gray-500">Categoría</span>
                   <span className="font-medium text-gray-900">
                     {categories.find(c => c.id === form.categoryId)?.name}
                   </span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-gray-500">Precio</span>
                   <span className="font-bold text-primary-600">Q {Number(form.basePrice).toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-gray-500">Elaboración</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-gray-900 text-right text-sm">
                     {form.productionCenterIds.length > 0
                       ? form.productionCenterIds.map(id => productionCenters.find(c => c.id === id)?.name).join(', ')
                       : 'Ninguno'}
                   </span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-gray-500">Inventario</span>
                   <span className="font-medium text-gray-900">{form.trackInventory ? `Sí (${form.recipe.length} insumos)` : 'No'}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-gray-500">Modificadores</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-gray-900 text-right text-sm">
                     {form.modifierGroupIds.length > 0
                       ? form.modifierGroupIds.map(id => modifierGroups?.find(g => g.id === id)?.name).join(', ')
                       : 'Ninguno'}
@@ -851,26 +959,26 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-100 flex gap-3">
+        <div className="p-6 border-t border-gray-100 flex gap-3 flex-shrink-0">
           {step > 1 ? (
             <button
               onClick={handleBack}
-              className="flex-1 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl"
+              className="flex-1 py-4 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition-colors"
             >
               Atrás
             </button>
           ) : (
             <button
               onClick={onClose}
-              className="flex-1 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl"
+              className="flex-1 py-4 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition-colors"
             >
               Cancelar
             </button>
           )}
-          {step < 7 ? (
+          {step < 8 ? (
             <button
               onClick={handleNext}
-              className="flex-1 py-3 bg-primary-600 text-white font-medium rounded-xl"
+              className="flex-1 py-4 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 transition-colors"
             >
               Siguiente
             </button>
@@ -878,7 +986,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
             <button
               onClick={handleSave}
               disabled={loading}
-              className="flex-1 py-3 bg-emerald-600 text-white font-medium rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 py-4 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : isEditing ? 'Actualizar' : 'Crear Producto'}
             </button>
@@ -890,28 +998,79 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
 }
 
 // Categories Section
-function CategoriesSection({ categories }) {
+function CategoriesSection({ categories, onReload, centers }) {
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', color: '#6366f1' });
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [form, setForm] = useState({ name: '', color: '#6366f1', centerId: '', isActive: true });
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const toast = useToast();
+
+  const handleOpenForm = (category = null) => {
+    if (category) {
+      setEditingCategory(category);
+      setForm({
+        name: category.name || '',
+        color: category.color || '#6366f1',
+        centerId: category.operation_center_id || '',
+        isActive: category.is_active !== false
+      });
+    } else {
+      setEditingCategory(null);
+      setForm({ name: '', color: '#6366f1', centerId: '', isActive: true });
+    }
+    setShowForm(true);
+  };
 
   const handleSave = async () => {
     if (!form.name) {
       toast.error('Nombre es requerido');
       return;
     }
-    // TODO: Connect to API
-    toast.success('Categoría creada');
-    setShowForm(false);
-    setForm({ name: '', color: '#6366f1' });
+    setSaving(true);
+    try {
+      if (editingCategory) {
+        await api.settings.updateCategory(editingCategory.id, { 
+          name: form.name, 
+          color: form.color, 
+          centerId: form.centerId || null,
+          isActive: form.isActive ? 1 : 0 
+        });
+        toast.success('Categoría actualizada');
+      } else {
+        await api.settings.createCategory({ name: form.name, color: form.color, centerId: form.centerId || null });
+        toast.success('Categoría creada');
+      }
+      setShowForm(false);
+      setEditingCategory(null);
+      setForm({ name: '', color: '#6366f1', centerId: '', isActive: true });
+      if (onReload) onReload();
+    } catch (error) {
+      toast.error(error.message || 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    try {
+      await api.settings.deleteCategory(confirmDelete.id);
+      toast.success('Categoría eliminada');
+      setConfirmDelete(null);
+      if (onReload) onReload();
+    } catch (error) {
+      toast.error(error.message || 'No se pudo eliminar');
+      setConfirmDelete(null);
+    }
   };
 
   const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b', '#22c55e', '#14b8a6', '#3b82f6'];
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-bold text-gray-900">
           {categories.length} categorías
         </h2>
         <button
@@ -923,80 +1082,175 @@ function CategoriesSection({ categories }) {
         </button>
       </div>
 
-      <div className="space-y-2">
-        {categories.map(cat => (
-          <div
-            key={cat.id}
-            className="bg-white rounded-xl p-4 flex items-center gap-4"
-          >
+      <div className="space-y-3">
+        {categories.map(cat => {
+          const catCenter = centers?.find(c => c.id === cat.operation_center_id);
+          return (
             <div
-              className="w-4 h-10 rounded-full"
-              style={{ backgroundColor: cat.color || '#6366f1' }}
-            />
-            <div className="flex-1">
-              <p className="font-medium text-gray-900">{cat.name}</p>
-              <p className="text-sm text-gray-500">
-                {cat.is_active ? 'Activa' : 'Inactiva'}
-              </p>
+              key={cat.id}
+              className="bg-white rounded-xl p-4 flex items-center gap-3 shadow-sm"
+            >
+              <div
+                className="w-5 h-12 rounded-full flex-shrink-0"
+                style={{ backgroundColor: cat.color || '#6366f1' }}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900">{cat.name}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs px-2 py-0.5 rounded ${cat.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {cat.is_active ? 'Activa' : 'Inactiva'}
+                  </span>
+                  {catCenter && (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                      {catCenter.name}
+                    </span>
+                  )}
+                  {!catCenter && cat.operation_center_id && (
+                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                      Centro #{cat.operation_center_id}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-1 flex-shrink-0">
+                <button
+                  onClick={() => handleOpenForm(cat)}
+                  className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setConfirmDelete({ id: cat.id, name: cat.name })}
+                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl p-6 w-full max-w-sm"
+          >
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">¿Eliminar categoría?</h3>
+              <p className="text-gray-500 mb-6">
+                Estás por eliminar <strong>"{confirmDelete.name}"</strong>. Esta acción no se puede deshacer.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmDelete(null)}
+                  className="flex-1 px-4 py-3 border border-gray-200 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Category Form */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm">
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="font-bold text-gray-900">Nueva Categoría</h3>
-              <button onClick={() => setShowForm(false)}>
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg">{editingCategory ? 'Editar Categoría' : 'Nueva Categoría'}</h3>
+              <button onClick={() => { setShowForm(false); setEditingCategory(null); }} className="p-1 hover:bg-gray-100 rounded-lg">
                 <X className="w-6 h-6 text-gray-400" />
               </button>
             </div>
-            <div className="p-4 space-y-4">
+            <div className="p-6 space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nombre de la categoría
                 </label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none transition-colors"
                   placeholder="Ej: Bebidas"
+                  autoFocus
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Color
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Centro (opcional)
                 </label>
-                <div className="flex gap-2">
+                <select
+                  value={form.centerId}
+                  onChange={(e) => setForm({ ...form, centerId: e.target.value ? Number(e.target.value) : '' })}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none transition-colors bg-white"
+                >
+                  <option value="">Todos los centros</option>
+                  {centers && centers.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">Deja vacío para que esté disponible en todos los centros</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Color de identificación
+                </label>
+                <div className="flex gap-3">
                   {COLORS.map(color => (
                     <button
                       key={color}
                       onClick={() => setForm({ ...form, color })}
                       className={`
-                        w-8 h-8 rounded-full
-                        ${form.color === color ? 'ring-2 ring-offset-2 ring-gray-400' : ''}
+                        w-10 h-10 rounded-full transition-all
+                        ${form.color === color ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : 'hover:scale-105'}
                       `}
                       style={{ backgroundColor: color }}
                     />
                   ))}
                 </div>
               </div>
+              {editingCategory && (
+                <div>
+                  <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.isActive}
+                      onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                      className="w-5 h-5 rounded border-gray-300"
+                    />
+                    <span className="text-sm text-gray-700">Categoría activa</span>
+                  </label>
+                </div>
+              )}
             </div>
-            <div className="p-4 border-t border-gray-100 flex gap-3">
+            <div className="p-5 border-t border-gray-100 flex gap-3">
               <button
-                onClick={() => setShowForm(false)}
-                className="flex-1 py-3 text-gray-600 font-medium rounded-xl border border-gray-200"
+                onClick={() => { setShowForm(false); setEditingCategory(null); }}
+                className="flex-1 py-3.5 text-gray-600 font-medium rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 py-3 bg-primary-600 text-white font-medium rounded-xl"
+                disabled={saving}
+                className="flex-1 py-3.5 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                Crear
+                {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : editingCategory ? 'Actualizar' : 'Crear Categoría'}
               </button>
             </div>
           </div>
@@ -1132,7 +1386,7 @@ function CentersSection({ centers, onReload }) {
 }
 
 // Production Centers Section
-function ProductionCentersSection({ productionCenters, onReload }) {
+function ProductionCentersSection({ productionCenters, centers, onReload }) {
   const [showWizard, setShowWizard] = useState(false);
   const [editingCenter, setEditingCenter] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -1162,6 +1416,12 @@ function ProductionCentersSection({ productionCenters, onReload }) {
     if (name.includes('cocina')) return 'from-orange-500 to-red-600';
     if (name.includes('bar')) return 'from-blue-500 to-indigo-600';
     return 'from-emerald-500 to-teal-600';
+  };
+
+  const getOperationCenterName = (centerId) => {
+    if (!centerId) return null;
+    const center = centers?.find(c => c.id === centerId);
+    return center?.name;
   };
 
   return (
@@ -1205,6 +1465,11 @@ function ProductionCentersSection({ productionCenters, onReload }) {
               <p className="text-sm text-gray-500">
                 {center.printer_name ? `Impresora: ${center.printer_name}` : 'Sin impresora'}
               </p>
+              {getOperationCenterName(center.operation_center_id) && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Centro: {getOperationCenterName(center.operation_center_id)}
+                </p>
+              )}
             </div>
             <div className="flex gap-1">
               <button
@@ -1237,6 +1502,7 @@ function ProductionCentersSection({ productionCenters, onReload }) {
       {showWizard && (
         <ProductionCenterWizardModal
           editingCenter={editingCenter}
+          centers={centers}
           onClose={() => {
             setShowWizard(false);
             setEditingCenter(null);
@@ -1283,11 +1549,12 @@ function ProductionCentersSection({ productionCenters, onReload }) {
 }
 
 // Production Center Wizard Modal
-function ProductionCenterWizardModal({ onClose, onCreated, editingCenter }) {
+function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, centers }) {
   const [form, setForm] = useState({
     name: editingCenter?.name || '',
     printerName: editingCenter?.printer_name || '',
-    isActive: editingCenter?.is_active !== false
+    isActive: editingCenter?.is_active !== false,
+    operationCenterId: editingCenter?.operation_center_id || ''
   });
   const [loading, setLoading] = useState(false);
   const toast = useToast();
@@ -1299,11 +1566,17 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter }) {
     }
     setLoading(true);
     try {
+      const payload = {
+        name: form.name,
+        printerName: form.printerName,
+        isActive: form.isActive ? 1 : 0,
+        operationCenterId: form.operationCenterId || null
+      };
       if (editingCenter) {
-        await api.updateProductionCenter(editingCenter.id, form);
+        await api.updateProductionCenter(editingCenter.id, payload);
         toast.success('Centro actualizado');
       } else {
-        await api.createProductionCenter(form);
+        await api.createProductionCenter(payload);
         toast.success('Centro de producción creado');
       }
       onCreated();
@@ -1334,8 +1607,23 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter }) {
                 value={form.name}
                 onChange={e => setForm({ ...form, name: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="Ej: Cocina Flor"
+                placeholder="Ej: Cocina Principal"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Centro (opcional)</label>
+              <select
+                value={form.operationCenterId}
+                onChange={e => setForm({ ...form, operationCenterId: e.target.value ? Number(e.target.value) : '' })}
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+              >
+                <option value="">Sin centro específico</option>
+                {centers && centers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">Deja vacío si es común a todos los centros</p>
             </div>
 
             <div>
@@ -1345,7 +1633,7 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter }) {
                 value={form.printerName}
                 onChange={e => setForm({ ...form, printerName: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="Ej: TM-FLOR-01"
+                placeholder="Ej: TM-COCINA-01"
               />
               <p className="text-xs text-gray-500 mt-1">Nombre de la impresora de comandos (ticketera)</p>
             </div>
@@ -2435,7 +2723,7 @@ function TableWizardModal({ centers, onClose, onCreated }) {
               </div>
             </div>
           )}
-          {step === 5 && (
+          {step === 4 && (
             <div className="space-y-4">
               <p className="text-gray-500 text-sm">Confirma los datos</p>
               <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-4 text-center">
@@ -3103,7 +3391,7 @@ function UserWizardModal({ centers, roles, onClose, onCreated }) {
               </div>
             </div>
           )}
-          {step === 5 && (
+          {step === 4 && (
             <div className="space-y-4">
               <p className="text-gray-500 text-sm">Confirma los datos</p>
               <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 text-center">

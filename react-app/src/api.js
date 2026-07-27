@@ -20,6 +20,15 @@ async function request(endpoint, options = {}) {
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
+    // Auto-logout on session expired (401)
+    if (response.status === 401) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('userName');
+      localStorage.removeItem('userRole');
+      window.location.href = '/login';
+      return;
+    }
     const error = new Error(data?.message || data?.error || `Error ${response.status}`);
     error.status = response.status;
     error.data = data;
@@ -71,7 +80,7 @@ export const api = {
     return request(`/catalog/products?${params}`);
   },
   getModifierTemplates: () => request('/modifier-templates'),
-  getCategories: () => request('/catalog/categories'),
+  getCategories: (centerId) => request(`/catalog/categories${centerId ? `?centerId=${centerId}` : ''}`),
   getConfigData: () => request('/config/data'),
 
   // Production Centers

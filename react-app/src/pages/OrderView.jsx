@@ -14,7 +14,8 @@ import {
   ShoppingBag,
   X,
   MoreVertical,
-  Plus
+  Plus,
+  Store
 } from 'lucide-react';
 
 export function OrderView({ accountId, tableCode, tableId, onBack }) {
@@ -24,6 +25,8 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [centers, setCenters] = useState([]);
+  const [selectedCenter, setSelectedCenter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [addingItem, setAddingItem] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
@@ -41,15 +44,39 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
 
   useEffect(() => {
     loadData();
-  }, [accountId]);
+  }, [accountId, selectedCenter]);
+
+  // Reload products when center changes
+  useEffect(() => {
+    if (!loading && centers.length > 0) {
+      loadProductsByCenter();
+    }
+  }, [selectedCenter]);
+
+  const loadProductsByCenter = async () => {
+    try {
+      const [productsData, categoriesData] = await Promise.all([
+        api.getProducts(null, selectedCenter),
+        api.getCategories(selectedCenter)
+      ]);
+      setProducts(productsData || []);
+      setCategories(categoriesData || []);
+      if (categoriesData?.length > 0) {
+        setSelectedCategory(categoriesData[0].id);
+      }
+    } catch (error) {
+      console.error('Error loading products:', error);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [accountData, productsData, categoriesData] = await Promise.all([
+      const [accountData, productsData, categoriesData, bootstrapData] = await Promise.all([
         api.getAccount(accountId),
-        api.getProducts(),
-        api.getCategories()
+        api.getProducts(null, selectedCenter),
+        api.getCategories(selectedCenter),
+        api.bootstrap()
       ]);
       
       setAccount(accountData.account);
@@ -57,6 +84,16 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
       setTotals(accountData.totals || {});
       setCategories(categoriesData || []);
       setProducts(productsData || []);
+      setCenters(bootstrapData.centers || []);
+      
+      // Set default center from account if not selected
+      if (!selectedCenter && bootstrapData.centers?.length > 0) {
+        const accountCenterId = accountData.account?.operation_center_id;
+        if (accountCenterId) {
+          const match = bootstrapData.centers.find(c => c.id === accountCenterId);
+          if (match) setSelectedCenter(accountCenterId);
+        }
+      }
       
       if (productsData.categories?.length > 0) {
         setSelectedCategory(productsData.categories[0].id);
@@ -386,6 +423,34 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
 
         {/* Products Panel */}
         <div className="flex-1 p-3 lg:p-4">
+          {/* Center Selector */}
+          {centers.length > 1 && (
+            <div className="mb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Store className="w-4 h-4 text-gray-500" />
+                <span className="text-xs font-medium text-gray-500">Centro:</span>
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+                {centers.map(center => (
+                  <motion.button
+                    key={center.id}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setSelectedCenter(center.id)}
+                    className={`
+                      px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all
+                      ${selectedCenter === center.id
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                      }
+                    `}
+                  >
+                    {center.name}
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Categories - Horizontal scroll */}
           <div className="flex gap-1.5 overflow-x-auto pb-3 scrollbar-hide">
             <motion.button

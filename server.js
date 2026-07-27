@@ -580,6 +580,8 @@ async function ensureConfigTables() {
   await safeExec(`ALTER TABLE product_categories ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1`);
   await safeExec(`ALTER TABLE product_categories ADD COLUMN sort_order INT NOT NULL DEFAULT 0`);
   await safeExec(`ALTER TABLE product_categories ADD COLUMN color VARCHAR(7) DEFAULT '#6366f1'`);
+  await safeExec(`ALTER TABLE product_categories ADD COLUMN operation_center_id INT NULL`);
+  await safeExec(`ALTER TABLE production_centers ADD COLUMN operation_center_id INT NULL`);
   await safeExec(`ALTER TABLE dining_areas ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1`);
   await safeExec(`ALTER TABLE dining_areas ADD COLUMN sort_order INT NOT NULL DEFAULT 0`);
   await safeExec(`ALTER TABLE order_items ADD COLUMN sent_at DATETIME NULL`);
@@ -921,7 +923,7 @@ app.get("/api/settings", async (_req, res) => {
      ORDER BY sort_order, name`
   );
   const [categories] = await query(
-    `SELECT id, name, is_active, sort_order, color
+    `SELECT id, name, is_active, sort_order, color, operation_center_id
      FROM product_categories
      ORDER BY sort_order, name`
   );
@@ -1421,27 +1423,36 @@ app.delete("/api/settings/tables/:tableId", async (req, res) => {
 });
 
 app.post("/api/settings/categories", async (req, res) => {
-  const { name, isActive = 1, sortOrder = 0, color = '#6366f1' } = req.body || {};
+  const { name, isActive = 1, sortOrder = 0, color = '#6366f1', centerId = null } = req.body || {};
   if (!name) return res.status(400).json({ error: "name es requerido" });
-  const [result] = await query(
-    `INSERT INTO product_categories (name, is_active, sort_order, color)
-     VALUES (?, ?, ?, ?)`,
-    [String(name).trim(), Number(isActive) ? 1 : 0, Number(sortOrder) || 0, String(color || '#6366f1').trim()]
-  );
-  res.status(201).json({ categoryId: result.insertId });
+  try {
+    const [result] = await query(
+      `INSERT INTO product_categories (name, is_active, sort_order, color, operation_center_id)
+       VALUES (?, ?, ?, ?, ?)`,
+      [String(name).trim(), Number(isActive) ? 1 : 0, Number(sortOrder) || 0, String(color || '#6366f1').trim(), centerId ? Number(centerId) : null]
+    );
+    res.status(201).json({ categoryId: result.insertId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post("/api/settings/categories/:categoryId", async (req, res) => {
   const categoryId = Number(req.params.categoryId);
-  const { name, isActive = 1, sortOrder = 0 } = req.body || {};
+  const { name, isActive = 1, sortOrder = 0, color = '#6366f1', centerId = null } = req.body || {};
   if (!categoryId || !name) return res.status(400).json({ error: "categoryId y name son requeridos" });
-  await query(
-    `UPDATE product_categories
-     SET name = ?, is_active = ?, sort_order = ?, color = ?
-     WHERE id = ?`,
-    [String(name).trim(), Number(isActive) ? 1 : 0, Number(sortOrder) || 0, String(color || '#6366f1').trim(), categoryId]
-  );
-  res.json({ ok: true });
+  try {
+    await query(
+      `UPDATE product_categories
+       SET name = ?, is_active = ?, sort_order = ?, color = ?, operation_center_id = ?
+       WHERE id = ?`,
+      [String(name).trim(), Number(isActive) ? 1 : 0, Number(sortOrder) || 0, String(color || '#6366f1').trim(), centerId ? Number(centerId) : null, categoryId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error updating category:', err);
+    res.status(500).json({ error: err.message });
+  }
 })
 
 
@@ -1868,29 +1879,39 @@ app.post("/api/settings/discount-presets", async (req, res) => {
 
 // Production Centers
 app.post("/api/settings/production-centers", async (req, res) => {
-  const { name, printerName = '', isActive = 1 } = req.body || {};
+  const { name, printerName = '', isActive = 1, operationCenterId = null } = req.body || {};
   if (!name) {
     return res.status(400).json({ error: "name es requerido" });
   }
-  const [result] = await query(
-    `INSERT INTO production_centers (name, printer_name, is_active)
-     VALUES (?, ?, ?)`,
-    [String(name).trim(), String(printerName).trim(), Number(isActive) ? 1 : 0]
-  );
-  res.status(201).json({ centerId: result.insertId });
+  try {
+    const [result] = await query(
+      `INSERT INTO production_centers (name, printer_name, is_active, operation_center_id)
+       VALUES (?, ?, ?, ?)`,
+      [String(name).trim(), String(printerName).trim(), Number(isActive) ? 1 : 0, operationCenterId ? Number(operationCenterId) : null]
+    );
+    res.status(201).json({ centerId: result.insertId });
+  } catch (err) {
+    console.error('Error creating production center:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post("/api/settings/production-centers/:centerId", async (req, res) => {
   const centerId = Number(req.params.centerId);
-  const { name, printerName = '', isActive = 1 } = req.body || {};
+  const { name, printerName = '', isActive = 1, operationCenterId = null } = req.body || {};
   if (!centerId || !name) {
     return res.status(400).json({ error: "centerId y name son requeridos" });
   }
-  await query(
-    `UPDATE production_centers SET name = ?, printer_name = ?, is_active = ? WHERE id = ?`,
-    [String(name).trim(), String(printerName).trim(), Number(isActive) ? 1 : 0, centerId]
-  );
-  res.json({ ok: true });
+  try {
+    await query(
+      `UPDATE production_centers SET name = ?, printer_name = ?, is_active = ?, operation_center_id = ? WHERE id = ?`,
+      [String(name).trim(), String(printerName).trim(), Number(isActive) ? 1 : 0, operationCenterId ? Number(operationCenterId) : null, centerId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error updating production center:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Delete production center
@@ -1899,31 +1920,40 @@ app.delete("/api/settings/production-centers/:centerId", async (req, res) => {
   if (!centerId) {
     return res.status(400).json({ error: "centerId es requerido" });
   }
-  
-  // Check if center is being used by any product
-  const [usage] = await query(
-    `SELECT COUNT(*) as cnt FROM product_production_centers WHERE center_id = ?`,
-    [centerId]
-  );
-  
-  if (Number(usage[0].cnt) > 0) {
-    return res.status(400).json({ 
-      error: "No se puede eliminar el centro porque hay productos asignados. Desasigna los productos primero." 
-    });
+  try {
+    // Check if center is being used by any product
+    const [usage] = await query(
+      `SELECT COUNT(*) as cnt FROM product_production_centers WHERE center_id = ?`,
+      [centerId]
+    );
+    
+    if (Number(usage[0].cnt) > 0) {
+      return res.status(400).json({ 
+        error: "No se puede eliminar el centro porque hay productos asignados. Desasigna los productos primero." 
+      });
+    }
+    
+    await query(`DELETE FROM production_centers WHERE id = ?`, [centerId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting production center:', err);
+    res.status(500).json({ error: err.message });
   }
-  
-  await query(`DELETE FROM production_centers WHERE id = ?`, [centerId]);
-  res.json({ ok: true });
 });
 
 // Get all production centers
 app.get("/api/settings/production-centers", async (req, res) => {
-  const [centers] = await query(
-    `SELECT id, name, printer_name, is_active 
-     FROM production_centers 
-     ORDER BY id`
-  );
-  res.json({ centers });
+  try {
+    const [centers] = await query(
+      `SELECT id, name, printer_name, is_active, operation_center_id
+       FROM production_centers
+       ORDER BY id`
+    );
+    res.json({ centers });
+  } catch (err) {
+    console.error('Error fetching production centers:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Link product to production centers
@@ -2236,16 +2266,15 @@ app.get("/api/catalog/products", async (req, res) => {
   let centerFilter = "";
   let centerParams = [];
   if (centerId > 0) {
+    // Filter by production centers that belong to this operation center
+    // Show products that have at least one production center assigned to this operation center
     centerFilter = `
-      AND (
-        NOT EXISTS (SELECT 1 FROM operation_center_products ocpx WHERE ocpx.center_id = ?)
-        OR EXISTS (
-          SELECT 1
-          FROM operation_center_products ocp
-          WHERE ocp.center_id = ? AND ocp.product_id = p.id AND ocp.is_enabled = 1
-        )
+      AND EXISTS (
+        SELECT 1 FROM product_production_centers ppc
+        INNER JOIN production_centers prc ON prc.id = ppc.center_id
+        WHERE ppc.product_id = p.id AND prc.operation_center_id = ?
       )`;
-    centerParams = [centerId, centerId];
+    centerParams = [centerId];
   }
   const [products] = await query(
     `SELECT p.id, p.name, p.base_price, p.category_id
@@ -2308,11 +2337,29 @@ app.get("/api/catalog/products", async (req, res) => {
 });
 
 app.get("/api/catalog/categories", async (req, res) => {
+  const centerId = Number(req.query.centerId || "0");
+  let centerFilter = "";
+  let centerParams = [];
+  if (centerId > 0) {
+    // Only show categories that have products with production centers in this operation center
+    centerFilter = `
+      AND EXISTS (
+        SELECT 1 FROM products p
+        INNER JOIN product_production_centers ppc ON ppc.product_id = p.id
+        INNER JOIN production_centers prc ON prc.id = ppc.center_id
+        WHERE p.category_id = product_categories.id 
+          AND p.is_active = 1 
+          AND prc.operation_center_id = ?
+      )`;
+    centerParams = [centerId];
+  }
   const [rows] = await query(
     `SELECT id, name, color
      FROM product_categories
      WHERE is_active = 1
-     ORDER BY sort_order, name`
+     ${centerFilter}
+     ORDER BY sort_order, name`,
+    centerParams
   );
   res.json(rows);
 });
@@ -2344,7 +2391,7 @@ app.get("/api/config/data", async (req, res) => {
      ORDER BY id`
   );
   const [productionCenters] = await query(
-    `SELECT id, name, printer_name, is_active
+    `SELECT id, name, printer_name, is_active, operation_center_id
      FROM production_centers
      ORDER BY id`
   );
@@ -3701,7 +3748,7 @@ app.get("/api/kds/voided", async (req, res) => {
 // Production Centers list
 app.get("/api/kds/production-centers", async (req, res) => {
   const [centers] = await query(
-    `SELECT id, name, printer_name, is_active
+    `SELECT id, name, printer_name, is_active, operation_center_id
      FROM production_centers
      WHERE is_active = 1
      ORDER BY id`
