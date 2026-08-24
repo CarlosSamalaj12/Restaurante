@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MotionConfig } from 'framer-motion';
+import { MotionConfig, LazyMotion, domAnimation } from 'framer-motion';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ToastProvider } from './hooks/useToast';
 import { Toast } from './components/Toast';
@@ -103,6 +103,7 @@ function AppContent() {
           onSelectTable={handleSelectTable}
           centers={centers}
           autoOpenTable={autoOpenTable}
+          onNavigate={handleNavigate}
         />
       );
     case 'shifts':
@@ -173,16 +174,18 @@ function LicenseGate({ children }) {
 
 export default function App() {
   return (
-    <MotionConfig reducedMotion={false}>
-      <AuthProvider>
-        <LicenseGate>
-          <ToastProvider>
-            <OfflineBanner />
-            <AppContent />
-            <Toast />
-          </ToastProvider>
-        </LicenseGate>
-      </AuthProvider>
-    </MotionConfig>
+    <LazyMotion features={domAnimation}>
+      <MotionConfig reducedMotion={false}>
+        <AuthProvider>
+          <LicenseGate>
+            <ToastProvider>
+              <OfflineBanner />
+              <AppContent />
+              <Toast />
+            </ToastProvider>
+          </LicenseGate>
+        </AuthProvider>
+      </MotionConfig>
+    </LazyMotion>
   );
 }

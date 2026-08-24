@@ -6684,7 +6684,6 @@ app.listen(port, async () => {
     await pool.query("SELECT 1");
     console.log(`POS activo en http://localhost:${port}`);
   } catch (e) {
-    console.error('Pending-summary endpoint error:', e);
-    res.status(500).json({ error: e.message });
+    console.error('Error al inicializar la base de datos en el arranque:', e.message);
   }
 });

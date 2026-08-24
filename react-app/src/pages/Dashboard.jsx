@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { m } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import api from '../api';
@@ -71,14 +71,15 @@ export function Dashboard({ onNavigate }) {
     loadData(selectedCenter);
   }, [selectedCenter]);
 
-  const menuItems = [
+  const allMenuItems = [
     { 
       id: 'tables', 
       icon: LayoutGrid, 
       title: 'Mesas', 
       subtitle: 'Ver mapa de mesas',
       gradient: 'from-blue-500 to-blue-600',
-      bgLight: 'bg-blue-50'
+      bgLight: 'bg-blue-50',
+      roles: ['admin', 'manager', 'cashier', 'waiter']
     },
     { 
       id: 'kds', 
@@ -86,7 +87,8 @@ export function Dashboard({ onNavigate }) {
       title: 'KDS', 
       subtitle: 'Cocina en vivo',
       gradient: 'from-orange-500 to-red-600',
-      bgLight: 'bg-orange-50'
+      bgLight: 'bg-orange-50',
+      roles: ['admin', 'manager', 'cashier', 'kitchen']
     },
     {
       id: 'shifts',
@@ -94,7 +96,8 @@ export function Dashboard({ onNavigate }) {
       title: 'Turnos', 
       subtitle: 'Apertura y cierre',
       gradient: 'from-teal-500 to-teal-600',
-      bgLight: 'bg-teal-50'
+      bgLight: 'bg-teal-50',
+      roles: ['admin', 'manager', 'cashier']
     },
     {
       id: 'reports',
@@ -102,7 +105,8 @@ export function Dashboard({ onNavigate }) {
       title: 'Reportes',
       subtitle: 'Ventas, anulaciones y CXC',
       gradient: 'from-orange-500 to-orange-600',
-      bgLight: 'bg-orange-50'
+      bgLight: 'bg-orange-50',
+      roles: ['admin', 'manager']
     },
     {
       id: 'settings', 
@@ -110,9 +114,14 @@ export function Dashboard({ onNavigate }) {
       title: 'Configuración', 
       subtitle: 'Productos y más',
       gradient: 'from-violet-500 to-violet-600',
-      bgLight: 'bg-violet-50'
+      bgLight: 'bg-violet-50',
+      roles: ['admin', 'manager']
     },
   ];
+
+  const menuItems = allMenuItems.filter(item => 
+    !item.roles || item.roles.includes(user?.role || 'waiter')
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -275,39 +284,43 @@ export function Dashboard({ onNavigate }) {
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2">
         <div className="flex justify-around">
           <button onClick={() => onNavigate('tables')}
-            className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
+            className="flex flex-col items-center gap-0.5 p-2 text-gray-400 hover:text-primary-600"
           >
             <LayoutGrid className="w-5 h-5" />
             <span className="text-[10px] font-medium">Mesas</span>
           </button>
           <button 
             onClick={() => onNavigate('kds')}
-            className="flex flex-col items-center gap-0.5 p-2 text-orange-500"
+            className="flex flex-col items-center gap-0.5 p-2 text-orange-500 hover:text-orange-600"
           >
             <ChefHat className="w-5 h-5" />
             <span className="text-[10px] font-medium">KDS</span>
           </button>
           <button 
             onClick={() => onNavigate('accounts')}
-            className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
+            className="flex flex-col items-center gap-0.5 p-2 text-gray-400 hover:text-primary-600"
           >
             <ListTodo className="w-5 h-5" />
             <span className="text-[10px] font-medium">Cuentas</span>
           </button>
-          <button 
-            onClick={() => onNavigate('reprints')}
-            className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
-          >
-            <Printer className="w-5 h-5" />
-            <span className="text-[10px] font-medium">Reimpr.</span>
-          </button>
-          <button 
-            onClick={() => onNavigate('settings')}
-            className="flex flex-col items-center gap-0.5 p-2 text-gray-400"
-          >
-            <Settings className="w-5 h-5" />
-            <span className="text-[10px] font-medium">Config.</span>
-          </button>
+          {['admin', 'manager', 'cashier'].includes(user?.role) && (
+            <button 
+              onClick={() => onNavigate('reprints')}
+              className="flex flex-col items-center gap-0.5 p-2 text-gray-400 hover:text-primary-600"
+            >
+              <Printer className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Reimpr.</span>
+            </button>
+          )}
+          {['admin', 'manager'].includes(user?.role) && (
+            <button 
+              onClick={() => onNavigate('settings')}
+              className="flex flex-col items-center gap-0.5 p-2 text-gray-400 hover:text-primary-600"
+            >
+              <Settings className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Config.</span>
+            </button>
+          )}
         </div>
       </nav>
     </div>

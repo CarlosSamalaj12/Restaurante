@@ -79,7 +79,9 @@ export function LicensesTab() {
       setTerminals(Array.isArray(terms) ? terms : []);
       setAudit(Array.isArray(aud) ? aud : []);
     } catch (e) {
-      toast.error('Error cargando licencias: ' + e.message);
+      if (e?.status !== 403 && e?.message !== 'Error 403') {
+        toast.error('Error cargando licencias: ' + (e.data?.error || e.message));
+      }
     } finally {
       setLoading(false);
     }

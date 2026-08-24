@@ -101,7 +101,7 @@ export function Login() {
 
   const handleSubmit = async () => {
     if (pin.length < PIN_LENGTH) {
-      toast.error('Ingresa los 6 dígitos');
+      toast.error('Ingresa los 4 dígitos');
       return;
     }
 

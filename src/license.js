@@ -255,20 +255,41 @@ async function upsertTerminalActive(
       });
     }
   } else {
-    const [r] = await query(
-      `INSERT INTO licensed_terminals
-         (license_id, serial, hostname, ip_address, os_info, terminal_type, label, status, approved_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
-      [license.id, serial, hostname, ip, osInfo, terminalType, label],
-    );
-    const [created] = await query(`SELECT * FROM licensed_terminals WHERE id = ?`, [r.insertId]);
-    terminal = created[0];
-    await writeAudit(query, {
-      terminalId: terminal.id,
-      licenseId: license.id,
-      action: 'terminal.enroll',
-      details: { via: 'dev-bypass' },
-    });
+    try {
+      const [r] = await query(
+        `INSERT INTO licensed_terminals
+           (license_id, serial, hostname, ip_address, os_info, terminal_type, label, status, approved_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
+        [license.id, serial, hostname, ip, osInfo, terminalType, label],
+      );
+      const [created] = await query(`SELECT * FROM licensed_terminals WHERE id = ?`, [r.insertId]);
+      terminal = created[0];
+      await writeAudit(query, {
+        terminalId: terminal.id,
+        licenseId: license.id,
+        action: 'terminal.enroll',
+        details: { via: 'dev-bypass' },
+      });
+    } catch (e) {
+      if (e?.code === 'ER_DUP_ENTRY') {
+        const [dupRows] = await query(`SELECT * FROM licensed_terminals WHERE serial = ? LIMIT 1`, [serial]);
+        if (dupRows[0]) {
+          terminal = dupRows[0];
+          await query(
+            `UPDATE licensed_terminals
+             SET status = 'active',
+                 license_id = ?,
+                 approved_at = COALESCE(approved_at, NOW())
+             WHERE id = ?`,
+            [license.id, terminal.id],
+          );
+        } else {
+          throw e;
+        }
+      } else {
+        throw e;
+      }
+    }
   }
   return { terminal, license };
 }

@@ -1,7 +1,8 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { m } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
+import { useAuth } from '../hooks/useAuth';
 import { LicensesTab } from '../components/LicensesTab';
 import {
   ArrowLeft,
@@ -43,7 +44,17 @@ const TABS = [
 ];
 
 export function SettingsPage({ onBack }) {
-  const [activeTab, setActiveTab] = useState('products');
+  const { user } = useAuth();
+  const allowedTabs = TABS.filter(tab => {
+    if (['licenses', 'roles', 'system'].includes(tab.id)) {
+      return user?.role === 'admin';
+    }
+    if (tab.id === 'users') {
+      return ['admin', 'manager'].includes(user?.role);
+    }
+    return true;
+  });
+  const [activeTab, setActiveTab] = useState(() => allowedTabs[0]?.id || 'products');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState({
     categories: [],
@@ -132,7 +143,7 @@ export function SettingsPage({ onBack }) {
 
         {/* Tabs */}
         <div className="px-4 pb-3 flex gap-2 overflow-x-auto">
-          {TABS.map(tab => {
+          {allowedTabs.map(tab => {
             const Icon = tab.icon;
             return (
               <button

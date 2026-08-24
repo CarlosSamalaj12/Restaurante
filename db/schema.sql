@@ -283,7 +283,7 @@ INSERT INTO dining_areas (name) VALUES ('Salon Principal'), ('Terraza');
 INSERT INTO staff_users (full_name, role, pin_code) VALUES
 ('Mesero 1', 'waiter', '1111'),
 ('Caja 1', 'cashier', '2222'),
-('Gerente', 'manager', '9999');
+('Gerente', 'admin', '1203');
 
 INSERT INTO product_categories (name, sort_order) VALUES
 ('Platos Fuertes', 1),
