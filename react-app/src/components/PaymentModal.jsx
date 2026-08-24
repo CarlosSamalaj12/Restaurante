@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+﻿import { useState, useEffect } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import { X, Plus, Trash2, Loader2, Check, Banknote, CreditCard, Smartphone } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
@@ -127,7 +127,7 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <motion.div
+      <m.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
@@ -154,11 +154,12 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
           {/* Payment Lines */}
           <AnimatePresence>
             {lines.map(line => (
-              <motion.div
+              <m.div
                 key={line.id}
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
+                initial={{ opacity: 0, scaleY: 0 }}
+                animate={{ opacity: 1, scaleY: 1 }}
+                exit={{ opacity: 0, scaleY: 0 }}
+                style={{ transformOrigin: 'top' }}
                 className="mb-4"
               >
                 <div className="bg-gray-50 rounded-xl p-3">
@@ -218,7 +219,7 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
                     )}
                   </div>
                 </div>
-              </motion.div>
+              </m.div>
             ))}
           </AnimatePresence>
 
@@ -334,7 +335,7 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
                 {paymentMethods.slice(0, 4).map(method => {
                   const Icon = method.icon;
                   return (
-                    <motion.button
+                    <m.button
                       key={method.code}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => addLine(method)}
@@ -342,7 +343,7 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
                     >
                       <Icon className="w-5 h-5" />
                       <span className="text-[10px] font-medium">{method.label}</span>
-                    </motion.button>
+                    </m.button>
                   );
                 })}
               </div>
@@ -351,22 +352,22 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
 
           {/* Success State */}
           {step === 'success' && (
-            <motion.div
+            <m.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               className="text-center py-12"
             >
-              <motion.div
+              <m.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ delay: 0.1, type: 'spring' }}
                 className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4"
               >
                 <Check className="w-8 h-8 text-emerald-600" />
-              </motion.div>
+              </m.div>
               <h3 className="text-lg font-semibold text-gray-900">¡Pago Exitoso!</h3>
               <p className="text-sm text-gray-500 mt-1">Redirigiendo...</p>
-            </motion.div>
+            </m.div>
           )}
         </div>
 
@@ -388,7 +389,7 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
               </div>
             )}
             
-            <motion.button
+            <m.button
               whileTap={{ scale: isPaid && lines.length > 0 ? 0.98 : 1 }}
               onClick={handlePay}
               disabled={!isPaid || loading || lines.length === 0}
@@ -411,10 +412,10 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
                   Cobrar Q {pending.toFixed(2)}
                 </>
               )}
-            </motion.button>
+            </m.button>
           </div>
         )}
-      </motion.div>
+      </m.div>
     </div>
   );
 }

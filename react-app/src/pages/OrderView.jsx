@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+﻿import { useState, useEffect } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import { PaymentModal } from '../components/PaymentModal';
@@ -224,12 +224,12 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <motion.div
+        <m.div
           animate={{ rotate: 360 }}
           transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
         >
           <Loader2 className="w-8 h-8 text-gray-400" />
-        </motion.div>
+        </m.div>
       </div>
     );
   }
@@ -237,20 +237,20 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
   return (
     <div className="min-h-screen bg-gray-50 pb-28">
       {/* Header */}
-      <motion.header 
+      <m.header 
         initial={{ y: -10, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         className="bg-white border-b border-gray-100 sticky top-0 z-30"
       >
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <motion.button
+            <m.button
               whileTap={{ scale: 0.95 }}
               onClick={onBack}
               className="p-2 -ml-2 rounded-xl hover:bg-gray-100 transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </motion.button>
+            </m.button>
             <div>
               <h1 className="font-semibold text-gray-900">Mesa {tableCode}</h1>
               <p className="text-xs text-gray-500">{account?.check_number}</p>
@@ -258,28 +258,28 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
           </div>
           
           <div className="flex items-center gap-2">
-            <motion.button
+            <m.button
               whileTap={{ scale: 0.95 }}
               onClick={handleSendOrder}
               className="px-3 py-2 bg-gray-900 text-white rounded-xl text-sm font-medium flex items-center gap-1.5"
             >
               <Send className="w-4 h-4" />
               <span className="hidden sm:inline">Enviar</span>
-            </motion.button>
-            <motion.button
+            </m.button>
+            <m.button
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowActions(true)}
               className="p-2 bg-gray-100 text-gray-700 rounded-xl"
             >
               <MoreVertical className="w-5 h-5" />
-            </motion.button>
+            </m.button>
           </div>
         </div>
-      </motion.header>
+      </m.header>
 
       <div className="flex flex-col lg:flex-row">
         {/* Order Summary - Collapsible on mobile */}
-        <motion.div 
+        <m.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="lg:w-72 bg-white border-b lg:border-b-0 lg:border-r border-gray-100"
@@ -316,7 +316,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
           <div className="p-3 space-y-2 max-h-[30vh] lg:max-h-[calc(100vh-200px)] overflow-y-auto">
             <AnimatePresence mode="popLayout">
               {items.length === 0 ? (
-                <motion.div
+                <m.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -326,10 +326,10 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                     <Package className="w-6 h-6 text-gray-400" />
                   </div>
                   <p className="text-sm text-gray-500">Sin productos</p>
-                </motion.div>
+                </m.div>
               ) : (
                 items.map((item) => (
-                  <motion.div
+                  <m.div
                     key={item.id}
                     layout
                     initial={{ opacity: 0, x: -10 }}
@@ -361,13 +361,13 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                           </p>
                         )}
                       </div>
-                      <motion.button
+                      <m.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => handleVoidItem(item)}
                         className="p-1.5 text-red-500/70 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                      </motion.button>
+                      </m.button>
                     </div>
                     <div className="flex items-center justify-between mt-1.5">
                       <span className="text-xs text-gray-500">
@@ -382,7 +382,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                         ✓ Enviado
                       </span>
                     )}
-                  </motion.div>
+                  </m.div>
                 ))
               )}
             </AnimatePresence>
@@ -419,7 +419,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
               )}
             </div>
           </div>
-        </motion.div>
+        </m.div>
 
         {/* Products Panel */}
         <div className="flex-1 p-3 lg:p-4">
@@ -432,7 +432,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
               </div>
               <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
                 {centers.map(center => (
-                  <motion.button
+                  <m.button
                     key={center.id}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setSelectedCenter(center.id)}
@@ -445,7 +445,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                     `}
                   >
                     {center.name}
-                  </motion.button>
+                  </m.button>
                 ))}
               </div>
             </div>
@@ -453,7 +453,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
 
           {/* Categories - Horizontal scroll */}
           <div className="flex gap-1.5 overflow-x-auto pb-3 scrollbar-hide">
-            <motion.button
+            <m.button
               whileTap={{ scale: 0.95 }}
               onClick={() => setSelectedCategory(null)}
               className={`
@@ -465,9 +465,9 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
               `}
             >
               Todos
-            </motion.button>
+            </m.button>
             {categories.map(cat => (
-              <motion.button
+              <m.button
                 key={cat.id}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setSelectedCategory(cat.id)}
@@ -480,14 +480,14 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                 `}
               >
                 {cat.name}
-              </motion.button>
+              </m.button>
             ))}
           </div>
 
           {/* Seat selector */}
           <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-hide">
             {Array.from({ length: Math.max(account?.guest_count || 4, 1) }, (_, i) => i + 1).map(seat => (
-              <motion.button
+              <m.button
                 key={seat}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setCurrentSeat(seat)}
@@ -501,7 +501,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${currentSeat === seat ? 'bg-white' : 'bg-gray-400'}`} />
                 Silla {seat}
-              </motion.button>
+              </m.button>
             ))}
           </div>
 
@@ -510,7 +510,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
             <AnimatePresence mode="popLayout">
               {filteredProducts.map((product) => {
                 return (
-                  <motion.button
+                  <m.button
                     key={product.id}
                     layout
                     initial={{ opacity: 0, y: 10 }}
@@ -534,7 +534,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                         <Plus className="w-5 h-5 text-white" />
                       </div>
                     </div>
-                  </motion.button>
+                  </m.button>
                 );
               })}
             </AnimatePresence>
@@ -543,12 +543,12 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
       </div>
 
       {/* Bottom Pay Button */}
-      <motion.div 
+      <m.div 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-gray-100 lg:hidden"
       >
-        <motion.button
+        <m.button
           whileTap={{ scale: 0.98 }}
           onClick={() => setShowPayment(true)}
           disabled={!totals.pending || totals.pending <= 0}
@@ -562,12 +562,12 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
         >
           <Check className="w-4 h-4" />
           Cobrar Q {Number(totals.pending || 0).toFixed(2)}
-        </motion.button>
-      </motion.div>
+        </m.button>
+      </m.div>
 
       {/* Desktop Pay Button */}
       <div className="hidden lg:block fixed bottom-4 right-4">
-        <motion.button
+        <m.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => setShowPayment(true)}
@@ -582,7 +582,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
         >
           <Check className="w-5 h-5" />
           Cobrar Q {Number(totals.pending || 0).toFixed(2)}
-        </motion.button>
+        </m.button>
       </div>
 
       {/* Payment Modal */}
@@ -614,14 +614,14 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
       {/* Modifier Selection Modal */}
       <AnimatePresence>
         {showModifierModal && selectedProduct && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center"
             onClick={() => setShowModifierModal(false)}
           >
-            <motion.div
+            <m.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
@@ -652,7 +652,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                       {modifier.options?.map(option => {
                         const isSelected = (selectedModifiers[modifier.groupId] || []).includes(option.id);
                         return (
-                          <motion.button
+                          <m.button
                             key={option.id}
                             whileTap={{ scale: 0.97 }}
                             onClick={() => handleModifierToggle(modifier.groupId, option.id)}
@@ -672,7 +672,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                                 {option.price_delta > 0 ? '+' : ''}Q{Number(option.price_delta).toFixed(2)}
                               </p>
                             )}
-                          </motion.button>
+                          </m.button>
                         );
                       })}
                     </div>
@@ -691,7 +691,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                     className="w-full mt-1 p-3 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-300"
                   />
                 </div>
-                <motion.button
+                <m.button
                   whileTap={{ scale: 0.98 }}
                   onClick={handleConfirmModifiers}
                   disabled={addingItem}
@@ -705,24 +705,24 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                       Agregar a la orden
                     </>
                   )}
-                </motion.button>
+                </m.button>
               </div>
-            </motion.div>
-          </motion.div>
+            </m.div>
+          </m.div>
         )}
       </AnimatePresence>
 
       {/* Void Confirmation Modal */}
       <AnimatePresence>
         {showVoidModal && itemToVoid && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
             onClick={() => setShowVoidModal(false)}
           >
-            <motion.div
+            <m.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -781,7 +781,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
               </div>
               
               <div className="flex gap-3">
-                <motion.button
+                <m.button
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     setShowVoidModal(false);
@@ -791,8 +791,8 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                   className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"
                 >
                   Cancelar
-                </motion.button>
-                <motion.button
+                </m.button>
+                <m.button
                   whileTap={{ scale: 0.98 }}
                   onClick={confirmVoidItem}
                   disabled={itemToVoid.sent_at && !voidPin.trim()}
@@ -803,10 +803,10 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
                   }`}
                 >
                   Anular
-                </motion.button>
+                </m.button>
               </div>
-            </motion.div>
-          </motion.div>
+            </m.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

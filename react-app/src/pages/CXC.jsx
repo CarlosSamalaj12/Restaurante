@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+﻿import { useState, useEffect, useRef } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
@@ -254,10 +254,11 @@ function ClientCard({ client, onAccountClick, onGlobalPay, onStatement }) {
 
       <AnimatePresence>
         {expanded && (
-          <motion.div
-            initial={{ height: 0 }}
-            animate={{ height: 'auto' }}
-            exit={{ height: 0 }}
+          <m.div
+            initial={{ opacity: 0, scaleY: 0 }}
+            animate={{ opacity: 1, scaleY: 1 }}
+            exit={{ opacity: 0, scaleY: 0 }}
+            style={{ transformOrigin: 'top' }}
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-2">
@@ -265,7 +266,7 @@ function ClientCard({ client, onAccountClick, onGlobalPay, onStatement }) {
                 <Loader2 className="w-5 h-5 animate-spin mx-auto" />
               ) : accounts.length > 0 ? (
                 accounts.map(acc => (
-                  <motion.button
+                  <m.button
                     key={acc.id}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => onAccountClick(acc.id)}
@@ -286,7 +287,7 @@ function ClientCard({ client, onAccountClick, onGlobalPay, onStatement }) {
                         {acc.status === 'paid' ? 'Pagado' : acc.status === 'partial' ? 'Parcial' : 'Pendiente'}
                       </p>
                     </div>
-                  </motion.button>
+                  </m.button>
                 ))
               ) : (
                 <p className="text-sm text-gray-500 text-center py-2">Sin cuentas</p>
@@ -309,7 +310,7 @@ function ClientCard({ client, onAccountClick, onGlobalPay, onStatement }) {
                 Estado de Cuenta
               </button>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
@@ -335,7 +336,7 @@ function ClientFormModal({ areas, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-md p-5"
@@ -401,7 +402,7 @@ function ClientFormModal({ areas, onClose, onSave }) {
             Crear
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -517,7 +518,7 @@ function AreaFormModal({ onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-sm p-5"
@@ -538,7 +539,7 @@ function AreaFormModal({ onClose, onSave }) {
             Crear
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -609,14 +610,14 @@ function AccountDetailModal({ accountId, onClose, onRefresh }) {
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-        <motion.div
+        <m.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           onClick={(e) => e.stopPropagation()}
           className="bg-white rounded-2xl w-full max-w-lg p-10 flex justify-center"
         >
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-        </motion.div>
+        </m.div>
       </div>
     );
   }
@@ -627,7 +628,7 @@ function AccountDetailModal({ accountId, onClose, onRefresh }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <motion.div
+      <m.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         onClick={(e) => e.stopPropagation()}
@@ -726,9 +727,10 @@ function AccountDetailModal({ accountId, onClose, onRefresh }) {
             </div>
 
             {showPayment && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
+              <m.div
+                initial={{ opacity: 0, scaleY: 0 }}
+                animate={{ opacity: 1, scaleY: 1 }}
+                style={{ transformOrigin: 'top' }}
                 className="bg-blue-50 rounded-xl p-4 mb-3 space-y-3"
               >
                 <p className="text-sm font-medium text-blue-900">Registrar Pago</p>
@@ -780,7 +782,7 @@ function AccountDetailModal({ accountId, onClose, onRefresh }) {
                     {paying ? 'Pagando...' : `Pagar Q${parseFloat(payAmount || 0).toFixed(2)}`}
                   </button>
                 </div>
-              </motion.div>
+              </m.div>
             )}
 
             {account.payments?.length > 0 ? (
@@ -816,7 +818,7 @@ function AccountDetailModal({ accountId, onClose, onRefresh }) {
             Cerrar
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -853,7 +855,7 @@ function GlobalPayModal({ client, onClose, onRefresh }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <motion.div
+      <m.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         onClick={(e) => e.stopPropagation()}
@@ -977,7 +979,7 @@ function GlobalPayModal({ client, onClose, onRefresh }) {
             </>
           )}
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -1128,7 +1130,7 @@ function StatementModal({ client, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <motion.div
+      <m.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         onClick={(e) => e.stopPropagation()}
@@ -1297,7 +1299,7 @@ function StatementModal({ client, onClose }) {
             Cerrar
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -1442,7 +1444,7 @@ function PendingSummaryModal({ onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <motion.div
+      <m.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         onClick={(e) => e.stopPropagation()}
@@ -1552,7 +1554,7 @@ function PendingSummaryModal({ onClose }) {
         <div className="px-6 py-4 border-t border-gray-100 bg-white flex justify-end">
           <button onClick={onClose} className="px-6 py-2.5 border border-gray-200 rounded-xl text-sm font-medium">Cerrar</button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }

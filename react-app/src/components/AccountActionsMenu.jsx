@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+﻿import { useState, useEffect } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import { 
   Percent, 
   Printer, 
@@ -89,7 +89,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-      <motion.div
+      <m.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
@@ -110,7 +110,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
           {menuItems.map((item) => {
             const Icon = item.icon;
             return (
-              <motion.button
+              <m.button
                 key={item.id}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setActiveAction(item.id)}
@@ -124,11 +124,11 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
                   <p className="text-sm text-gray-500">{item.description}</p>
                 </div>
                 <ChevronRight className="w-5 h-5 text-gray-400" />
-              </motion.button>
+              </m.button>
             );
           })}
         </div>
-      </motion.div>
+      </m.div>
 
       <AnimatePresence>
         {activeAction === 'split' && (
@@ -300,7 +300,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
   if (step === 1) {
     return (
       <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-        <motion.div
+        <m.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           className="bg-white rounded-2xl w-full max-w-2xl p-5"
@@ -310,7 +310,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
           
           <div className="grid grid-cols-5 gap-2 mb-4">
             {[2, 3, 4, 5, 6].map(n => (
-              <motion.button
+              <m.button
                 key={n}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => { setSplitCount(n); setStep(2); }}
@@ -321,31 +321,31 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                 }`}
               >
                 {n}
-              </motion.button>
+              </m.button>
             ))}
           </div>
 
           <div className="border-t border-gray-100 pt-4 mb-4">
             <p className="text-sm text-gray-500 mb-3">Personalizado</p>
             <div className="flex items-center gap-3">
-              <motion.button
+              <m.button
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setSplitCount(Math.max(2, splitCount - 1))}
                 className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center text-xl font-semibold text-gray-600 hover:bg-gray-200"
               >
                 −
-              </motion.button>
+              </m.button>
               <div className="flex-1 text-center">
                 <span className="text-4xl font-bold text-gray-900">{splitCount}</span>
                 <span className="text-sm text-gray-500 ml-1">cuentas</span>
               </div>
-              <motion.button
+              <m.button
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setSplitCount(Math.min(30, splitCount + 1))}
                 className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center text-xl font-semibold text-gray-600 hover:bg-gray-200"
               >
                 +
-              </motion.button>
+              </m.button>
             </div>
           </div>
 
@@ -358,7 +358,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
             </div>
           </div>
 
-          <motion.button
+          <m.button
             whileTap={{ scale: 0.98 }}
             onClick={handleSplitBySeat}
             disabled={loading}
@@ -366,21 +366,21 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             {loading ? 'Dividiendo...' : 'Dividir por Silla'}
-          </motion.button>
+          </m.button>
 
           <div className="flex gap-3">
             <button onClick={onClose} className="flex-1 py-3 border border-gray-200 rounded-xl text-sm font-medium">
               Cancelar
             </button>
-            <motion.button
+            <m.button
               whileTap={{ scale: 0.98 }}
               onClick={() => setStep(2)}
               className="flex-1 py-3 bg-blue-500 text-white rounded-xl text-sm font-medium"
             >
               Manual
-            </motion.button>
+            </m.button>
           </div>
-        </motion.div>
+        </m.div>
       </div>
     );
   }
@@ -413,7 +413,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-6xl max-h-[94vh] flex flex-col"
@@ -446,7 +446,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                 </div>
               ) : (
                 unassigned.map(item => (
-                  <motion.button
+                  <m.button
                     key={item.id}
                     layout
                     onClick={() => setSelectedItemId(selectedItemId === item.id ? null : item.id)}
@@ -458,7 +458,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                   >
                     <p className="text-xs font-medium text-gray-900 truncate">{item.product_name}</p>
                     <p className="text-xs text-gray-500 mt-0.5">Q{Number(item.line_total || 0).toFixed(2)}</p>
-                  </motion.button>
+                  </m.button>
                 ))
               )}
             </div>
@@ -471,7 +471,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                 const accountItems = items.filter(item => assignments[item.id] === i);
                 const isTarget = selectedItemId !== null;
                 return (
-                  <motion.div
+                  <m.div
                     key={i}
                     layout
                     initial={{ opacity: 0, y: 10 }}
@@ -505,7 +505,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                         </div>
                       ) : (
                         accountItems.map(item => (
-                          <motion.div
+                          <m.div
                             key={item.id}
                             layout
                             initial={{ opacity: 0, scale: 0.9 }}
@@ -525,11 +525,11 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                               <span className="text-[10px] text-gray-300 group-hover:text-red-400 transition-colors">✕</span>
                             </div>
                             <p className="text-[10px] text-gray-500 mt-0.5">Q{Number(item.line_total || 0).toFixed(2)}</p>
-                          </motion.div>
+                          </m.div>
                         ))
                       )}
                     </div>
-                  </motion.div>
+                  </m.div>
                 );
               })}
             </div>
@@ -563,7 +563,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
             {loading ? 'Dividiendo...' : 'Dividir Cuenta'}
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -649,7 +649,7 @@ function SharedAccountModal({ accountId, account, totals, onClose, onRefresh }) 
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-6xl max-h-[94vh] flex flex-col"
@@ -801,7 +801,7 @@ function SharedAccountModal({ accountId, account, totals, onClose, onRefresh }) 
             )}
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -888,7 +888,7 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col"
@@ -917,7 +917,7 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
               const isSource = pendingItem && pendingItem.effectiveSeat === seat;
 
               return (
-                <motion.div
+                <m.div
                   key={seat}
                   layout
                   onClick={() => moveSelectedToSeat(seat)}
@@ -958,7 +958,7 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
                         const isMoved = staged[String(item.id)] !== undefined && staged[String(item.id)] !== null;
 
                         return (
-                          <motion.button
+                          <m.button
                             key={item.id}
                             layout
                             whileTap={{ scale: pendingItem && !isSource ? 0.97 : 0 }}
@@ -987,12 +987,12 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
                             {isMoved && (
                               <p className="text-[10px] text-green-600 mt-0.5">→ Silla {staged[item.id]}</p>
                             )}
-                          </motion.button>
+                          </m.button>
                         );
                       })
                     )}
                   </div>
-                </motion.div>
+                </m.div>
               );
             })}
           </div>
@@ -1025,7 +1025,7 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
             </div>
           )}
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -1059,7 +1059,7 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-md p-5"
@@ -1120,7 +1120,7 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
             {loading ? 'Aplicando...' : 'Aplicar'}
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -1193,7 +1193,7 @@ function PrecheckModal({ accountId, account, totals, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-md p-5 max-h-[85vh] flex flex-col"
@@ -1250,7 +1250,7 @@ function PrecheckModal({ accountId, account, totals, onClose }) {
             Imprimir
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -1276,7 +1276,7 @@ function TipModal({ accountId, totals, onClose, onRefresh }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-sm p-5"
@@ -1300,7 +1300,7 @@ function TipModal({ accountId, totals, onClose, onRefresh }) {
             {totals?.tipIsOverridden ? 'Restaurar' : 'Quitar'}
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -1325,7 +1325,7 @@ function CloseAccountModal({ accountId, account, onClose, onRefresh, onCloseMenu
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-sm p-5"
@@ -1357,7 +1357,7 @@ function CloseAccountModal({ accountId, account, onClose, onRefresh, onCloseMenu
             {loading ? 'Cerrando...' : 'Cerrar Cuenta'}
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -1403,7 +1403,7 @@ function TransferAccountModal({ accountId, account, onClose, onRefresh }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
@@ -1457,7 +1457,7 @@ function TransferAccountModal({ accountId, account, onClose, onRefresh }) {
             {transferring ? 'Transferiendo...' : 'Transferir'}
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -1503,7 +1503,7 @@ function JoinAccountsModal({ accountId, account, onClose, onRefresh }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
@@ -1557,7 +1557,7 @@ function JoinAccountsModal({ accountId, account, onClose, onRefresh }) {
             {joining ? 'Uniendo...' : 'Unir'}
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }

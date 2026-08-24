@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+﻿import { useState, useEffect } from 'react';
+import { m } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import api from '../api';
 import { 
@@ -150,7 +150,7 @@ export function Dashboard({ onNavigate }) {
         {centers.length > 0 && (
           <div className="px-4 pb-3 flex gap-2 overflow-x-auto scrollbar-hide">
             {centers.map(center => (
-              <motion.button
+              <m.button
                 key={center.id}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setSelectedCenter(center.id)}
@@ -163,7 +163,7 @@ export function Dashboard({ onNavigate }) {
                 `}
               >
                 {center.name}
-              </motion.button>
+              </m.button>
             ))}
           </div>
         )}
@@ -172,7 +172,7 @@ export function Dashboard({ onNavigate }) {
       {/* Stats */}
       <div className="px-4 py-4">
         <div className="grid grid-cols-2 gap-3">
-          <motion.div 
+          <m.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0 }}
@@ -188,9 +188,9 @@ export function Dashboard({ onNavigate }) {
             </div>
             <p className="text-2xl font-bold text-gray-900">{stats.freeTables}</p>
             <p className="text-xs text-gray-500">Mesas libres</p>
-          </motion.div>
+          </m.div>
 
-          <motion.div 
+          <m.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
@@ -206,9 +206,9 @@ export function Dashboard({ onNavigate }) {
             </div>
             <p className="text-2xl font-bold text-gray-900">{stats.busyTables}</p>
             <p className="text-xs text-gray-500">Mesas ocupadas</p>
-          </motion.div>
+          </m.div>
 
-          <motion.div 
+          <m.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -221,9 +221,9 @@ export function Dashboard({ onNavigate }) {
             </div>
             <p className="text-2xl font-bold text-gray-900">{stats.todayOrders}</p>
             <p className="text-xs text-gray-500">Órdenes hoy</p>
-          </motion.div>
+          </m.div>
 
-          <motion.div 
+          <m.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
@@ -237,7 +237,7 @@ export function Dashboard({ onNavigate }) {
             </div>
             <p className="text-2xl font-bold text-gray-900">Q {stats.todaySales.toFixed(0)}</p>
             <p className="text-xs text-gray-500">Ventas del día</p>
-          </motion.div>
+          </m.div>
         </div>
       </div>
 
@@ -251,7 +251,7 @@ export function Dashboard({ onNavigate }) {
         
         <div className="grid grid-cols-3 gap-2">
           {menuItems.map((item, index) => (
-            <motion.button
+            <m.button
               key={item.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -266,7 +266,7 @@ export function Dashboard({ onNavigate }) {
               <div className="flex flex-col">
                 <h3 className="text-xs font-medium text-gray-900 leading-tight">{item.title}</h3>
               </div>
-            </motion.button>
+            </m.button>
           ))}
         </div>
       </div>

@@ -5,6 +5,8 @@ const fs = require("fs");
 const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const { pool, query } = require("./src/db");
+const license = require("./src/license");
+const printService = require("./server/print-service");
 
 // Migraciones de esquema — se ejecutan una vez al iniciar
 (async () => {
@@ -19,6 +21,101 @@ const { pool, query } = require("./src/db");
     } else {
       console.warn('[MIGRATION] Error al agregar columna:', e.message);
     }
+  }
+
+  // Tablas del sistema de licencias
+  try {
+    await license.ensureLicenseTables();
+    console.log('[MIGRATION] Tablas de licencias OK');
+    await license.expireOverdueLicenses();
+  } catch (e) {
+    console.error('[MIGRATION] Error en tablas de licencias:', e.message);
+  }
+
+  // ───────── Printers: columnas en production_centers ─────────
+  try {
+    await query(
+      `ALTER TABLE production_centers
+       ADD COLUMN printer_ip VARCHAR(45) NULL AFTER printer_name,
+       ADD COLUMN printer_port INT NOT NULL DEFAULT 9100 AFTER printer_ip`
+    );
+    console.log('[MIGRATION] printer_ip/printer_port agregados a production_centers');
+  } catch (e) {
+    if (e.code === 'ER_DUP_FIELDNAME') {
+      console.log('[MIGRATION] printer_ip/printer_port ya existen en production_centers — OK');
+    } else {
+      console.warn('[MIGRATION] Error al agregar columnas de printer a production_centers:', e.message);
+    }
+  }
+
+  // ───────── Printers: tabla print_jobs (log de impresiones) ─────────
+  try {
+    await query(
+      `CREATE TABLE IF NOT EXISTS print_jobs (
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         printer_target VARCHAR(120) NOT NULL,
+         printer_ip VARCHAR(45) NULL,
+         printer_port INT NULL,
+         job_type ENUM('kitchen_ticket','customer_receipt','test') NOT NULL,
+         account_id INT NULL,
+         payload_size INT NULL,
+         status ENUM('pending','success','failed') NOT NULL DEFAULT 'pending',
+         attempts INT NOT NULL DEFAULT 0,
+         error_message TEXT NULL,
+         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         completed_at TIMESTAMP NULL,
+         INDEX idx_print_status (status),
+         INDEX idx_print_account (account_id),
+         INDEX idx_print_created (created_at),
+         INDEX idx_print_target (printer_target, created_at)
+       )`
+    );
+    console.log('[MIGRATION] Tabla print_jobs OK');
+  } catch (e) {
+    console.warn('[MIGRATION] Error al crear tabla print_jobs:', e.message);
+  }
+
+  // ───────── auth_sessions (persistencia de sesiones de login) ─────────
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        token            VARCHAR(64) PRIMARY KEY,
+        user_id          INT NOT NULL,
+        role             VARCHAR(40) NOT NULL,
+        permissions_json JSON NULL,
+        expires_at       DATETIME NOT NULL,
+        created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at     DATETIME NULL,
+        ip_address       VARCHAR(45) NULL,
+        user_agent       VARCHAR(255) NULL,
+        INDEX idx_user (user_id),
+        INDEX idx_expires (expires_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    console.log('[MIGRATION] Tabla auth_sessions OK');
+
+    // Cleanup inicial: borrar sesiones ya expiradas que pudieran existir
+    // de pruebas anteriores.
+    const [delResult] = await query("DELETE FROM auth_sessions WHERE expires_at < NOW()");
+    if (delResult.affectedRows > 0) {
+      console.log(`[MIGRATION] auth_sessions: ${delResult.affectedRows} sesiones expiradas purgadas`);
+    }
+
+    // Job periódico: cada 1 hora borra sesiones expiradas de la DB.
+    // El Map en memoria las borra on-demand al hacer getAuthSession, pero la
+    // DB puede acumular miles de rows viejas si no se limpia.
+    setInterval(async () => {
+      try {
+        const [r] = await query("DELETE FROM auth_sessions WHERE expires_at < NOW()");
+        if (r.affectedRows > 0) {
+          console.log(`[auth.session.cleanup] ${r.affectedRows} sesiones expiradas purgadas`);
+        }
+      } catch (e) {
+        // best-effort, no rompemos el server
+      }
+    }, 60 * 60 * 1000);
+  } catch (e) {
+    console.warn('[MIGRATION] Error al crear tabla auth_sessions:', e.message);
   }
 })();
 
@@ -44,6 +141,50 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, "public")));
 
+// ───────── License system ─────────
+// Endpoints públicos (no requieren licencia activa)
+app.post("/api/license/enroll", license.enroll);
+app.post("/api/license/heartbeat", license.heartbeat);
+app.get("/api/license/status", license.status);
+
+// Middleware global: en /api/*, exige terminal autorizada, salvo rutas exentas.
+const LICENSE_EXEMPT_PATHS = [
+  "/api/license",      // el sistema de licencias se gestiona a sí mismo
+  "/api/bootstrap",    // entrega datos iniciales antes del login
+];
+app.use("/api", (req, res, next) => {
+  // ⚠️ Dentro de app.use("/api", ...) Express quita el prefijo de req.path
+  // (queda "/bootstrap", "/settings"...). Hay que comparar contra la ruta
+  // COMPLETA con req.originalUrl, si no las exenciones nunca matchean y
+  // /api/bootstrap devuelve 403 aunque está exento.
+  const fullPath = req.originalUrl.split("?")[0];
+  // /api/settings/* y /api/admin/* ya están protegidos con requireAdmin
+  if (fullPath.startsWith("/api/settings") || fullPath.startsWith("/api/admin")) {
+    return next();
+  }
+  if (LICENSE_EXEMPT_PATHS.some((p) => fullPath.startsWith(p))) {
+    return next();
+  }
+  return license.requireLicensedTerminal(req, res, next);
+});
+
+// Endpoints admin (requieren rol admin)
+app.get("/api/admin/licenses", requireAdmin, license.listLicenses);
+app.post("/api/admin/licenses", requireAdmin, license.createLicense);
+app.post("/api/admin/licenses/:id/revoke", requireAdmin, license.revokeLicense);
+app.get("/api/admin/terminals", requireAdmin, license.listTerminals);
+app.post("/api/admin/terminals/:id/approve", requireAdmin, license.approveTerminal);
+app.post("/api/admin/terminals/:id/revoke", requireAdmin, license.revokeTerminal);
+app.post("/api/admin/terminals/:id/replace", requireAdmin, license.replaceTerminal);
+app.get("/api/admin/license-audit", requireAdmin, license.getAuditLog);
+
+// Job periódico: revisa licencias vencidas cada 6 horas
+setInterval(() => {
+  license.expireOverdueLicenses().catch((e) =>
+    console.error('[license] expirer error:', e.message),
+  );
+}, 6 * 60 * 60 * 1000);
+
 const PAYMENT_METHOD_DEFAULTS = [
   { code: "cash", label: "Efectivo" },
   { code: "card", label: "Tarjeta" },
@@ -60,6 +201,8 @@ const MODULE_DEFAULTS = [
 ];
 
 const AUTH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+// Cache en memoria de sesiones. La fuente de verdad es la tabla `auth_sessions`
+// en la DB; este Map se hidrata on-demand desde la DB para sobrevivir reinicios.
 const authSessions = new Map();
 
 function normalizeGroupType(value) {
@@ -89,35 +232,108 @@ function clientIp(req) {
   return raw.replace("::ffff:", "");
 }
 
-async function createAuthSession(user) {
+async function createAuthSession(user, meta = {}) {
   const token = crypto.randomUUID();
   let permissions = [];
   try {
     permissions = await getUserPermissions(Number(user.id));
   } catch (_) {}
-  authSessions.set(token, {
+  const expiresAt = Date.now() + AUTH_SESSION_TTL_MS;
+  const session = {
     userId: Number(user.id),
     role: String(user.role || ""),
     permissions,
-    expiresAt: Date.now() + AUTH_SESSION_TTL_MS,
-  });
+    expiresAt,
+  };
+  // Cache en memoria
+  authSessions.set(token, session);
+  // Persistir en DB (fuente de verdad que sobrevive reinicios)
+  try {
+    await query(
+      `INSERT INTO auth_sessions (token, user_id, role, permissions_json, expires_at, created_at, ip_address, user_agent)
+       VALUES (?, ?, ?, ?, FROM_UNIXTIME(?/1000), NOW(), ?, ?)`,
+      [
+        token,
+        session.userId,
+        session.role,
+        JSON.stringify(permissions || []),
+        expiresAt,
+        String(meta.ip || null).slice(0, 45) || null,
+        String(meta.userAgent || null).slice(0, 255) || null,
+      ],
+    );
+  } catch (e) {
+    // Si la tabla no existe todavía, logueamos pero no rompemos el login.
+    // El Map en memoria sigue funcionando para esta corrida del server.
+    console.warn('[auth.session] No se pudo persistir en DB:', e.message);
+  }
   return token;
 }
 
-function getAuthSession(req) {
+async function getAuthSession(req) {
   const token = String(req.headers["x-auth-token"] || "").trim();
   if (!token) return null;
-  const session = authSessions.get(token);
-  if (!session) return null;
-  if (Date.now() > Number(session.expiresAt || 0)) {
-    authSessions.delete(token);
+  // 1) Cache en memoria
+  let session = authSessions.get(token);
+  if (session) {
+    if (Date.now() > Number(session.expiresAt || 0)) {
+      authSessions.delete(token);
+      // Borrar también de DB para que la siguiente request no la hidrate
+      query("DELETE FROM auth_sessions WHERE token = ?", [token]).catch(() => {});
+      return null;
+    }
+    return session;
+  }
+  // 2) DB fallback (sobrevive reinicios)
+  try {
+    const [rows] = await query(
+      `SELECT user_id, role, permissions_json, UNIX_TIMESTAMP(expires_at)*1000 AS expires_ms
+       FROM auth_sessions WHERE token = ? LIMIT 1`,
+      [token],
+    );
+    if (!rows[0]) return null;
+    const r = rows[0];
+    const expiresAt = Number(r.expires_ms || 0);
+    if (Date.now() > expiresAt) {
+      // Expirada — limpiarla
+      query("DELETE FROM auth_sessions WHERE token = ?", [token]).catch(() => {});
+      return null;
+    }
+    let permissions = [];
+    try {
+      permissions = r.permissions_json ? JSON.parse(r.permissions_json) : [];
+    } catch (_) {
+      permissions = [];
+    }
+    session = {
+      userId: Number(r.user_id),
+      role: String(r.role || ""),
+      permissions,
+      expiresAt,
+    };
+    // Hidratar el cache para próximas requests
+    authSessions.set(token, session);
+    return session;
+  } catch (e) {
+    // Si la tabla no existe, no rompemos: la sesión simplemente no es válida.
+    if (e.code !== 'ER_NO_SUCH_TABLE') {
+      console.warn('[auth.session] Error leyendo de DB:', e.message);
+    }
     return null;
   }
-  return session;
+}
+
+async function deleteAuthSession(token) {
+  authSessions.delete(token);
+  try {
+    await query("DELETE FROM auth_sessions WHERE token = ?", [token]);
+  } catch (e) {
+    // best-effort
+  }
 }
 
 async function requireAuth(req, res, next) {
-  const session = getAuthSession(req);
+  const session = await getAuthSession(req);
   if (!session) return res.status(401).json({ error: "Sesion invalida o vencida" });
   req.session = session;
   next();
@@ -125,7 +341,7 @@ async function requireAuth(req, res, next) {
 
 async function requireAdmin(req, res, next) {
   try {
-    const session = getAuthSession(req);
+    const session = await getAuthSession(req);
     if (!session) return res.status(401).json({ error: "Sesion invalida o vencida" });
     const [rows] = await query(
       `SELECT id, full_name, role
@@ -218,7 +434,7 @@ function hasPermission(session, slug) {
 async function requirePermission(slug) {
   return async (req, res, next) => {
     try {
-      const session = getAuthSession(req);
+      const session = await getAuthSession(req);
       if (!session) return res.status(401).json({ error: "Sesion invalida o vencida" });
       if (hasPermission(session, slug)) return next();
       return res.status(403).json({ error: "No tienes permiso para esta accion" });
@@ -739,6 +955,42 @@ async function addAccountEvent(accountId, eventType, payload, createdBy) {
   );
 }
 
+// Resuelve la terminal del cajero actual para saber en qué impresora
+// imprimir el recibo del cliente. Si el usuario no esta logueado o no
+// tiene operation_center_id, devuelve null (no se imprime el recibo).
+async function resolveTerminalForRequest(req) {
+  try {
+    const session = await getAuthSession(req);
+    if (!session?.userId) return null;
+    const [userRows] = await query(
+      `SELECT operation_center_id FROM staff_users WHERE id = ? LIMIT 1`,
+      [Number(session.userId)]
+    );
+    const centerId = userRows?.[0]?.operation_center_id;
+    if (!centerId) {
+      // Sin centro, fallback: tomar la primera terminal activa del sistema
+      const [termRows] = await query(
+        `SELECT id, name, printer_name, printer_ip, printer_port
+         FROM terminals
+         WHERE is_active = 1
+         ORDER BY id LIMIT 1`
+      );
+      return termRows?.[0] || null;
+    }
+    const [termRows] = await query(
+      `SELECT id, name, printer_name, printer_ip, printer_port
+       FROM terminals
+       WHERE operation_center_id = ? AND is_active = 1
+       ORDER BY id LIMIT 1`,
+      [centerId]
+    );
+    return termRows?.[0] || null;
+  } catch (e) {
+    console.warn(`[PRINT] No pude resolver terminal: ${e.message}`);
+    return null;
+  }
+}
+
 // Endpoint para obtener plantillas de grupos de modificadores
 app.get("/api/modifier-templates", (_req, res) => {
   const templates = {
@@ -890,8 +1142,139 @@ app.post("/api/auth/pin-login", async (req, res) => {
   const user = rows[0];
   const ip = clientIp(req);
   const allowedModules = await getAllowedModulesForContext(user, ip);
-  const authToken = await createAuthSession(user);
+  const authToken = await createAuthSession(user, { ip, userAgent: req.headers['user-agent'] });
   res.json({ ok: true, user, allowedModules, authToken });
+});
+
+/**
+ * POST /api/license/admin-self-approve
+ *
+ * Endpoint de bootstrap para destrabar el chicken-and-egg del admin:
+ * el admin está en su propia terminal que está pending. No puede entrar al
+ * POS porque la terminal no está aprobada, pero necesita entrar al POS
+ * para aprobar la terminal.
+ *
+ * Solución: el admin mete su PIN acá. El server:
+ *   1. Verifica que el PIN corresponda a un user con role=admin.
+ *   2. Verifica que la terminal del serial enviado esté pending (no se puede
+ *      re-aprobar algo revoked/active).
+ *   3. Aprueba la terminal y la liga a la licencia activa.
+ *   4. Devuelve un authToken admin (para que el POS entre directo con sesión
+ *      de admin y pueda ver Settings → Licencias).
+ *
+ * Este endpoint queda en /api/license/* y está exento del middleware
+ * requireLicensedTerminal (ver LICENSE_EXEMPT_PATHS en server.js).
+ */
+app.post("/api/license/admin-self-approve", async (req, res) => {
+  try {
+    const pin = String(req.body?.pin || "").trim();
+    const serial = String(req.body?.serial || "").trim();
+
+    if (!/^\d{4,}$/.test(pin)) {
+      return res.status(400).json({ error: "PIN inválido (debe ser numérico, 4+ dígitos)" });
+    }
+    if (!serial || serial.length < 8) {
+      return res.status(400).json({ error: "Serial inválido" });
+    }
+
+    // 1) Verificar que el PIN sea de un admin
+    const [userRows] = await query(
+      `SELECT id, full_name, role, operation_center_id
+       FROM staff_users WHERE pin_code = ? LIMIT 1`,
+      [pin],
+    );
+    if (!userRows.length) {
+      return res.status(403).json({ error: "PIN inválido" });
+    }
+    const user = userRows[0];
+    if (String(user.role || "") !== "admin") {
+      return res.status(403).json({ error: "Solo un admin puede auto-aprobar una terminal" });
+    }
+
+    // 2) Verificar que la terminal exista y esté pending
+    const [termRows] = await query(
+      `SELECT id, status, license_id FROM licensed_terminals WHERE serial = ? LIMIT 1`,
+      [serial],
+    );
+    if (!termRows.length) {
+      return res.status(404).json({ error: "Terminal no encontrada. ¿Se registró primero?" });
+    }
+    const terminal = termRows[0];
+    if (terminal.status === "active") {
+      return res.status(409).json({ error: "La terminal ya está activa. Recargá el POS." });
+    }
+    if (terminal.status === "revoked") {
+      return res.status(403).json({ error: "La terminal fue revocada. No se puede auto-aprobar." });
+    }
+
+    // 3) Buscar o crear licencia activa
+    let licenseId = terminal.license_id;
+    if (!licenseId) {
+      const [licRows] = await query(
+        `SELECT id FROM licenses WHERE status = 'active' ORDER BY id ASC LIMIT 1`,
+      );
+      if (licRows[0]) {
+        licenseId = licRows[0].id;
+      } else {
+        // Crear trial automáticamente para no bloquear el bootstrap
+        const [ins] = await query(
+          `INSERT INTO licenses (tier, max_terminals, valid_from, valid_until, offline_grace_days, status, notes)
+           VALUES ('standard', 0, NOW(), NULL, 7, 'active', 'Auto-creada en admin self-approve')`,
+        );
+        licenseId = ins.insertId;
+      }
+    }
+
+    // 4) Aprobar la terminal
+    await query(
+      `UPDATE licensed_terminals
+       SET status = 'active',
+           license_id = ?,
+           approved_at = NOW(),
+           approved_by_user_id = ?
+       WHERE id = ?`,
+      [licenseId, user.id, terminal.id],
+    );
+    // 5) Audit log
+    await query(
+      `INSERT INTO license_audit (actor_user_id, terminal_id, license_id, action, details)
+       VALUES (?, ?, ?, 'terminal.approve', ?)`,
+      [user.id, terminal.id, licenseId, JSON.stringify({ via: 'admin-self-approve' })],
+    );
+
+    // 6) Crear sesión de auth para el admin (sin pasar por pin-login)
+    const ip = clientIp(req);
+    const authToken = await createAuthSession(user, {
+      ip,
+      userAgent: req.headers["user-agent"],
+    });
+    const allowedModules = await getAllowedModulesForContext(user, ip);
+
+    return res.json({
+      ok: true,
+      user,
+      allowedModules,
+      authToken,
+      terminal: { id: terminal.id, status: "active" },
+      message: "Terminal aprobada y sesión de admin creada",
+    });
+  } catch (e) {
+    console.error("[license.admin-self-approve]", e);
+    return res.status(500).json({ error: "Error aprobando la terminal" });
+  }
+});
+
+/**
+ * POST /api/auth/logout
+ * Borra la sesión actual (de DB y del cache en memoria).
+ * No falla si el token no existe — el logout es idempotente.
+ */
+app.post("/api/auth/logout", async (req, res) => {
+  const token = String(req.headers["x-auth-token"] || "").trim();
+  if (token) {
+    await deleteAuthSession(token);
+  }
+  res.json({ ok: true });
 });
 
 app.get("/api/tables", async (req, res) => {
@@ -1325,7 +1708,7 @@ app.post("/api/settings/users/:userId/roles", async (req, res) => {
 
 // Endpoint to refresh session permissions (after role/permission changes)
 app.post("/api/auth/refresh-session", async (req, res) => {
-  const session = getAuthSession(req);
+  const session = await getAuthSession(req);
   if (!session) return res.status(401).json({ error: "Sesion invalida" });
   let permissions = [];
   try {
@@ -1879,15 +2262,22 @@ app.post("/api/settings/discount-presets", async (req, res) => {
 
 // Production Centers
 app.post("/api/settings/production-centers", async (req, res) => {
-  const { name, printerName = '', isActive = 1, operationCenterId = null } = req.body || {};
+  const { name, printerName = '', printerIp = '', printerPort = 9100, isActive = 1, operationCenterId = null } = req.body || {};
   if (!name) {
     return res.status(400).json({ error: "name es requerido" });
   }
   try {
     const [result] = await query(
-      `INSERT INTO production_centers (name, printer_name, is_active, operation_center_id)
-       VALUES (?, ?, ?, ?)`,
-      [String(name).trim(), String(printerName).trim(), Number(isActive) ? 1 : 0, operationCenterId ? Number(operationCenterId) : null]
+      `INSERT INTO production_centers (name, printer_name, printer_ip, printer_port, is_active, operation_center_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        String(name).trim(),
+        String(printerName).trim(),
+        printerIp ? String(printerIp).trim() : null,
+        Number(printerPort) || 9100,
+        Number(isActive) ? 1 : 0,
+        operationCenterId ? Number(operationCenterId) : null,
+      ]
     );
     res.status(201).json({ centerId: result.insertId });
   } catch (err) {
@@ -1898,14 +2288,24 @@ app.post("/api/settings/production-centers", async (req, res) => {
 
 app.post("/api/settings/production-centers/:centerId", async (req, res) => {
   const centerId = Number(req.params.centerId);
-  const { name, printerName = '', isActive = 1, operationCenterId = null } = req.body || {};
+  const { name, printerName = '', printerIp = '', printerPort = 9100, isActive = 1, operationCenterId = null } = req.body || {};
   if (!centerId || !name) {
     return res.status(400).json({ error: "centerId y name son requeridos" });
   }
   try {
     await query(
-      `UPDATE production_centers SET name = ?, printer_name = ?, is_active = ?, operation_center_id = ? WHERE id = ?`,
-      [String(name).trim(), String(printerName).trim(), Number(isActive) ? 1 : 0, operationCenterId ? Number(operationCenterId) : null, centerId]
+      `UPDATE production_centers
+       SET name = ?, printer_name = ?, printer_ip = ?, printer_port = ?, is_active = ?, operation_center_id = ?
+       WHERE id = ?`,
+      [
+        String(name).trim(),
+        String(printerName).trim(),
+        printerIp ? String(printerIp).trim() : null,
+        Number(printerPort) || 9100,
+        Number(isActive) ? 1 : 0,
+        operationCenterId ? Number(operationCenterId) : null,
+        centerId,
+      ]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -1945,13 +2345,79 @@ app.delete("/api/settings/production-centers/:centerId", async (req, res) => {
 app.get("/api/settings/production-centers", async (req, res) => {
   try {
     const [centers] = await query(
-      `SELECT id, name, printer_name, is_active, operation_center_id
+      `SELECT id, name, printer_name, printer_ip, printer_port, is_active, operation_center_id
        FROM production_centers
        ORDER BY id`
     );
     res.json({ centers });
   } catch (err) {
     console.error('Error fetching production centers:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Test print endpoint: manda una pagina de prueba a la impresora
+// de un production center o de una terminal. Util para diagnosticar
+// la conexion sin esperar a una operacion real.
+app.post("/api/settings/printers/test", async (req, res) => {
+  const { type, id } = req.body || {};
+  if (!type || !id) {
+    return res.status(400).json({ error: "type y id son requeridos (type: 'production_center' | 'terminal')" });
+  }
+  let target = null;
+  try {
+    if (type === "production_center") {
+      const [rows] = await query(
+        `SELECT id, name AS printer_name, printer_name AS name, printer_ip, printer_port
+         FROM production_centers WHERE id = ? LIMIT 1`,
+        [Number(id)]
+      );
+      target = rows?.[0] || null;
+    } else if (type === "terminal") {
+      const [rows] = await query(
+        `SELECT id, name AS printer_name, printer_name AS name, printer_ip, printer_port
+         FROM terminals WHERE id = ? LIMIT 1`,
+        [Number(id)]
+      );
+      target = rows?.[0] || null;
+    } else {
+      return res.status(400).json({ error: "type invalido" });
+    }
+    if (!target) return res.status(404).json({ error: "Destino no encontrado" });
+    if (!target.printer_ip) {
+      return res.status(400).json({ error: "Esta impresora no tiene IP configurada. Configurala primero." });
+    }
+    const result = await printService.printTestPage(target);
+    if (result.ok) {
+      res.json({ ok: true, message: "Pagina de prueba enviada", attempts: result.attempts });
+    } else {
+      res.status(500).json({ ok: false, error: result.error || "No se pudo imprimir" });
+    }
+  } catch (err) {
+    console.error("Error en test print:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Diagnostico del servicio de impresion
+app.get("/api/settings/printers/status", async (_req, res) => {
+  res.json(printService.getStatus());
+});
+
+// Ultimos N jobs de impresion (para mostrar en Settings y reportes)
+app.get("/api/settings/printers/recent", async (req, res) => {
+  const limit = Math.min(Number(req.query.limit || 50), 200);
+  try {
+    const [jobs] = await query(
+      `SELECT id, printer_target, printer_ip, printer_port, job_type, account_id,
+              status, attempts, error_message, created_at, completed_at
+       FROM print_jobs
+       ORDER BY id DESC
+       LIMIT ?`,
+      [limit]
+    );
+    res.json({ jobs });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -2266,13 +2732,15 @@ app.get("/api/catalog/products", async (req, res) => {
   let centerFilter = "";
   let centerParams = [];
   if (centerId > 0) {
-    // Filter by production centers that belong to this operation center
-    // Show products that have at least one production center assigned to this operation center
+    // Filter by production centers that belong to this operation center.
+    // Un centro de producción SIN operation_center_id (NULL) se trata como
+    // GLOBAL/compartido: sus productos se ven en TODOS los centros.
     centerFilter = `
       AND EXISTS (
         SELECT 1 FROM product_production_centers ppc
         INNER JOIN production_centers prc ON prc.id = ppc.center_id
-        WHERE ppc.product_id = p.id AND prc.operation_center_id = ?
+        WHERE ppc.product_id = p.id
+          AND (prc.operation_center_id = ? OR prc.operation_center_id IS NULL)
       )`;
     centerParams = [centerId];
   }
@@ -2341,7 +2809,8 @@ app.get("/api/catalog/categories", async (req, res) => {
   let centerFilter = "";
   let centerParams = [];
   if (centerId > 0) {
-    // Only show categories that have products with production centers in this operation center
+    // Only show categories that have products with production centers in this
+    // operation center. Centros de producción NULL = globales (todas las sedes).
     centerFilter = `
       AND EXISTS (
         SELECT 1 FROM products p
@@ -2349,7 +2818,7 @@ app.get("/api/catalog/categories", async (req, res) => {
         INNER JOIN production_centers prc ON prc.id = ppc.center_id
         WHERE p.category_id = product_categories.id 
           AND p.is_active = 1 
-          AND prc.operation_center_id = ?
+          AND (prc.operation_center_id = ? OR prc.operation_center_id IS NULL)
       )`;
     centerParams = [centerId];
   }
@@ -2726,14 +3195,70 @@ app.post("/api/accounts/:accountId/payments", async (req, res) => {
   deductInventoryForAccount(accountId);
 
   const totals = await getAccountTotals(accountId);
+  let accountJustClosed = false;
   if (Number(totals.pending || 0) <= 0) {
     const [accountRows] = await query(`SELECT status FROM accounts WHERE id = ? LIMIT 1`, [accountId]);
     const status = String(accountRows?.[0]?.status || "");
     if (status === "open") {
       await query(`UPDATE accounts SET status = 'paid', closed_at = ? WHERE id = ?`, [nowSql(), accountId]);
       await addAccountEvent(accountId, "account_closed_auto", totals, null);
+      accountJustClosed = true;
     }
   }
+
+  // ───────── Imprimir recibo del cliente (fire-and-forget) ─────────
+  // Si este pago completó la cuenta, disparamos la impresión del recibo.
+  // Si falla, el cajero puede reimprimir desde /reprint.
+  if (accountJustClosed) {
+    try {
+      const terminal = await resolveTerminalForRequest(req);
+      if (terminal?.printer_ip) {
+        const [receiptRows] = await query(
+          `SELECT a.id, a.check_number, a.waiter_id, a.table_id,
+                  t.code AS table_code,
+                  u.full_name AS waiter_name
+           FROM accounts a
+           INNER JOIN restaurant_tables t ON t.id = a.table_id
+           INNER JOIN staff_users u ON u.id = a.waiter_id
+           WHERE a.id = ? LIMIT 1`,
+          [accountId]
+        );
+        const [items] = await query(
+          `SELECT oi.qty, oi.line_total, p.name AS product_name
+           FROM order_items oi
+           INNER JOIN products p ON p.id = oi.product_id
+           WHERE oi.account_id = ? AND oi.status = 'active'
+           ORDER BY oi.id`,
+          [accountId]
+        );
+        const [payments] = await query(
+          `SELECT pm.label AS method_label, p.method, p.amount
+           FROM account_payments p
+           LEFT JOIN payment_methods pm ON pm.code = p.method
+           WHERE p.account_id = ? ORDER BY p.id`,
+          [accountId]
+        );
+        const [restaurantRows] = await query(
+          `SELECT setting_value AS name FROM app_settings WHERE setting_key = 'restaurant_name' LIMIT 1`
+        ).catch(() => [[]]);
+        const restaurant = { name: restaurantRows?.[0]?.name || "RESTAURANTE" };
+        const receipt = { account: receiptRows[0], items, payments, totals };
+        printService
+          .printCustomerReceipt(receipt, terminal, restaurant)
+          .then((result) => {
+            if (!result.ok && !result.skipped) {
+              console.warn(
+                `[PRINT] Fallo imprimiendo recibo cuenta ${receiptRows[0]?.check_number}: ${result.error}`
+              );
+            }
+          })
+          .catch((e) => console.error(`[PRINT] Excepcion imprimiendo recibo: ${e.message}`));
+      }
+    } catch (printErr) {
+      console.error(`[PRINT] Error preparando recibo: ${printErr.message}`);
+    }
+  }
+
   res.status(201).json(totals);
 });
 
@@ -2805,9 +3330,15 @@ app.delete("/api/accounts/:accountId", async (req, res) => {
 app.post("/api/accounts/:accountId/send", async (req, res) => {
   const accountId = Number(req.params.accountId);
   const [rows] = await query(
-    `SELECT id, check_number, status
-     FROM accounts
-     WHERE id = ?`,
+    `SELECT a.id, a.check_number, a.status, a.waiter_id,
+            t.code AS table_code,
+            u.full_name AS waiter_name,
+            oc.id AS center_id, oc.name AS center_name
+     FROM accounts a
+     INNER JOIN restaurant_tables t ON t.id = a.table_id
+     INNER JOIN staff_users u ON u.id = a.waiter_id
+     LEFT JOIN operation_centers oc ON oc.id = t.operation_center_id
+     WHERE a.id = ?`,
     [accountId]
   );
   if (!rows.length) return res.status(404).json({ error: "Cuenta no encontrada" });
@@ -2898,6 +3429,44 @@ app.post("/api/accounts/:accountId/send", async (req, res) => {
     },
     null
   );
+
+  // ───────── Imprimir tickets de cocina (fire-and-forget) ─────────
+  // Por cada ticket (uno por centro de producción) buscamos la config de
+  // impresora del centro y disparamos la impresión. Si falla, la cocina
+  // usa el KDS como respaldo; el fallo queda en print_jobs.
+  const accountMeta = {
+    id: accountId,
+    check_number: rows[0].check_number,
+    table_code: rows[0].table_code,
+    waiter_name: rows[0].waiter_name,
+  };
+  for (const ticket of tickets) {
+    if (!ticket.centerId) continue; // sin centro, no hay impresora destino
+    try {
+      const [centerRows] = await query(
+        `SELECT id, name, printer_name, printer_ip, printer_port
+         FROM production_centers WHERE id = ? LIMIT 1`,
+        [ticket.centerId]
+      );
+      const center = centerRows[0];
+      if (!center) continue;
+      // Fire-and-forget: NO await. La respuesta al cliente no espera la impresión.
+      printService
+        .printKitchenTicket(ticket, center, accountMeta)
+        .then((result) => {
+          if (!result.ok && !result.skipped) {
+            console.warn(
+              `[PRINT] Fallo imprimiendo comanda ${ticket.centerName} cuenta ${accountMeta.check_number}: ${result.error}`
+            );
+          }
+        })
+        .catch((e) => {
+          console.error(`[PRINT] Excepcion imprimiendo comanda: ${e.message}`);
+        });
+    } catch (lookupErr) {
+      console.error(`[PRINT] Error buscando centro ${ticket.centerId}: ${lookupErr.message}`);
+    }
+  }
 
   res.json({ ok: true, checkNumber: rows[0].check_number, sentItems: items.length, tickets });
 });
@@ -4585,7 +5154,7 @@ app.get("/api/cxc/pending-summary", async (req, res) => {
 
 async function getReportUser(req) {
   try {
-    const session = getAuthSession(req);
+    const session = await getAuthSession(req);
     if (!session) return 'Usuario';
     const [rows] = await query(`SELECT full_name FROM staff_users WHERE id = ?`, [Number(session.userId)]);
     return rows.length ? rows[0].full_name : 'Usuario';

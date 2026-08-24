@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev:all": "concurrently \"node server.js\" \"cd react-app && npm run dev\"",
     "dev:server": "node server.js",
-    "dev:client": "cd react-app && npm run dev"
+    "dev:client": "cd react-app && npm run dev",
+    "license:bootstrap": "node bin/bootstrap-license.js"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +16,8 @@
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^17.3.1",
+    "escpos": "^3.0.0-alpha.6",
+    "escpos-network": "^3.0.0-alpha.5",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "mysql2": "^3.18.0"

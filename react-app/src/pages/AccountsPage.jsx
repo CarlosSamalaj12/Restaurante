@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+﻿import { useState, useEffect } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import api from '../api';
@@ -215,7 +215,7 @@ export function AccountsPage({ onBack, onSelectAccount }) {
       {/* Join action bar */}
       <AnimatePresence>
         {selectMode && selected.length >= 2 && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -236,7 +236,7 @@ export function AccountsPage({ onBack, onSelectAccount }) {
               )}
               {joining ? 'Uniendo...' : `Unir ${selected.length} cuentas`}
             </button>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
@@ -247,14 +247,14 @@ export function AccountsPage({ onBack, onSelectAccount }) {
             <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
           </div>
         ) : accounts.length === 0 ? (
-          <motion.div 
+          <m.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-xl p-6 text-center border border-gray-100 shadow-sm"
           >
             <Receipt className="w-8 h-8 text-gray-300 mx-auto mb-2" />
             <p className="text-sm font-medium text-gray-700">No hay cuentas abiertas</p>
-          </motion.div>
+          </m.div>
         ) : (
           <div className="grid grid-cols-4 gap-2">
             {accounts.map((account) => {
@@ -262,7 +262,7 @@ export function AccountsPage({ onBack, onSelectAccount }) {
               const isSelected = selected.includes(account.id);
               
               return (
-                <motion.div
+                <m.div
                   key={account.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -383,7 +383,7 @@ export function AccountsPage({ onBack, onSelectAccount }) {
                       </div>
                     )}
                   </div>
-                </motion.div>
+                </m.div>
               );
             })}
           </div>

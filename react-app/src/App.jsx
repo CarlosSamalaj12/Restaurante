@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
+import { MotionConfig } from 'framer-motion';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ToastProvider } from './hooks/useToast';
 import { Toast } from './components/Toast';
 import { OfflineBanner } from './components/OfflineBanner';
+import { LicenseBlock } from './components/LicenseBlock';
+import { useLicense } from './hooks/useLicense';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Tables } from './pages/Tables';
@@ -25,19 +28,21 @@ function AppContent() {
   const [autoOpenTable, setAutoOpenTable] = useState(null);
 
   useEffect(() => {
-    if (user) {
-      loadCenters();
-    }
+    if (!user) return;
+    // Flag de cancelación: si `user` cambia o el componente se desmonta
+    // mientras el bootstrap está en vuelo, evitamos setState en un
+    // componente desmontado (react-doctor/effect-needs-cleanup).
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await api.bootstrap();
+        if (!cancelled) setCenters(data.centers || []);
+      } catch (error) {
+        if (!cancelled) console.error('Error loading centers:', error);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [user]);
-
-  const loadCenters = async () => {
-    try {
-      const data = await api.bootstrap();
-      setCenters(data.centers || []);
-    } catch (error) {
-      console.error('Error loading centers:', error);
-    }
-  };
 
   const handleNavigate = (page, params = {}) => {
     setView(page);
@@ -137,14 +142,47 @@ function AppContent() {
   }
 }
 
+function LicenseGate({ children }) {
+  const { status, reason, online, serial, canOperate, terminalMeta } = useLicense();
+  // Mientras no sepamos el estado, mostramos loading neutro (no bloqueamos login todavía)
+  if (status === 'unknown') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+        <div className="text-center">
+          <div className="inline-block w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin mb-3" />
+          <p className="text-sm text-white/70">Verificando licencia de la terminal...</p>
+        </div>
+      </div>
+    );
+  }
+  if (!canOperate) {
+    return (
+      <LicenseBlock
+        status={status}
+        reason={reason}
+        online={online}
+        serial={serial}
+        firstSeenAt={terminalMeta.first_seen_at}
+        ipAddress={terminalMeta.ip_address}
+        onRetry={() => window.location.reload()}
+      />
+    );
+  }
+  return children;
+}
+
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <OfflineBanner />
-        <AppContent />
-        <Toast />
-      </ToastProvider>
-    </AuthProvider>
+    <MotionConfig reducedMotion={false}>
+      <AuthProvider>
+        <LicenseGate>
+          <ToastProvider>
+            <OfflineBanner />
+            <AppContent />
+            <Toast />
+          </ToastProvider>
+        </LicenseGate>
+      </AuthProvider>
+    </MotionConfig>
   );
 }

@@ -1,5 +1,5 @@
-import { WifiOff, CheckCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+﻿import { WifiOff, CheckCircle } from 'lucide-react';
+import { m, AnimatePresence } from 'framer-motion';
 import { useOffline } from '../hooks/useOffline';
 
 export function OfflineBanner() {
@@ -8,7 +8,7 @@ export function OfflineBanner() {
   return (
     <AnimatePresence>
       {!isOnline && (
-        <motion.div
+        <m.div
           initial={{ y: -50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -50, opacity: 0 }}
@@ -16,10 +16,10 @@ export function OfflineBanner() {
         >
           <WifiOff className="w-5 h-5" />
           <span className="font-medium text-sm">Sin conexión - Modo offline</span>
-        </motion.div>
+        </m.div>
       )}
       {isOnline && wasOffline && (
-        <motion.div
+        <m.div
           initial={{ y: -50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -50, opacity: 0 }}
@@ -27,7 +27,7 @@ export function OfflineBanner() {
         >
           <CheckCircle className="w-5 h-5" />
           <span className="font-medium text-sm">Conexión restaurada</span>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

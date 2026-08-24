@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 const ToastContext = createContext(null);
 
@@ -17,8 +17,13 @@ export function ToastProvider({ children }) {
   const error = useCallback((msg) => addToast(msg, 'error'), [addToast]);
   const info = useCallback((msg) => addToast(msg, 'info'), [addToast]);
 
+  // ⚠️ Memoizar el value del context: si no, devuelve un objeto nuevo en cada
+  // render del provider, lo que rompe cualquier `useCallback(..., [toast])` en
+  // consumers (porque `toast` cambia siempre) y causa loops de setState.
+  const value = useMemo(() => ({ toasts, success, error, info }), [toasts, success, error, info]);
+
   return (
-    <ToastContext.Provider value={{ toasts, success, error, info }}>
+    <ToastContext.Provider value={value}>
       {children}
     </ToastContext.Provider>
   );

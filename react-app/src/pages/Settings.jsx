@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+﻿import { useState, useEffect, useRef } from 'react';
+import { m } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
+import { LicensesTab } from '../components/LicensesTab';
 import {
   ArrowLeft,
   ChevronRight,
@@ -20,7 +21,9 @@ import {
   Monitor,
   List,
   Shield,
-  Store
+  Store,
+  Key,
+  Printer,
 } from 'lucide-react';
 
 const TABS = [
@@ -30,10 +33,12 @@ const TABS = [
   { id: 'production', label: 'Producción', icon: LayoutGrid },
   { id: 'tables', label: 'Mesas', icon: LayoutGrid },
   { id: 'terminals', label: 'Terminales', icon: Monitor },
+  { id: 'printers', label: 'Impresoras', icon: Printer },
   { id: 'modifiers', label: 'Modificadores', icon: List },
   { id: 'users', label: 'Usuarios', icon: Users },
   { id: 'roles', label: 'Roles', icon: Shield },
   { id: 'payments', label: 'Pagos', icon: CreditCard },
+  { id: 'licenses', label: 'Licencias', icon: Key },
   { id: 'system', label: 'Sistema', icon: Settings },
 ];
 
@@ -197,6 +202,10 @@ export function SettingsPage({ onBack }) {
         {activeTab === 'payments' && (
           <PaymentsSection methods={data.paymentMethods} />
         )}
+        {activeTab === 'printers' && (
+          <PrintersDiagnosticSection />
+        )}
+        {activeTab === 'licenses' && (<LicensesTab />)}
         {activeTab === 'system' && (
           <SystemSection
             restaurantName={data.restaurantName}
@@ -281,7 +290,7 @@ function ProductsSection({ products, categories, productionCenters, productProdu
         {products.map(product => {
           const centers = getProductCenters(product.id);
           return (
-            <motion.div
+            <m.div
               key={product.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -342,7 +351,7 @@ function ProductsSection({ products, categories, productionCenters, productProdu
                   <span className="text-xs text-gray-400 italic">Sin centro de producción asignado</span>
                 </div>
               )}
-            </motion.div>
+            </m.div>
           );
         })}
       </div>
@@ -367,7 +376,7 @@ function ProductsSection({ products, categories, productionCenters, productProdu
 
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <motion.div
+          <m.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
@@ -395,7 +404,7 @@ function ProductsSection({ products, categories, productionCenters, productProdu
                 </button>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       )}
     </div>
@@ -553,7 +562,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-      <motion.div
+      <m.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
@@ -992,7 +1001,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
             </button>
           )}
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -1134,7 +1143,7 @@ function CategoriesSection({ categories, onReload, centers }) {
       {/* Delete Confirmation Modal */}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <motion.div
+          <m.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="bg-white rounded-2xl p-6 w-full max-w-sm"
@@ -1162,7 +1171,7 @@ function CategoriesSection({ categories, onReload, centers }) {
                 </button>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       )}
 
@@ -1303,7 +1312,7 @@ function CentersSection({ centers, onReload }) {
 
       <div className="space-y-2">
         {centers.map(center => (
-          <motion.div
+          <m.div
             key={center.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1333,7 +1342,7 @@ function CentersSection({ centers, onReload }) {
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
-          </motion.div>
+          </m.div>
         ))}
       </div>
 
@@ -1350,7 +1359,7 @@ function CentersSection({ centers, onReload }) {
 
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <motion.div
+          <m.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
@@ -1378,7 +1387,7 @@ function CentersSection({ centers, onReload }) {
                 </button>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       )}
     </div>
@@ -1390,12 +1399,29 @@ function ProductionCentersSection({ productionCenters, centers, onReload }) {
   const [showWizard, setShowWizard] = useState(false);
   const [editingCenter, setEditingCenter] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [testing, setTesting] = useState(null);
   const toast = useToast();
 
   const handleCreated = () => {
     setShowWizard(false);
     setEditingCenter(null);
     if (onReload) onReload();
+  };
+
+  const testPrint = async (type, id, hasIp) => {
+    if (!hasIp) {
+      toast.error('Esta impresora no tiene IP configurada');
+      return;
+    }
+    setTesting(id);
+    try {
+      await api.testPrint(type, id);
+      toast.success('Página de prueba enviada');
+    } catch (e) {
+      toast.error(`No se pudo imprimir: ${e.message}`);
+    } finally {
+      setTesting(null);
+    }
   };
 
   const handleDeleteCenter = async () => {
@@ -1446,7 +1472,7 @@ function ProductionCentersSection({ productionCenters, centers, onReload }) {
 
       <div className="space-y-3">
         {productionCenters.map(center => (
-          <motion.div
+          <m.div
             key={center.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1465,6 +1491,15 @@ function ProductionCentersSection({ productionCenters, centers, onReload }) {
               <p className="text-sm text-gray-500">
                 {center.printer_name ? `Impresora: ${center.printer_name}` : 'Sin impresora'}
               </p>
+              {center.printer_ip ? (
+                <p className="text-xs text-emerald-700 mt-0.5">
+                  {center.printer_ip}:{center.printer_port || 9100}
+                </p>
+              ) : (
+                <p className="text-xs text-amber-600 mt-0.5">
+                  ⚠️ Sin IP — la cocina usará el KDS en pantalla
+                </p>
+              )}
               {getOperationCenterName(center.operation_center_id) && (
                 <p className="text-xs text-blue-600 mt-1">
                   Centro: {getOperationCenterName(center.operation_center_id)}
@@ -1472,6 +1507,18 @@ function ProductionCentersSection({ productionCenters, centers, onReload }) {
               )}
             </div>
             <div className="flex gap-1">
+              <button
+                onClick={() => testPrint('production_center', center.id, center.printer_ip)}
+                disabled={!center.printer_ip || testing === center.id}
+                title={center.printer_ip ? 'Imprimir página de prueba' : 'Configurá la IP primero'}
+                className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+              >
+                {testing === center.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Printer className="w-4 h-4" />
+                )}
+              </button>
               <button
                 onClick={() => {
                   setEditingCenter(center);
@@ -1488,7 +1535,7 @@ function ProductionCentersSection({ productionCenters, centers, onReload }) {
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
-          </motion.div>
+          </m.div>
         ))}
         
         {productionCenters.length === 0 && (
@@ -1513,7 +1560,7 @@ function ProductionCentersSection({ productionCenters, centers, onReload }) {
 
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <motion.div
+          <m.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
@@ -1541,7 +1588,7 @@ function ProductionCentersSection({ productionCenters, centers, onReload }) {
                 </button>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       )}
     </div>
@@ -1553,6 +1600,8 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
   const [form, setForm] = useState({
     name: editingCenter?.name || '',
     printerName: editingCenter?.printer_name || '',
+    printerIp: editingCenter?.printer_ip || '',
+    printerPort: editingCenter?.printer_port || 9100,
     isActive: editingCenter?.is_active !== false,
     operationCenterId: editingCenter?.operation_center_id || ''
   });
@@ -1569,6 +1618,8 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
       const payload = {
         name: form.name,
         printerName: form.printerName,
+        printerIp: form.printerIp,
+        printerPort: form.printerPort,
         isActive: form.isActive ? 1 : 0,
         operationCenterId: form.operationCenterId || null
       };
@@ -1589,7 +1640,7 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-md"
@@ -1627,7 +1678,7 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de Impresora</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de Impresora (etiqueta)</label>
               <input
                 type="text"
                 value={form.printerName}
@@ -1635,8 +1686,36 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
                 className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="Ej: TM-COCINA-01"
               />
-              <p className="text-xs text-gray-500 mt-1">Nombre de la impresora de comandos (ticketera)</p>
+              <p className="text-xs text-gray-500 mt-1">Solo una etiqueta para identificar la impresora</p>
             </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">IP de la impresora</label>
+                <input
+                  type="text"
+                  value={form.printerIp}
+                  onChange={e => setForm({ ...form, printerIp: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="192.168.1.51"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Puerto</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={form.printerPort}
+                  onFocus={e => e.target.select()}
+                  onChange={e => setForm({ ...form, printerPort: e.target.value === '' ? 9100 : Number(e.target.value) })}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="9100"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 -mt-2">
+              Impresora de red en la misma LAN. Puerto estándar RAW: 9100. Si no configuras IP, SamaPos usa el KDS en pantalla como respaldo.
+            </p>
           </div>
 
           <div className="flex gap-3 mt-6">
@@ -1655,7 +1734,7 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
             </button>
           </div>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -1665,12 +1744,29 @@ function TerminalsSection({ terminals, centers, onReload }) {
   const [showWizard, setShowWizard] = useState(false);
   const [editingTerminal, setEditingTerminal] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [testing, setTesting] = useState(null);
   const toast = useToast();
 
   const handleCreated = () => {
     setShowWizard(false);
     setEditingTerminal(null);
     if (onReload) onReload();
+  };
+
+  const testPrint = async (type, id, hasIp) => {
+    if (!hasIp) {
+      toast.error('Esta terminal no tiene IP de impresora configurada');
+      return;
+    }
+    setTesting(id);
+    try {
+      await api.testPrint(type, id);
+      toast.success('Página de prueba enviada');
+    } catch (e) {
+      toast.error(`No se pudo imprimir: ${e.message}`);
+    } finally {
+      setTesting(null);
+    }
   };
 
   const handleDeleteTerminal = async () => {
@@ -1714,7 +1810,7 @@ function TerminalsSection({ terminals, centers, onReload }) {
             <h3 className="text-sm font-medium text-gray-500 mb-2">{centerName}</h3>
             <div className="space-y-2">
               {termList.map(term => (
-                <motion.div
+                <m.div
                   key={term.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1726,10 +1822,28 @@ function TerminalsSection({ terminals, centers, onReload }) {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900">{term.name}</p>
                     <p className="text-xs text-gray-500">
+                      {term.printer_name ? `${term.printer_name} · ` : ''}
                       {term.printer_ip ? `${term.printer_ip}:${term.printer_port}` : 'Sin IP configurada'}
                     </p>
+                    {term.printer_ip ? null : (
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        ⚠️ El recibo del cliente se podrá reimprimir desde la pantalla
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-1">
+                    <button
+                      onClick={() => testPrint('terminal', term.id, term.printer_ip)}
+                      disabled={!term.printer_ip || testing === term.id}
+                      title={term.printer_ip ? 'Imprimir página de prueba' : 'Configurá la IP primero'}
+                      className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                    >
+                      {testing === term.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Printer className="w-4 h-4" />
+                      )}
+                    </button>
                     <button
                       onClick={() => {
                         setEditingTerminal(term);
@@ -1746,7 +1860,7 @@ function TerminalsSection({ terminals, centers, onReload }) {
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                </motion.div>
+                </m.div>
               ))}
             </div>
           </div>
@@ -1767,7 +1881,7 @@ function TerminalsSection({ terminals, centers, onReload }) {
 
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <motion.div
+          <m.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
@@ -1795,9 +1909,134 @@ function TerminalsSection({ terminals, centers, onReload }) {
                 </button>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Printers Diagnostic Section
+function PrintersDiagnosticSection() {
+  const [status, setStatus] = useState(null);
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const toast = useToast();
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [s, j] = await Promise.all([
+        api.getPrintServiceStatus(),
+        api.getPrintJobs(50),
+      ]);
+      setStatus(s);
+      setJobs(j.jobs || []);
+    } catch (e) {
+      toast.error(`Error cargando diagnóstico: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const statusBadge = (s) => {
+    if (s === 'success') return <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">OK</span>;
+    if (s === 'failed') return <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Falló</span>;
+    return <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">{s}</span>;
+  };
+
+  const typeLabel = (t) => {
+    if (t === 'kitchen_ticket') return 'Comanda';
+    if (t === 'customer_receipt') return 'Recibo';
+    if (t === 'test') return 'Prueba';
+    return t;
+  };
+
+  const successCount = jobs.filter((j) => j.status === 'success').length;
+  const failedCount = jobs.filter((j) => j.status === 'failed').length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Impresoras</h2>
+          <p className="text-sm text-gray-500">
+            Diagnóstico del servicio de impresión. Si una impresora no responde, revisá acá.
+          </p>
+        </div>
+        <button
+          onClick={load}
+          disabled={loading}
+          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+        >
+          {loading ? 'Cargando…' : 'Actualizar'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-xs text-gray-500">Servicio</p>
+          <p className={`text-lg font-semibold ${status?.escposAvailable ? 'text-emerald-700' : 'text-red-700'}`}>
+            {status?.escposAvailable ? 'Activo' : 'No disponible'}
+          </p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-xs text-gray-500">Impresiones OK (últimas {jobs.length})</p>
+          <p className="text-lg font-semibold text-emerald-700">{successCount}</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-xs text-gray-500">Fallos (últimas {jobs.length})</p>
+          <p className={`text-lg font-semibold ${failedCount > 0 ? 'text-red-700' : 'text-gray-700'}`}>
+            {failedCount}
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="p-3 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-sm font-medium text-gray-900">Últimos trabajos de impresión</h3>
+        </div>
+        {loading ? (
+          <div className="p-6 text-center text-gray-500">Cargando…</div>
+        ) : jobs.length === 0 ? (
+          <div className="p-6 text-center text-gray-500 text-sm">
+            No hay trabajos de impresión aún. Las comandas y recibos que se hayan enviado aparecerán acá.
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+            {jobs.map((j) => (
+              <div key={j.id} className="p-3 text-sm flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-900">{j.printer_target}</span>
+                    {statusBadge(j.status)}
+                    <span className="text-xs text-gray-500">{typeLabel(j.job_type)}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {j.printer_ip ? `${j.printer_ip}:${j.printer_port || 9100}` : 'Sin IP'}
+                    {j.account_id ? ` · cuenta #${j.account_id}` : ''}
+                    {' · '}
+                    {j.created_at ? new Date(j.created_at).toLocaleString('es-GT') : ''}
+                    {j.attempts > 0 ? ` · ${j.attempts} intento(s)` : ''}
+                  </p>
+                  {j.error_message && (
+                    <p className="text-xs text-red-600 mt-1 font-mono break-all">{j.error_message}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="text-xs text-gray-500">
+        💡 Para diagnosticar una impresora en particular, andá a la pestaña{' '}
+        <strong>Producción</strong> o <strong>Terminales</strong> y usá el botón 🖨️.
+      </div>
     </div>
   );
 }
@@ -1853,7 +2092,7 @@ function ModifiersSection({ groups, options, onReload }) {
 
       <div className="space-y-4">
         {groups.map(group => (
-          <motion.div
+          <m.div
             key={group.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1897,7 +2136,7 @@ function ModifiersSection({ groups, options, onReload }) {
                 </span>
               ))}
             </div>
-          </motion.div>
+          </m.div>
         ))}
       </div>
 
@@ -1915,7 +2154,7 @@ function ModifiersSection({ groups, options, onReload }) {
 
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <motion.div
+          <m.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
@@ -1943,7 +2182,7 @@ function ModifiersSection({ groups, options, onReload }) {
                 </button>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       )}
     </div>
@@ -2047,7 +2286,7 @@ function ModifierGroupWizard({ editingGroup, options, onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-      <motion.div
+      <m.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
@@ -2190,7 +2429,7 @@ function ModifierGroupWizard({ editingGroup, options, onClose, onCreated }) {
             {loading ? 'Guardando...' : 'Guardar'}
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -2232,7 +2471,7 @@ function TerminalWizardModal({ editingTerminal, centers, onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl w-full max-w-md"
@@ -2322,7 +2561,7 @@ function TerminalWizardModal({ editingTerminal, centers, onClose, onCreated }) {
             </button>
           </div>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -2349,7 +2588,7 @@ function CenterWizardModal({ onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-      <motion.div
+      <m.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
@@ -2434,7 +2673,7 @@ function CenterWizardModal({ onClose, onCreated }) {
             </button>
           )}
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -2482,7 +2721,7 @@ function TablesSection({ tables, centers, onReload }) {
 
       <div className="space-y-2">
         {tables.map(table => (
-          <motion.div
+          <m.div
             key={table.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -2512,7 +2751,7 @@ function TablesSection({ tables, centers, onReload }) {
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
-          </motion.div>
+          </m.div>
         ))}
       </div>
 
@@ -2530,7 +2769,7 @@ function TablesSection({ tables, centers, onReload }) {
 
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <motion.div
+          <m.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
@@ -2558,7 +2797,7 @@ function TablesSection({ tables, centers, onReload }) {
                 </button>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       )}
     </div>
@@ -2602,7 +2841,7 @@ function TableWizardModal({ centers, onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-      <motion.div
+      <m.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
@@ -2786,7 +3025,7 @@ function TableWizardModal({ centers, onClose, onCreated }) {
             </button>
           )}
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -3277,7 +3516,7 @@ function UserWizardModal({ centers, roles, onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-      <motion.div
+      <m.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
@@ -3336,7 +3575,7 @@ function UserWizardModal({ centers, roles, onClose, onCreated }) {
               <p className="text-gray-500 text-sm">¿Cuál es su rol?</p>
               <div className="space-y-3">
                 {(roles.length ? roles : []).map((role, idx) => (
-                  <motion.button
+                  <m.button
                     key={role.id}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => {
@@ -3356,7 +3595,7 @@ function UserWizardModal({ centers, roles, onClose, onCreated }) {
                       <p className="font-semibold text-gray-900">{role.name}</p>
                       <p className="text-xs text-gray-500">{role.description || role.slug}</p>
                     </div>
-                  </motion.button>
+                  </m.button>
                 ))}
               </div>
             </div>
@@ -3366,7 +3605,7 @@ function UserWizardModal({ centers, roles, onClose, onCreated }) {
               <p className="text-gray-500 text-sm">¿En qué centro trabaja?</p>
               <div className="space-y-2">
                 {centers.map(center => (
-                  <motion.button
+                  <m.button
                     key={center.id}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => {
@@ -3386,7 +3625,7 @@ function UserWizardModal({ centers, roles, onClose, onCreated }) {
                       <p className="font-semibold text-gray-900">{center.name}</p>
                       <p className="text-xs text-gray-500">Centro de consumo</p>
                     </div>
-                  </motion.button>
+                  </m.button>
                 ))}
               </div>
             </div>
@@ -3446,7 +3685,7 @@ function UserWizardModal({ centers, roles, onClose, onCreated }) {
             </button>
           )}
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }

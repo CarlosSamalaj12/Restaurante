@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+﻿import { useState, useEffect, useRef } from 'react';
+import { m } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
@@ -352,7 +352,7 @@ export function ShiftsPage({ onBack }) {
         </div>
 
         {(shiftSummary || previewData) && (
-          <motion.div ref={summaryRef} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          <m.div ref={summaryRef} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             className={`bg-white rounded-xl p-4 border ${previewData ? 'border-blue-300' : 'border-gray-100'}`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900">
@@ -553,7 +553,7 @@ export function ShiftsPage({ onBack }) {
             </div>
             </>);
           })()}
-          </motion.div>
+          </m.div>
         )}
 
         <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
@@ -570,7 +570,7 @@ export function ShiftsPage({ onBack }) {
 
       {showConfirm && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+          <m.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
             className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
             <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertTriangle className="w-7 h-7 text-red-600" />
@@ -588,7 +588,7 @@ export function ShiftsPage({ onBack }) {
                 <StopCircle className="w-4 h-4" /> Cerrar Turno
               </button>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       )}
     </div>

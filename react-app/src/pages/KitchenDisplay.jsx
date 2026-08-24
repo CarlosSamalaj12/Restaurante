@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import dayjs from 'dayjs';
@@ -214,12 +214,12 @@ export function KitchenDisplay({ onBack }) {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <motion.div
+        <m.div
           animate={{ rotate: 360 }}
           transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
         >
           <Loader2 className="w-12 h-12 text-gray-400" />
-        </motion.div>
+        </m.div>
       </div>
     );
   }
@@ -229,10 +229,11 @@ export function KitchenDisplay({ onBack }) {
       {/* Sidebar - Category Counts */}
       <AnimatePresence>
         {showSidebar && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 280, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
+          <m.div
+            initial={{ opacity: 0, scaleX: 0 }}
+            animate={{ opacity: 1, scaleX: 1 }}
+            exit={{ opacity: 0, scaleX: 0 }}
+            style={{ transformOrigin: 'left' }}
             className="bg-white border-r border-gray-200 overflow-hidden flex-shrink-0"
           >
             <div className="p-4 h-full flex flex-col">
@@ -264,7 +265,7 @@ export function KitchenDisplay({ onBack }) {
                   .map(([catName, count], index) => {
                   const color = CATEGORY_COLORS[index % CATEGORY_COLORS.length];
                   return (
-                    <motion.div
+                    <m.div
                       key={catName}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -275,7 +276,7 @@ export function KitchenDisplay({ onBack }) {
                         <span className={`font-semibold ${color.text}`}>{catName}</span>
                         <span className={`text-2xl font-bold ${color.text}`}>{count}</span>
                       </div>
-                    </motion.div>
+                    </m.div>
                   );
                 })}
                 
@@ -309,7 +310,7 @@ export function KitchenDisplay({ onBack }) {
                 </div>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
@@ -326,7 +327,7 @@ export function KitchenDisplay({ onBack }) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <motion.header
+        <m.header
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-30"
@@ -441,15 +442,16 @@ export function KitchenDisplay({ onBack }) {
               );
             })}
           </div>
-        </motion.header>
+        </m.header>
 
         {/* Settings Panel */}
         <AnimatePresence>
           {showSettings && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+            <m.div
+              initial={{ opacity: 0, scaleY: 0 }}
+              animate={{ opacity: 1, scaleY: 1 }}
+              exit={{ opacity: 0, scaleY: 0 }}
+              style={{ transformOrigin: 'top' }}
               className="bg-blue-50 border-b border-blue-100 overflow-hidden"
             >
               <div className="p-4">
@@ -499,14 +501,14 @@ export function KitchenDisplay({ onBack }) {
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
 
         {/* Orders Grid */}
         <div className="flex-1 p-4 overflow-y-auto">
           {activeOrders.length === 0 ? (
-            <motion.div
+            <m.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               className="flex flex-col items-center justify-center py-20"
@@ -516,7 +518,7 @@ export function KitchenDisplay({ onBack }) {
               </div>
               <h3 className="text-xl font-semibold text-gray-700">¡Todo listo!</h3>
               <p className="text-gray-500 mt-1">No hay órdenes pendientes</p>
-            </motion.div>
+            </m.div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               <AnimatePresence mode="popLayout">
@@ -530,7 +532,7 @@ export function KitchenDisplay({ onBack }) {
                   const voidedItems = order.items.filter(i => i.voided);
 
                   return (
-                    <motion.div
+                    <m.div
                       key={`A-${order.accountId}`}
                       layout
                       initial={{ opacity: 0, y: 20 }}
@@ -575,7 +577,7 @@ export function KitchenDisplay({ onBack }) {
                       {/* Items */}
                       <div className="p-3 space-y-2 max-h-[250px] overflow-y-auto">
                         {activeItems.map((item) => (
-                          <motion.div
+                          <m.div
                             key={item.itemId}
                             whileTap={{ scale: 0.98 }}
                             onClick={() => handleMarkDone(item.itemId)}
@@ -614,7 +616,7 @@ export function KitchenDisplay({ onBack }) {
                             {item.notes && (
                               <p className="mt-1 text-xs text-amber-600 font-medium italic ml-9">📝 {item.notes}</p>
                             )}
-                          </motion.div>
+                          </m.div>
                         ))}
                         
                         {voidedItems.map((item) => (
@@ -641,7 +643,7 @@ export function KitchenDisplay({ onBack }) {
                           </button>
                         </div>
                       )}
-                    </motion.div>
+                    </m.div>
                   );
                 })}
               </AnimatePresence>
@@ -671,14 +673,14 @@ export function KitchenDisplay({ onBack }) {
       {/* KDS Report Modal */}
       <AnimatePresence>
         {showReport && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
             onClick={() => setShowReport(false)}
           >
-            <motion.div
+            <m.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
@@ -838,8 +840,8 @@ export function KitchenDisplay({ onBack }) {
                   </div>
                 )}
               </div>
-            </motion.div>
-          </motion.div>
+            </m.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

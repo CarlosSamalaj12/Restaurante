@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+﻿import { useState, useEffect } from 'react';
+import { m } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import {
@@ -155,7 +155,7 @@ export function ReportsPage({ onBack }) {
         <p className="text-gray-500 text-sm mb-4">Selecciona un reporte</p>
         <div className="grid gap-3">
           {reports.map((r, i) => (
-            <motion.button
+            <m.button
               key={r.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -173,7 +173,7 @@ export function ReportsPage({ onBack }) {
               <div className="text-gray-300">
                 <ArrowLeft className="w-5 h-5 rotate-180" />
               </div>
-            </motion.button>
+            </m.button>
           ))}
         </div>
       </div>

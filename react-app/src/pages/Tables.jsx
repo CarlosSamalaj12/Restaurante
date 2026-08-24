@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+﻿import { useState, useEffect } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
@@ -124,13 +124,13 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
       <header className="bg-white border-b border-gray-100">
         <div className="px-4 pt-4 pb-3">
           <div className="flex items-center gap-3">
-            <motion.button
+            <m.button
               whileTap={{ scale: 0.95 }}
               onClick={onBack}
               className="p-2 -ml-2 rounded-xl hover:bg-gray-100 transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </motion.button>
+            </m.button>
             <div className="flex-1">
               <h1 className="font-semibold text-gray-900">Mesas</h1>
               <p className="text-xs text-gray-500">
@@ -162,7 +162,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
         {/* Center Filter */}
         {centers?.length > 0 && (
           <div className="px-4 pb-3 flex gap-2 overflow-x-auto scrollbar-hide">
-            <motion.button
+            <m.button
               whileTap={{ scale: 0.95 }}
               onClick={() => setSelectedCenter(null)}
               className={`
@@ -174,9 +174,9 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
               `}
             >
               Todas
-            </motion.button>
+            </m.button>
             {centers.map(center => (
-              <motion.button
+              <m.button
                 key={center.id}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setSelectedCenter(center.id)}
@@ -189,7 +189,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
                 `}
               >
                 {center.name}
-              </motion.button>
+              </m.button>
             ))}
           </div>
         )}
@@ -204,7 +204,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
         ) : (
           <AnimatePresence mode="popLayout">
             {Object.entries(tablesByArea).map(([areaKey, { name: areaName, tables: areaTables }]) => (
-              <motion.div
+              <m.div
                 key={areaKey}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -227,7 +227,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
                     const hasMultipleAccounts = table.open_accounts > 1;
                     
                     return (
-                      <motion.button
+                      <m.button
                         key={table.id}
                         layout
                         initial={{ opacity: 0, y: 20 }}
@@ -304,11 +304,11 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
                           absolute -bottom-1 w-3 h-3 rounded-full border-2 border-white
                           ${isBusy ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}
                         `} />
-                      </motion.button>
+                      </m.button>
                     );
                   })}
                 </div>
-              </motion.div>
+              </m.div>
             ))}
           </AnimatePresence>
         )}
@@ -360,14 +360,14 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
       {/* Account Selection Modal */}
       <AnimatePresence>
         {showNewAccount && selectedTable && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center"
             onClick={() => setShowNewAccount(false)}
           >
-            <motion.div
+            <m.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
@@ -403,7 +403,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
                       Cuentas Abiertas
                     </h3>
                     {accounts.map(account => (
-                      <motion.button
+                      <m.button
                         key={account.id}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => handleSelectAccount(account)}
@@ -421,7 +421,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
                         <div className="text-right">
                           <p className="font-bold text-amber-600">Q {account.totals?.total?.toFixed(2) || '0.00'}</p>
                         </div>
-                      </motion.button>
+                      </m.button>
                     ))}
                   </div>
                 )}
@@ -432,39 +432,39 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable }) {
                     Comensales
                   </h3>
                   <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-2">
-                    <motion.button
+                    <m.button
                       whileTap={{ scale: 0.9 }}
                       onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
                       className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-lg font-bold text-gray-600 shadow-sm"
                     >
                       −
-                    </motion.button>
+                    </m.button>
                     <div className="flex-1 text-center">
                       <span className="text-2xl font-bold text-gray-900">{guestCount}</span>
                       <span className="text-sm text-gray-500 ml-1">personas</span>
                     </div>
-                    <motion.button
+                    <m.button
                       whileTap={{ scale: 0.9 }}
                       onClick={() => setGuestCount(Math.min(20, guestCount + 1))}
                       className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-lg font-bold text-gray-600 shadow-sm"
                     >
                       +
-                    </motion.button>
+                    </m.button>
                   </div>
                 </div>
 
                 {/* New Account Button */}
-                <motion.button
+                <m.button
                   whileTap={{ scale: 0.98 }}
                   onClick={handleCreateAccount}
                   className="w-full py-3 bg-gray-900 text-white rounded-xl font-medium flex items-center justify-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
                   Nueva Cuenta — {guestCount} {guestCount === 1 ? 'persona' : 'personas'}
-                </motion.button>
+                </m.button>
               </div>
-            </motion.div>
-          </motion.div>
+            </m.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

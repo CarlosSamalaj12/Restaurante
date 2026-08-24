@@ -1,11 +1,17 @@
+import { tokenStorage } from './lib/tokenStorage';
+import { getOrCreateSerial } from './lib/terminalSerial';
+
 const API_BASE = '/api';
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
-  const token = localStorage.getItem('authToken');
+  const token = tokenStorage.getToken();
+  const serial = getOrCreateSerial();
   const config = {
+    credentials: 'include', // listo para migración a cookie httpOnly sin tocar la app
     headers: {
       'Content-Type': 'application/json',
+      'X-Terminal-Serial': serial, // licencia: cada request lleva el serial de la terminal
       ...(token && { 'X-Auth-Token': token }),
       ...options.headers,
     },
@@ -17,21 +23,30 @@ async function request(endpoint, options = {}) {
   }
 
   const response = await fetch(url, config);
+  // Validación de status antes de parsear — react-doctor pide esto.
+  if (response.status === 401) {
+    // Auto-logout on session expired
+    tokenStorage.clearAll();
+    window.location.href = '/login';
+    return;
+  }
+  // Licencia revocada/vencida → forzar pantalla de bloqueo vía reload.
+  if (response.status === 403) {
+    const data = await response.json().catch(() => null);
+    if (data?.code && String(data.code).startsWith('LICENSE_')) {
+      // El componente LicenseBlock en App.jsx se va a enterar en su próximo
+      // heartbeat. Pero podemos forzar un reload para que arranque limpio.
+      // No hacemos window.location.reload() directo para evitar loops —
+      // dejamos que el useLicense hook re-evalúe en su próximo tick.
+    }
+  }
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    // Auto-logout on session expired (401)
-    if (response.status === 401) {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('userId');
-      localStorage.removeItem('userName');
-      localStorage.removeItem('userRole');
-      window.location.href = '/login';
-      return;
-    }
     const error = new Error(data?.message || data?.error || `Error ${response.status}`);
     error.status = response.status;
     error.data = data;
+    error.code = data?.code;
     throw error;
   }
 
@@ -96,6 +111,14 @@ export const api = {
   deleteProductionCenter: (centerId) => request(`/settings/production-centers/${centerId}`, {
     method: 'DELETE',
   }),
+
+  // Printers
+  testPrint: (type, id) => request('/settings/printers/test', {
+    method: 'POST',
+    body: { type, id },
+  }),
+  getPrintJobs: (limit = 50) => request(`/settings/printers/recent?limit=${limit}`),
+  getPrintServiceStatus: () => request('/settings/printers/status'),
   updateProductProductionCenters: (productId, centerIds) => request(`/settings/products/${productId}/production-centers`, {
     method: 'POST',
     body: { centerIds },
@@ -375,6 +398,7 @@ export const api = {
     setRoles: (userId, roleIds) => request(`/settings/users/${userId}/roles`, { method: 'POST', body: { roleIds } }),
   },
   refreshSession: () => request('/auth/refresh-session', { method: 'POST' }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
   inventory: {
     list: () => request('/inventory/items'),
     create: (data) => request('/inventory/items', { method: 'POST', body: data }),
@@ -418,6 +442,31 @@ export const api = {
       params.append('limit', limit);
       return request(`/kds/report?${params}`);
     },
+  },
+
+  // ───────── Licencias (admin) ─────────
+  // Usados por LicensesTab. Solo visibles para role=admin (protegido server-side).
+  licenses: {
+    list: () => request('/admin/licenses'),
+    create: (data) => request('/admin/licenses', { method: 'POST', body: data }),
+    revoke: (id, reason) => request(`/admin/licenses/${id}/revoke`, { method: 'POST', body: reason ? { reason } : undefined }),
+  },
+  licenseTerminals: {
+    list: (status) => request(`/admin/terminals${status ? `?status=${status}` : ''}`),
+    approve: (id, label) => request(`/admin/terminals/${id}/approve`, { method: 'POST', body: label ? { label } : undefined }),
+    revoke: (id, reason) => request(`/admin/terminals/${id}/revoke`, { method: 'POST', body: reason ? { reason } : undefined }),
+    replace: (id) => request(`/admin/terminals/${id}/replace`, { method: 'POST' }),
+  },
+  licenseAudit: {
+    list: (limit = 50) => request(`/admin/license-audit?limit=${limit}`),
+  },
+  // Bootstrap: el admin mete su PIN en la pantalla de "Esperando aprobación"
+  // para auto-aprobar la terminal y obtener sesión de admin en un solo paso.
+  // No requiere licencia activa (la propia terminal que se está aprobando
+  // no puede tener licencia todavía).
+  licenseAdmin: {
+    approveSelf: ({ pin, serial }) =>
+      request('/license/admin-self-approve', { method: 'POST', body: { pin, serial } }),
   },
 };
 

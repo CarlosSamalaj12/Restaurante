@@ -39,6 +39,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Skip schemes the Cache API can't store (chrome-extension://, devtools,
+  // etc.) — cache.put() lanza TypeError si intentamos guardarlos.
+  if (!url.protocol.startsWith('http')) {
+    return;
+  }
+
   // API requests - network only (no cache)
   if (url.pathname.startsWith('/api')) {
     event.respondWith(
@@ -56,14 +62,18 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Return cached version and update cache in background
-        fetch(request).then((networkResponse) => {
-          if (networkResponse.ok) {
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, networkResponse);
-            });
-          }
-        });
+        // Return cached version and update cache in background.
+        // El re-fetch en segundo plano puede fallar (dev server, CORS, red
+        // caída): se ignora silenciosamente, nunca debe tirar uncaught.
+        fetch(request)
+          .then((networkResponse) => {
+            if (networkResponse.ok) {
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request, networkResponse);
+              });
+            }
+          })
+          .catch(() => {});
         return cachedResponse;
       }
 

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+﻿import { useState, useEffect } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import { 
   Receipt, 
   Printer, 
@@ -215,7 +215,7 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
       {/* Join action bar */}
       <AnimatePresence>
         {selectMode && selected.length >= 2 && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -236,7 +236,7 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
               )}
               {joining ? 'Uniendo...' : `Unir ${selected.length} cuentas`}
             </button>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
@@ -257,7 +257,7 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
             const isSelected = selected.includes(account.id);
             
             return (
-              <motion.div
+              <m.div
                 key={account.id}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -360,7 +360,7 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
                 <p className="text-[10px] text-gray-400 mt-1.5 text-center">
                   {account.check_number}
                 </p>
-              </motion.div>
+              </m.div>
             );
           })}
         </div>

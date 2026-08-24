@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+﻿import { useState, useEffect } from 'react';
+import { m } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import {
@@ -140,7 +140,7 @@ export function InventoryPage({ onBack }) {
         ) : (
           <div className="space-y-2">
             {items.map(item => (
-              <motion.div
+              <m.div
                 key={item.id}
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -215,7 +215,7 @@ export function InventoryPage({ onBack }) {
                     )}
                   </div>
                 )}
-              </motion.div>
+              </m.div>
             ))}
           </div>
         )}
