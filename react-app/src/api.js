@@ -458,6 +458,7 @@ export const api = {
   licenseTerminals: {
     list: (status) => request(`/admin/terminals${status ? `?status=${status}` : ''}`),
     approve: (id, label) => request(`/admin/terminals/${id}/approve`, { method: 'POST', body: label ? { label } : undefined }),
+    update: (id, data) => request(`/admin/terminals/${id}`, { method: 'PUT', body: data }),
     revoke: (id, reason) => request(`/admin/terminals/${id}/revoke`, { method: 'POST', body: reason ? { reason } : undefined }),
     replace: (id) => request(`/admin/terminals/${id}/replace`, { method: 'POST' }),
   },

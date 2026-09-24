@@ -21,6 +21,8 @@ adminLicenseRouter.get("/terminals", licensesController.listTerminals);
 adminLicenseRouter.post("/terminals/:id/approve", licensesController.approveTerminal);
 adminLicenseRouter.post("/terminals/:id/revoke", licensesController.revokeTerminal);
 adminLicenseRouter.post("/terminals/:id/replace", licensesController.replaceTerminal);
+adminLicenseRouter.put("/terminals/:id", asyncHandler(licensesController.updateTerminal));
+adminLicenseRouter.patch("/terminals/:id", asyncHandler(licensesController.updateTerminal));
 adminLicenseRouter.get("/license-audit", licensesController.getAuditLog);
 
 module.exports = {

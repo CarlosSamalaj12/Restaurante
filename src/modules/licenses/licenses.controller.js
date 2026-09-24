@@ -21,6 +21,18 @@ const licensesController = {
   approveTerminal: licenseService.approveTerminal,
   revokeTerminal: licenseService.revokeTerminal,
   replaceTerminal: licenseService.replaceTerminal,
+  async updateTerminal(req, res) {
+    const id = Number(req.params.id);
+    if (!id) throw new BadRequestError("id inválido");
+    const label = req.body?.label !== undefined ? String(req.body.label).trim().slice(0, 255) : null;
+    const terminalType = req.body?.terminal_type ? String(req.body.terminal_type).trim() : null;
+    if (terminalType && !["pos", "kds"].includes(terminalType)) {
+      throw new BadRequestError("terminal_type debe ser 'pos' o 'kds'");
+    }
+    const updated = await licenseService.updateTerminal(id, { label, terminalType }, req.authUser?.id);
+    if (!updated) throw new NotFoundError("Terminal no encontrada");
+    res.json({ ok: true, terminal: updated });
+  },
   getAuditLog: licenseService.getAuditLog,
 
   async adminSelfApprove(req, res) {
@@ -77,7 +89,7 @@ const licensesController = {
       throw new ForbiddenError("No hay licencias activas en el sistema para asociar a esta terminal.");
     }
     const lic = licRows[0];
-    if (Number(lic.active_count) >= Number(lic.max_terminals)) {
+    if (Number(lic.max_terminals) > 0 && Number(lic.active_count) >= Number(lic.max_terminals)) {
       throw new ForbiddenError(`La licencia alcanzó su cupo máximo de terminales (${lic.active_count}/${lic.max_terminals}).`);
     }
 

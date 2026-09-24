@@ -45,7 +45,14 @@ function devBypassSerialList() {
     .filter(Boolean);
 }
 
-function isDevBypass(serial) {
+function isLocalhostIp(ip) {
+  if (!ip || typeof ip !== 'string') return false;
+  const clean = ip.replace('::ffff:', '').trim().toLowerCase();
+  return clean === '127.0.0.1' || clean === '::1' || clean === 'localhost';
+}
+
+function isDevBypass(serial, ip = null) {
+  if (ip && isLocalhostIp(ip)) return true;
   if (!serial || typeof serial !== 'string') return false;
   const devMode = ['1', 'true', 'yes', 'on'].includes(
     String(process.env.LICENSE_DEV_MODE || '').trim().toLowerCase(),
@@ -228,6 +235,8 @@ async function upsertTerminalActive(
   const [rows] = await query(`SELECT * FROM licensed_terminals WHERE serial = ? LIMIT 1`, [serial]);
   const existing = rows[0];
   let terminal;
+  const defaultLabel = (ip && isLocalhostIp(ip)) ? 'Servidor Principal (Esta PC)' : 'Terminal Creador';
+  const finalLabel = label || existing?.label || defaultLabel;
 
   if (existing) {
     const wasActive = existing.status === 'active';
@@ -242,7 +251,7 @@ async function upsertTerminalActive(
            terminal_type = COALESCE(?, terminal_type),
            label = COALESCE(?, label)
        WHERE id = ?`,
-      [license.id, hostname, ip, osInfo, terminalType, label, existing.id],
+      [license.id, hostname, ip, osInfo, terminalType, finalLabel, existing.id],
     );
     const [updated] = await query(`SELECT * FROM licensed_terminals WHERE id = ?`, [existing.id]);
     terminal = updated[0] || existing;
@@ -380,16 +389,16 @@ async function enroll(req, res) {
     return res.status(400).json({ error: 'terminal_type debe ser "pos" o "kds"' });
   }
 
-  // Dev-bypass: la máquina del creador se autoriza sola, sin esperar
+  // Dev-bypass: la máquina del creador / localhost se autoriza sola, sin esperar
   // aprobación del admin y aunque estuviera pending/revoked.
-  if (isDevBypass(serial)) {
+  if (isDevBypass(serial, ip)) {
     try {
       const { terminal, license: devLic } = await upsertTerminalActive(query, {
         serial,
         hostname,
         osInfo,
         terminalType,
-        label,
+        label: label || (isLocalhostIp(ip) ? 'Servidor Principal (Esta PC)' : null),
         ip,
       });
       return res.json({
@@ -401,7 +410,7 @@ async function enroll(req, res) {
         last_seen_at: terminal.last_seen_at,
         license_id: devLic.id,
         dev_bypass: true,
-        message: 'Terminal del creador: siempre autorizada',
+        message: 'Terminal local/creador: siempre autorizada',
       });
     } catch (e) {
       console.error('[license.enroll.dev-bypass]', e);
@@ -493,16 +502,17 @@ async function heartbeat(req, res) {
   if (!serial) {
     return res.status(400).json({ ok: false, reason: 'missing-serial' });
   }
+  const ip = clientIp(req);
   try {
     let terminal = await getTerminalBySerial(query, serial);
-    const devBypass = isDevBypass(serial);
+    const devBypass = isDevBypass(serial, ip);
 
     if (!terminal) {
       if (!devBypass) {
         return res.status(404).json({ ok: false, reason: 'unknown-serial' });
       }
       // La máquina del creador se crea y autoriza sola
-      await upsertTerminalActive(query, { serial });
+      await upsertTerminalActive(query, { serial, ip });
       terminal = await getTerminalBySerial(query, serial);
       if (!terminal) {
         return res.status(500).json({ ok: false, reason: 'dev-bypass-upsert-failed' });
@@ -582,12 +592,24 @@ async function heartbeat(req, res) {
  */
 async function status(req, res) {
   const serial = String(req.headers['x-terminal-serial'] || '').trim();
-  if (!serial) return res.status(400).json({ error: 'missing-serial' });
-  if (isDevBypass(serial)) {
+  const ip = clientIp(req);
+  if (!serial) {
+    if (isLocalhostIp(ip)) {
+      return res.json({
+        status: 'active',
+        license_status: 'active',
+        label: 'Servidor Principal (Esta PC)',
+        terminal_type: 'pos',
+        dev_bypass: true,
+      });
+    }
+    return res.status(400).json({ error: 'missing-serial' });
+  }
+  if (isDevBypass(serial, ip)) {
     return res.json({
       status: 'active',
       license_status: 'active',
-      label: 'dev-bypass',
+      label: 'Servidor Principal (Esta PC)',
       terminal_type: 'pos',
       dev_bypass: true,
     });
@@ -615,21 +637,27 @@ async function status(req, res) {
  */
 async function requireLicensedTerminal(req, res, next) {
   const serial = String(req.headers['x-terminal-serial'] || '').trim();
+  const ip = clientIp(req);
+  // Máquina del creador o localhost: siempre autorizada, sin pasar por bloqueo.
+  if (isDevBypass(serial, ip)) {
+    req.terminal = {
+      id: null,
+      serial: serial || 'localhost-server',
+      label: 'Servidor Principal (Esta PC)',
+      type: 'pos',
+    };
+    if (serial) {
+      upsertTerminalActive(query, { serial, ip, label: 'Servidor Principal (Esta PC)' }).catch((e) =>
+        console.error('[license.dev-bypass] upsert falló:', e.message),
+      );
+    }
+    return next();
+  }
   if (!serial) {
     return res.status(403).json({
       error: 'Terminal no identificada. Falta X-Terminal-Serial.',
       code: 'LICENSE_MISSING_SERIAL',
     });
-  }
-  // Máquina del creador: siempre autorizada, sin pasar por la BD.
-  if (isDevBypass(serial)) {
-    req.terminal = { id: null, serial, label: 'dev-bypass', type: 'pos' };
-    // Best-effort: dejar la terminal activa en la BD para que el heartbeat
-    // y el token offline funcionen normalmente.
-    upsertTerminalActive(query, { serial }).catch((e) =>
-      console.error('[license.dev-bypass] upsert falló:', e.message),
-    );
-    return next();
   }
   try {
     const terminal = await getTerminalBySerial(query, serial);
@@ -849,6 +877,37 @@ async function replaceTerminal(req, res) {
   return res.json({ ok: true });
 }
 
+/** PUT /api/admin/terminals/:id */
+async function updateTerminal(id, { label, terminalType }, actorUserId = null) {
+  const [rows] = await query(`SELECT * FROM licensed_terminals WHERE id = ?`, [id]);
+  const terminal = rows[0];
+  if (!terminal) return null;
+
+  const sets = [];
+  const params = [];
+  if (label !== undefined && label !== null) {
+    sets.push('label = ?');
+    params.push(String(label).trim().slice(0, 255));
+  }
+  if (terminalType && ['pos', 'kds'].includes(terminalType)) {
+    sets.push('terminal_type = ?');
+    params.push(terminalType);
+  }
+  if (!sets.length) return terminal;
+
+  params.push(id);
+  await query(`UPDATE licensed_terminals SET ${sets.join(', ')} WHERE id = ?`, params);
+  await writeAudit(query, {
+    actorUserId,
+    terminalId: id,
+    action: 'terminal.update',
+    details: { label, terminalType },
+  });
+
+  const [updated] = await query(`SELECT * FROM licensed_terminals WHERE id = ?`, [id]);
+  return updated[0];
+}
+
 /** GET /api/admin/license-audit */
 async function getAuditLog(req, res) {
   const limit = Math.min(Number(req.query?.limit) || 100, 500);
@@ -905,5 +964,6 @@ module.exports = {
   approveTerminal,
   revokeTerminal,
   replaceTerminal,
+  updateTerminal,
   getAuditLog,
 };
