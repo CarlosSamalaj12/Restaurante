@@ -21,11 +21,12 @@ export function useCxcData() {
       setPending(pendingData || []);
       setAreas(areasData || []);
     } catch (error) {
+      console.error('Error loading CXC data:', error);
       toast.error('Error al cargar datos CXC');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     loadData();

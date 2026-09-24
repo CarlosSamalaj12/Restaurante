@@ -109,6 +109,10 @@ const settingsService = {
     return { ok: true, tipPercent: rounded };
   },
 
+  async getTipPercent() {
+    return settingsRepository.getTipPercent();
+  },
+
   async getBusinessProfile() {
     const profile = await settingsRepository.getBusinessProfile();
     return profile || {};

@@ -1,8 +1,8 @@
-import { useToast } from '../hooks/useToast';
+import { useToastState } from '../hooks/useToast';
 import { X, CheckCircle, AlertCircle, Info } from 'lucide-react';
 
 export function Toast() {
-  const { toasts } = useToast();
+  const toasts = useToastState() || [];
 
   if (toasts.length === 0) return null;
 

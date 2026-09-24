@@ -24,11 +24,12 @@ export function useKdsData(selectedCenter) {
       setCategories(ordersData.categories || []);
       setCenters(centersData.centers || []);
     } catch (error) {
+      console.error('Error loading KDS orders:', error);
       toast.error('Error al cargar órdenes');
     } finally {
       setLoading(false);
     }
-  }, [selectedCenter, toast]);
+  }, [selectedCenter]);
 
   useEffect(() => {
     loadData();

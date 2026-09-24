@@ -80,12 +80,13 @@ export function LicensesTab() {
       setAudit(Array.isArray(aud) ? aud : []);
     } catch (e) {
       if (e?.status !== 403 && e?.message !== 'Error 403') {
+        console.error('Error loading licenses:', e);
         toast.error('Error cargando licencias: ' + (e.data?.error || e.message));
       }
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 

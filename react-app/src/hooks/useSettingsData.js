@@ -63,11 +63,12 @@ export function useSettingsData() {
         loginBgUrl: bootstrapData.loginBgUrl || '',
       });
     } catch (error) {
+      console.error('Error loading settings:', error);
       toast.error('Error al cargar configuración');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     loadData();

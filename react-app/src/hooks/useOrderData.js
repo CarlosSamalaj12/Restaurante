@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 import { useToast } from './useToast';
 
@@ -14,14 +14,19 @@ export function useOrderData(accountId) {
   const [loading, setLoading] = useState(true);
   const [addingItem, setAddingItem] = useState(false);
   const toast = useToast();
+  const selectedCenterRef = useRef(selectedCenter);
+  selectedCenterRef.current = selectedCenter;
+  const isInitialMount = useRef(true);
 
   const loadData = useCallback(async () => {
+    if (!accountId) return;
     setLoading(true);
     try {
+      const centerToUse = selectedCenterRef.current;
       const [accountData, productsData, categoriesData, bootstrapData] = await Promise.all([
         api.getAccount(accountId),
-        api.getProducts(null, selectedCenter),
-        api.getCategories(selectedCenter),
+        api.getProducts(null, centerToUse),
+        api.getCategories(centerToUse),
         api.bootstrap()
       ]);
 
@@ -32,11 +37,14 @@ export function useOrderData(accountId) {
       setProducts(productsData || []);
       setCenters(bootstrapData.centers || []);
 
-      if (!selectedCenter && bootstrapData.centers?.length > 0) {
+      if (!selectedCenterRef.current && bootstrapData.centers?.length > 0) {
         const accountCenterId = accountData.account?.operation_center_id;
         if (accountCenterId) {
           const match = bootstrapData.centers.find(c => c.id === accountCenterId);
-          if (match) setSelectedCenter(accountCenterId);
+          if (match) {
+            selectedCenterRef.current = accountCenterId;
+            setSelectedCenter(accountCenterId);
+          }
         }
       }
 
@@ -44,11 +52,12 @@ export function useOrderData(accountId) {
         setSelectedCategory(productsData.categories[0].id);
       }
     } catch (error) {
-      toast.error('Error al cargar datos');
+      console.error('Error al cargar datos:', error);
+      toast.error(error.message || 'Error al cargar datos');
     } finally {
       setLoading(false);
     }
-  }, [accountId, selectedCenter, toast]);
+  }, [accountId]);
 
   useEffect(() => {
     loadData();
@@ -71,6 +80,10 @@ export function useOrderData(accountId) {
   }, [selectedCenter]);
 
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     if (!loading && centers.length > 0) {
       loadProductsByCenter();
     }
