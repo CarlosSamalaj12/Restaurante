@@ -51,7 +51,9 @@ settingsRouter.post("/operation-centers/:centerId/products", settingsController.
 settingsRouter.post("/terminal-binding", settingsController.setTerminalBinding);
 
 // Métodos de Pago y Descuentos
+settingsRouter.get("/payment-methods", settingsController.getPaymentMethods);
 settingsRouter.post("/payment-methods", settingsController.savePaymentMethod);
+settingsRouter.delete("/payment-methods/:code", settingsController.deletePaymentMethod);
 settingsRouter.post("/discount-presets", settingsController.createDiscountPreset);
 settingsRouter.post("/discount-presets/:presetId", settingsController.updateDiscountPreset);
 

@@ -145,9 +145,19 @@ const settingsController = {
     res.status(201).json(result);
   }),
 
+  getPaymentMethods: asyncHandler(async (_req, res) => {
+    const list = await settingsService.getPaymentMethods();
+    res.json({ paymentMethods: list });
+  }),
+
   savePaymentMethod: asyncHandler(async (req, res) => {
     const result = await settingsService.savePaymentMethod(req.body || {});
-    res.status(201).json(result);
+    res.status(200).json(result);
+  }),
+
+  deletePaymentMethod: asyncHandler(async (req, res) => {
+    const result = await settingsService.deletePaymentMethod(req.params.code);
+    res.json(result);
   }),
 
   createDiscountPreset: asyncHandler(async (req, res) => {

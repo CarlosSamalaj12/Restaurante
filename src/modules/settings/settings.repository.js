@@ -265,16 +265,37 @@ const settingsRepository = {
     );
   },
 
-  async savePaymentMethod({ code, label, isActive = 1, sortOrder = 0 }) {
+  async getPaymentMethods(includeInactive = true) {
+    const sql = includeInactive
+      ? `SELECT code, label, is_active, sort_order, applies_tip FROM payment_methods ORDER BY sort_order ASC, label ASC`
+      : `SELECT code, label, is_active, sort_order, applies_tip FROM payment_methods WHERE is_active = 1 ORDER BY sort_order ASC, label ASC`;
+    const [rows] = await query(sql);
+    return rows || [];
+  },
+
+  async savePaymentMethod({ code, label, isActive = 1, sortOrder = 0, appliesTip = 1 }) {
     await query(
-      `INSERT INTO payment_methods (code, label, is_active, sort_order)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO payment_methods (code, label, is_active, sort_order, applies_tip)
+       VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          label = VALUES(label),
          is_active = VALUES(is_active),
-         sort_order = VALUES(sort_order)`,
-      [code, label, Number(isActive) ? 1 : 0, Number(sortOrder) || 0]
+         sort_order = VALUES(sort_order),
+         applies_tip = VALUES(applies_tip)`,
+      [code, label, Number(isActive) ? 1 : 0, Number(sortOrder) || 0, Number(appliesTip) ? 1 : 0]
     );
+  },
+
+  async hasPaymentsWithMethod(code) {
+    const [rows] = await query(
+      `SELECT id FROM account_payments WHERE method = ? LIMIT 1`,
+      [code]
+    );
+    return rows.length > 0;
+  },
+
+  async deletePaymentMethod(code) {
+    await query(`DELETE FROM payment_methods WHERE code = ?`, [code]);
   },
 
   // Discount Presets

@@ -311,7 +311,11 @@ const settingsService = {
   },
 
   // Payment Methods & Presets
-  async savePaymentMethod({ code, label, isActive = 1, sortOrder = 0 }) {
+  async getPaymentMethods() {
+    return settingsRepository.getPaymentMethods(true);
+  },
+
+  async savePaymentMethod({ code, label, isActive = 1, sortOrder = 0, appliesTip = 1, applies_tip }) {
     const normalizedCode = normalizePaymentMethodCode(code);
     const normalizedLabel = String(label || "").trim();
     if (!normalizedCode || !normalizedLabel) {
@@ -320,13 +324,33 @@ const settingsService = {
     if (normalizedCode.length > 30) {
       throw new BadRequestError("code maximo 30 caracteres");
     }
+    const tipFlag = applies_tip !== undefined ? applies_tip : appliesTip;
     await settingsRepository.savePaymentMethod({
       code: normalizedCode,
       label: normalizedLabel,
       isActive,
       sortOrder,
+      appliesTip: tipFlag !== undefined ? Number(tipFlag) : 1,
     });
-    return { ok: true };
+    return { ok: true, code: normalizedCode };
+  },
+
+  async deletePaymentMethod(code) {
+    const cleanCode = normalizePaymentMethodCode(code);
+    if (!cleanCode) throw new BadRequestError("code es requerido");
+
+    const protectedCodes = ["cash", "card", "cxc"];
+    if (protectedCodes.includes(cleanCode)) {
+      throw new BadRequestError(`No se puede eliminar la forma de pago principal '${cleanCode}'. Puedes desactivarla si no deseas ofrecerla.`);
+    }
+
+    const hasPayments = await settingsRepository.hasPaymentsWithMethod(cleanCode);
+    if (hasPayments) {
+      throw new BadRequestError(`No se puede eliminar la forma de pago '${cleanCode}' porque tiene pagos registrados en el sistema. Puedes desactivarla.`);
+    }
+
+    await settingsRepository.deletePaymentMethod(cleanCode);
+    return { ok: true, deleted: cleanCode };
   },
 
   async createDiscountPreset({ name, type, value = 0, isActive = 1, sortOrder = 0 }) {

@@ -152,7 +152,7 @@ export function SettingsPage({ onBack }) {
           />
         )}
         {activeTab === 'payments' && (
-          <PaymentsSection methods={data.paymentMethods} />
+          <PaymentsSection methods={data.paymentMethods} onReload={loadData} />
         )}
         {activeTab === 'printers' && (
           <PrintersDiagnosticSection />
