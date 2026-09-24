@@ -204,7 +204,7 @@ const catalogService = {
   },
 
   // Product management
-  async createProduct({ categoryId, name, basePrice = 0, allowDiscount = 1, trackInventory = 0 }) {
+  async createProduct({ categoryId, name, basePrice = 0, allowDiscount = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null }) {
     if (!categoryId || !name || !String(name).trim()) {
       throw new BadRequestError("categoryId y name son requeridos");
     }
@@ -214,11 +214,13 @@ const catalogService = {
       basePrice: Number(basePrice) || 0,
       allowDiscount,
       trackInventory,
+      categoriaImpresionId,
+      centroProduccionExclusivoId,
     });
     return { productId };
   },
 
-  async updateProduct(productId, { categoryId, name, basePrice = 0, allowDiscount = 1, isActive = 1, trackInventory = 0 }) {
+  async updateProduct(productId, { categoryId, name, basePrice = 0, allowDiscount = 1, isActive = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null }) {
     const id = Number(productId);
     if (!id || id <= 0 || !categoryId || !name || !String(name).trim()) {
       throw new BadRequestError("productId, categoryId y name son requeridos");
@@ -230,6 +232,8 @@ const catalogService = {
       allowDiscount,
       isActive,
       trackInventory,
+      categoriaImpresionId,
+      centroProduccionExclusivoId,
     });
     return { ok: true };
   },

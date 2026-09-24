@@ -238,6 +238,43 @@ const settingsController = {
     const result = await settingsService.deleteTerminal(req.params.terminalId);
     res.json(result);
   }),
+
+  // ───────── Matriz de Enrutamiento & Categorías de Impresión ─────────
+  getRoutingMatrix: asyncHandler(async (_req, res) => {
+    const matrix = await settingsService.getRoutingMatrix();
+    res.json({ matrix });
+  }),
+
+  saveRoutingRule: asyncHandler(async (req, res) => {
+    const result = await settingsService.saveRoutingRule(req.body || {});
+    res.json(result);
+  }),
+
+  deleteRoutingRule: asyncHandler(async (req, res) => {
+    const { areaTrabajoId, categoriaImpresionId } = req.body || req.query || {};
+    const result = await settingsService.deleteRoutingRule(areaTrabajoId, categoriaImpresionId);
+    res.json(result);
+  }),
+
+  getPrintCategories: asyncHandler(async (_req, res) => {
+    const categories = await settingsService.getPrintCategories();
+    res.json({ categories });
+  }),
+
+  createPrintCategory: asyncHandler(async (req, res) => {
+    const result = await settingsService.createPrintCategory(req.body || {});
+    res.status(201).json(result);
+  }),
+
+  updatePrintCategory: asyncHandler(async (req, res) => {
+    const result = await settingsService.updatePrintCategory(req.params.id, req.body || {});
+    res.json(result);
+  }),
+
+  deletePrintCategory: asyncHandler(async (req, res) => {
+    const result = await settingsService.deletePrintCategory(req.params.id);
+    res.json(result);
+  }),
 };
 
 module.exports = settingsController;

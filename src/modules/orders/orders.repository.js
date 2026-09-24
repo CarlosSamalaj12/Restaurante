@@ -101,13 +101,22 @@ const ordersRepository = {
         oi.notes,
         oi.created_at,
         oi.line_total,
-        pc.id AS center_id,
-        COALESCE(pc.name, 'Restaurante') AS center_name,
-        pc.printer_name
+        COALESCE(p.centro_produccion_exclusivo_id, me.centro_produccion_id, ppc.center_id) AS center_id,
+        COALESCE(pc.name, pc_ppc.name, 'Cocina') AS center_name,
+        COALESCE(pc.printer_name, pc_ppc.printer_name, 'DEFAULT') AS printer_name,
+        COALESCE(pc.printer_ip, pc_ppc.printer_ip) AS printer_ip,
+        COALESCE(pc.printer_port, pc_ppc.printer_port, 9100) AS printer_port
        FROM order_items oi
        INNER JOIN products p ON p.id = oi.product_id
+       INNER JOIN accounts a ON a.id = oi.account_id
+       LEFT JOIN restaurant_tables rt ON rt.id = a.table_id
+       LEFT JOIN matriz_enrutamiento me 
+              ON me.area_trabajo_id = rt.area_id 
+             AND me.categoria_impresion_id = p.categoria_impresion_id
+       LEFT JOIN production_centers pc 
+              ON pc.id = COALESCE(p.centro_produccion_exclusivo_id, me.centro_produccion_id)
        LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
-       LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+       LEFT JOIN production_centers pc_ppc ON pc_ppc.id = ppc.center_id
        WHERE oi.account_id = ? AND oi.status = 'active' AND oi.sent_at IS NULL
        ORDER BY center_name, oi.id`,
       [Number(accountId)],
@@ -136,7 +145,20 @@ const ordersRepository = {
     }, {});
   },
 
-  async markItemsAsSent(accountId, conn = null) {
+  async markItemsAsSent(accountId, itemCenters = [], conn = null) {
+    if (itemCenters && itemCenters.length) {
+      for (const ic of itemCenters) {
+        if (ic.id && ic.centerId) {
+          await query(
+            `UPDATE order_items
+             SET sent_at = ?, production_center_id = ?
+             WHERE id = ? AND sent_at IS NULL`,
+            [nowSql(), Number(ic.centerId), Number(ic.id)],
+            conn
+          );
+        }
+      }
+    }
     await query(
       `UPDATE order_items
        SET sent_at = ?
@@ -201,16 +223,21 @@ const ordersRepository = {
         rt.code AS table_code,
         waiter.id AS waiter_id,
         waiter.full_name AS waiter_name,
-        pc.id AS center_id,
-        COALESCE(pc.name, 'Restaurante') AS center_name,
-        COALESCE(pc.printer_name, 'DEFAULT') AS printer_name
+        COALESCE(oi.production_center_id, p.centro_produccion_exclusivo_id, me.centro_produccion_id, ppc.center_id) AS center_id,
+        COALESCE(pc.name, pc_ppc.name, 'Restaurante') AS center_name,
+        COALESCE(pc.printer_name, pc_ppc.printer_name, 'DEFAULT') AS printer_name
        FROM order_items oi
        INNER JOIN products p ON p.id = oi.product_id
        INNER JOIN accounts a ON a.id = oi.account_id
-       INNER JOIN restaurant_tables rt ON rt.id = a.table_id
+       LEFT JOIN restaurant_tables rt ON rt.id = a.table_id
        INNER JOIN staff_users waiter ON waiter.id = a.waiter_id
+       LEFT JOIN matriz_enrutamiento me 
+              ON me.area_trabajo_id = rt.area_id 
+             AND me.categoria_impresion_id = p.categoria_impresion_id
+       LEFT JOIN production_centers pc 
+              ON pc.id = COALESCE(oi.production_center_id, p.centro_produccion_exclusivo_id, me.centro_produccion_id)
        LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
-       LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+       LEFT JOIN production_centers pc_ppc ON pc_ppc.id = ppc.center_id
        WHERE oi.id = ?`,
       [Number(itemId)],
       conn

@@ -124,22 +124,25 @@ const catalogRepository = {
   },
 
   // Product management
-  async createProduct({ categoryId, name, basePrice = 0, allowDiscount = 1, trackInventory = 0 }, conn = null) {
+  async createProduct({ categoryId, name, basePrice = 0, allowDiscount = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null }, conn = null) {
     const runner = conn || query;
+    const catImpId = categoriaImpresionId ? Number(categoriaImpresionId) : Number(categoryId);
     const [result] = await runner(
-      `INSERT INTO products (category_id, name, base_price, allow_discount, is_active, track_inventory)
-       VALUES (?, ?, ?, ?, 1, ?)`,
-      [Number(categoryId), String(name).trim(), Number(basePrice) || 0, Number(allowDiscount) ? 1 : 0, Number(trackInventory) ? 1 : 0]
+      `INSERT INTO products (category_id, name, base_price, allow_discount, is_active, track_inventory, categoria_impresion_id, centro_produccion_exclusivo_id)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
+      [Number(categoryId), String(name).trim(), Number(basePrice) || 0, Number(allowDiscount) ? 1 : 0, Number(trackInventory) ? 1 : 0, catImpId, centroProduccionExclusivoId ? Number(centroProduccionExclusivoId) : null]
     );
     return result.insertId;
   },
 
-  async updateProduct(productId, { categoryId, name, basePrice = 0, allowDiscount = 1, isActive = 1, trackInventory = 0 }) {
+  async updateProduct(productId, { categoryId, name, basePrice = 0, allowDiscount = 1, isActive = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null }) {
+    const catImpId = categoriaImpresionId ? Number(categoriaImpresionId) : Number(categoryId);
     await query(
       `UPDATE products
-       SET category_id = ?, name = ?, base_price = ?, allow_discount = ?, is_active = ?, track_inventory = ?
+       SET category_id = ?, name = ?, base_price = ?, allow_discount = ?, is_active = ?, track_inventory = ?,
+           categoria_impresion_id = ?, centro_produccion_exclusivo_id = ?
        WHERE id = ?`,
-      [Number(categoryId), String(name).trim(), Number(basePrice) || 0, Number(allowDiscount) ? 1 : 0, Number(isActive) ? 1 : 0, Number(trackInventory) ? 1 : 0, productId]
+      [Number(categoryId), String(name).trim(), Number(basePrice) || 0, Number(allowDiscount) ? 1 : 0, Number(isActive) ? 1 : 0, Number(trackInventory) ? 1 : 0, catImpId, centroProduccionExclusivoId ? Number(centroProduccionExclusivoId) : null, productId]
     );
   },
 

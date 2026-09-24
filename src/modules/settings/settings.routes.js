@@ -77,6 +77,16 @@ settingsRouter.post("/terminals", settingsController.createTerminal);
 settingsRouter.post("/terminals/:terminalId", settingsController.updateTerminal);
 settingsRouter.delete("/terminals/:terminalId", settingsController.deleteTerminal);
 
+// Matriz de Enrutamiento & Categorías de Impresión
+settingsRouter.get("/routing-matrix", settingsController.getRoutingMatrix);
+settingsRouter.post("/routing-matrix", settingsController.saveRoutingRule);
+settingsRouter.delete("/routing-matrix", settingsController.deleteRoutingRule);
+
+settingsRouter.get("/print-categories", settingsController.getPrintCategories);
+settingsRouter.post("/print-categories", settingsController.createPrintCategory);
+settingsRouter.put("/print-categories/:id", settingsController.updatePrintCategory);
+settingsRouter.delete("/print-categories/:id", settingsController.deletePrintCategory);
+
 module.exports = {
   bootstrapRouter,
   configRouter,

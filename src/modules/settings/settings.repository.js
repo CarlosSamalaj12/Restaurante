@@ -425,18 +425,18 @@ const settingsRepository = {
     return rows[0] || null;
   },
 
-  async createTerminal({ operationCenterId, name, printerName = null, printerIp = null, printerPort = 9100 }) {
+  async createTerminal({ operationCenterId, name, printerName = null, printerIp = null, printerPort = 9100, areaTrabajoId = null }) {
     const [result] = await query(
-      `INSERT INTO terminals (operation_center_id, name, printer_name, printer_ip, printer_port) VALUES (?, ?, ?, ?, ?)`,
-      [Number(operationCenterId), name, printerName || null, printerIp || null, Number(printerPort) || 9100]
+      `INSERT INTO terminals (operation_center_id, name, printer_name, printer_ip, printer_port, area_trabajo_id) VALUES (?, ?, ?, ?, ?, ?)`,
+      [Number(operationCenterId), name, printerName || null, printerIp || null, Number(printerPort) || 9100, areaTrabajoId ? Number(areaTrabajoId) : null]
     );
     return result.insertId;
   },
 
-  async updateTerminal(terminalId, { operationCenterId, name, printerName = null, printerIp = null, printerPort = 9100, isActive = 1 }) {
+  async updateTerminal(terminalId, { operationCenterId, name, printerName = null, printerIp = null, printerPort = 9100, isActive = 1, areaTrabajoId = null }) {
     await query(
-      `UPDATE terminals SET operation_center_id = ?, name = ?, printer_name = ?, printer_ip = ?, printer_port = ?, is_active = ? WHERE id = ?`,
-      [Number(operationCenterId), name, printerName || null, printerIp || null, Number(printerPort) || 9100, Number(isActive) ? 1 : 0, terminalId]
+      `UPDATE terminals SET operation_center_id = ?, name = ?, printer_name = ?, printer_ip = ?, printer_port = ?, is_active = ?, area_trabajo_id = ? WHERE id = ?`,
+      [Number(operationCenterId), name, printerName || null, printerIp || null, Number(printerPort) || 9100, Number(isActive) ? 1 : 0, areaTrabajoId ? Number(areaTrabajoId) : null, terminalId]
     );
   },
 
@@ -673,9 +673,13 @@ const settingsRepository = {
 
   async getConfigData() {
     const [products] = await query(
-      `SELECT p.id, p.name, p.category_id, p.base_price, p.allow_discount, p.is_active, p.track_inventory, c.name AS category_name
+      `SELECT p.id, p.name, p.category_id, p.base_price, p.allow_discount, p.is_active, p.track_inventory,
+              p.categoria_impresion_id, p.centro_produccion_exclusivo_id,
+              c.name AS category_name, ci.nombre AS categoria_impresion_nombre, cp_excl.name AS centro_exclusivo_nombre
        FROM products p
        INNER JOIN product_categories c ON c.id = p.category_id
+       LEFT JOIN categorias_impresion ci ON ci.id = p.categoria_impresion_id
+       LEFT JOIN production_centers cp_excl ON cp_excl.id = p.centro_produccion_exclusivo_id
        WHERE p.is_active = 1
        ORDER BY p.name`
     );
@@ -754,24 +758,106 @@ const settingsRepository = {
        ORDER BY sort_order ASC, label ASC`
     );
 
+    const [terminals] = await query(
+      `SELECT t.id, t.operation_center_id, t.name, t.printer_name, t.printer_ip, t.printer_port, t.is_active,
+              t.area_trabajo_id, da.name AS area_name, c.name AS center_name
+       FROM terminals t
+       INNER JOIN operation_centers c ON c.id = t.operation_center_id
+       LEFT JOIN dining_areas da ON da.id = t.area_trabajo_id
+       ORDER BY c.name, t.name`
+    );
+
+    const [routingMatrix] = await query(
+      `SELECT me.id, me.area_trabajo_id, me.categoria_impresion_id, me.centro_produccion_id,
+              da.name AS area_nombre, ci.nombre AS categoria_nombre, pc.name AS centro_nombre
+       FROM matriz_enrutamiento me
+       INNER JOIN dining_areas da ON da.id = me.area_trabajo_id
+       INNER JOIN categorias_impresion ci ON ci.id = me.categoria_impresion_id
+       INNER JOIN production_centers pc ON pc.id = me.centro_produccion_id
+       ORDER BY da.sort_order, da.name, ci.nombre`
+    );
+
+    const [printCategories] = await query(
+      `SELECT id, nombre, descripcion FROM categorias_impresion ORDER BY nombre`
+    );
+
     return {
       products,
       categories,
       areas,
       centers,
       tables,
+      terminals,
       productionCenters,
       productProductionCenters,
       groups,
       options,
       productModifierGroups,
       paymentMethods,
+      routingMatrix,
+      printCategories,
       staffUsers,
       roles,
       permissions,
       permByRole,
       rolesByUser,
     };
+  },
+
+  // ───────── Matriz de Enrutamiento & Categorías de Impresión ─────────
+  async getRoutingMatrix() {
+    const [rows] = await query(
+      `SELECT me.id, me.area_trabajo_id, me.categoria_impresion_id, me.centro_produccion_id,
+              da.name AS area_nombre, ci.nombre AS categoria_nombre, pc.name AS centro_nombre
+       FROM matriz_enrutamiento me
+       INNER JOIN dining_areas da ON da.id = me.area_trabajo_id
+       INNER JOIN categorias_impresion ci ON ci.id = me.categoria_impresion_id
+       INNER JOIN production_centers pc ON pc.id = me.centro_produccion_id
+       ORDER BY da.sort_order, da.name, ci.nombre`
+    );
+    return rows;
+  },
+
+  async saveRoutingRule(areaTrabajoId, categoriaImpresionId, centroProduccionId) {
+    await query(
+      `INSERT INTO matriz_enrutamiento (area_trabajo_id, categoria_impresion_id, centro_produccion_id)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE centro_produccion_id = VALUES(centro_produccion_id)`,
+      [Number(areaTrabajoId), Number(categoriaImpresionId), Number(centroProduccionId)]
+    );
+  },
+
+  async deleteRoutingRule(areaTrabajoId, categoriaImpresionId) {
+    await query(
+      `DELETE FROM matriz_enrutamiento WHERE area_trabajo_id = ? AND categoria_impresion_id = ?`,
+      [Number(areaTrabajoId), Number(categoriaImpresionId)]
+    );
+  },
+
+  async getPrintCategories() {
+    const [rows] = await query(`SELECT id, nombre, descripcion FROM categorias_impresion ORDER BY nombre`);
+    return rows;
+  },
+
+  async createPrintCategory(nombre, descripcion = null) {
+    const [res] = await query(
+      `INSERT INTO categorias_impresion (nombre, descripcion) VALUES (?, ?)`,
+      [String(nombre).trim(), descripcion ? String(descripcion).trim() : null]
+    );
+    return res.insertId;
+  },
+
+  async updatePrintCategory(id, nombre, descripcion = null) {
+    await query(
+      `UPDATE categorias_impresion SET nombre = ?, descripcion = ? WHERE id = ?`,
+      [String(nombre).trim(), descripcion ? String(descripcion).trim() : null, Number(id)]
+    );
+  },
+
+  async deletePrintCategory(id) {
+    await query(`DELETE FROM matriz_enrutamiento WHERE categoria_impresion_id = ?`, [Number(id)]);
+    await query(`UPDATE products SET categoria_impresion_id = NULL WHERE categoria_impresion_id = ?`, [Number(id)]);
+    await query(`DELETE FROM categorias_impresion WHERE id = ?`, [Number(id)]);
   },
 };
 

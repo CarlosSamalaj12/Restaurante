@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 // Products Section
-export function ProductsSection({ products, categories, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, onReload }) {
+export function ProductsSection({ products, categories, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, printCategories = [], onReload }) {
   const [showWizard, setShowWizard] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -93,7 +93,19 @@ export function ProductsSection({ products, categories, productionCenters, produ
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate">{product.name}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-gray-900 truncate">{product.name}</p>
+                    {product.categoria_impresion_nombre && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60 shrink-0">
+                        🖨️ {product.categoria_impresion_nombre}
+                      </span>
+                    )}
+                    {product.centro_exclusivo_nombre && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200/60 shrink-0">
+                        ⭐ Exclusivo: {product.centro_exclusivo_nombre}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-500">{product.category_name}</p>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -152,6 +164,7 @@ export function ProductsSection({ products, categories, productionCenters, produ
           modifierGroups={modifierGroups}
           productModifierGroups={productModifierGroups}
           centers={centers}
+          printCategories={printCategories}
           onClose={() => {
             setShowWizard(false);
             setEditingProduct(null);
@@ -198,7 +211,7 @@ export function ProductsSection({ products, categories, productionCenters, produ
 }
 
 // Product Creation Wizard
-function ProductWizardModal({ categories, editingProduct, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, onClose, onCreated }) {
+function ProductWizardModal({ categories, editingProduct, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, printCategories = [], onClose, onCreated }) {
   const existingProductionCenters = editingProduct
     ? (productProductionCenters?.filter(ppc => Number(ppc.product_id) === Number(editingProduct.id)).map(ppc => Number(ppc.center_id)) || [])
     : [];
@@ -219,6 +232,8 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
   const [form, setForm] = useState({
     name: editingProduct?.name || '',
     categoryId: editingProduct?.category_id || '',
+    categoriaImpresionId: editingProduct?.categoria_impresion_id || '',
+    centroProduccionExclusivoId: editingProduct?.centro_produccion_exclusivo_id || '',
     basePrice: editingProduct?.base_price ?? 0,
     allowDiscount: editingProduct?.allow_discount ?? true,
     trackInventory: editingProduct?.track_inventory ?? false,
@@ -298,7 +313,9 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
       const payload = { 
         ...form, 
         isActive: 1,
-        centerId: form.operationCenterId || null 
+        centerId: form.operationCenterId || null,
+        categoriaImpresionId: form.categoriaImpresionId ? Number(form.categoriaImpresionId) : null,
+        centroProduccionExclusivoId: form.centroProduccionExclusivoId ? Number(form.centroProduccionExclusivoId) : null,
       };
       if (isEditing) {
         await api.settings.updateProduct(editingProduct.id, payload);
@@ -522,55 +539,101 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
             <div className="space-y-6">
               <div>
                 <p className="text-gray-500 text-sm mb-1">Paso 5 de 7</p>
-                <h4 className="text-lg font-semibold text-gray-900">¿Dónde se elabora?</h4>
+                <h4 className="text-lg font-semibold text-gray-900">Enrutamiento y Elaboración</h4>
                 <p className="text-xs text-gray-400 mt-1">
-                  {form.operationCenterId 
-                    ? `Centros de producción disponibles en ${centers?.find(c => c.id === form.operationCenterId)?.name || 'este centro'}`
-                    : 'Selecciona primero un centro en el paso anterior'
-                  }
+                  Configura cómo se imprimen las comandas y a qué estaciones de KDS se envían los pedidos.
                 </p>
               </div>
-              {!form.operationCenterId ? (
-                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl">
-                  <p>Selecciona un centro primero</p>
-                  <p className="text-xs mt-1">Ve al paso anterior para elegir el centro</p>
+
+              {/* Categoría de Impresión (Enrutamiento dinámico) */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-bold text-slate-800">
+                    Categoría de Impresión (Matriz Dinámica)
+                  </label>
+                  <span className="text-[10px] font-semibold text-primary-700 bg-primary-50 px-2 py-0.5 rounded-full border border-primary-200/50">
+                    Recomendado
+                  </span>
                 </div>
-              ) : !filteredProductionCenters.length ? (
-                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl">
-                  <p>No hay centros de producción en este centro.</p>
-                  <p className="text-xs mt-1">Crea centros de producción asociados a este centro en "Producción"</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {filteredProductionCenters.map(center => (
-                    <button
-                      key={center.id}
-                      onClick={() => toggleProductionCenter(center.id)}
-                      className={`w-full p-4 rounded-xl border-2 text-left transition-all flex items-center gap-3 ${
-                        form.productionCenterIds.includes(center.id)
-                          ? 'border-primary-500 bg-primary-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                        form.productionCenterIds.includes(center.id)
-                          ? 'border-primary-500 bg-primary-500'
-                          : 'border-gray-300'
-                      }`}>
-                        {form.productionCenterIds.includes(center.id) && (
-                          <Check className="w-3 h-3 text-white" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{center.name}</p>
-                        {center.printer_name && (
-                          <p className="text-xs text-gray-500">{center.printer_name}</p>
-                        )}
-                      </div>
-                    </button>
+                <p className="text-xs text-slate-500">
+                  Permite que el producto se enrute automáticamente según el salón o área donde se pide (ej: Bar Piscina vs Bar Principal).
+                </p>
+                <select
+                  value={form.categoriaImpresionId}
+                  onChange={e => setForm({ ...form, categoriaImpresionId: e.target.value ? Number(e.target.value) : '' })}
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-medium"
+                >
+                  <option value="">Heredar de categoría del menú ({categories.find(c => c.id === form.categoryId)?.name || 'General'})...</option>
+                  {printCategories.map(pc => (
+                    <option key={pc.id} value={pc.id}>🖨️ {pc.nombre}</option>
                   ))}
+                </select>
+              </div>
+
+              {/* Centro de Producción Exclusivo (Override) */}
+              <div className="bg-purple-50/40 border border-purple-200/70 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-bold text-purple-900 flex items-center gap-1.5">
+                    <span>⭐ Centro de Producción Exclusivo</span>
+                  </label>
+                  <span className="text-[10px] font-medium text-purple-700 bg-purple-100/60 px-2 py-0.5 rounded-full">
+                    Opcional
+                  </span>
                 </div>
-              )}
+                <p className="text-xs text-purple-700/80">
+                  Si se especifica, este producto SIEMPRE saldrá en este centro (ej: Bar de Autor), ignorando la matriz del área de la orden.
+                </p>
+                <select
+                  value={form.centroProduccionExclusivoId}
+                  onChange={e => setForm({ ...form, centroProduccionExclusivoId: e.target.value ? Number(e.target.value) : '' })}
+                  className="w-full px-4 py-2.5 bg-white border border-purple-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                >
+                  <option value="">Ninguno (Usar resolución dinámica por Matriz)</option>
+                  {productionCenters.map(center => (
+                    <option key={center.id} value={center.id}>
+                      {center.name} {center.printer_name ? `(${center.printer_name})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Centros de producción directos tradicionales */}
+              <div>
+                <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                  Centros de producción directos (Compatibilidad)
+                </h5>
+                {!filteredProductionCenters.length ? (
+                  <div className="text-center py-4 text-gray-400 bg-gray-50 rounded-xl text-xs">
+                    No hay centros asociados directamente
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredProductionCenters.map(center => (
+                      <button
+                        key={center.id}
+                        type="button"
+                        onClick={() => toggleProductionCenter(center.id)}
+                        className={`w-full p-3 rounded-xl border text-left transition-all flex items-center gap-3 ${
+                          form.productionCenterIds.includes(center.id)
+                            ? 'border-primary-500 bg-primary-50 text-primary-900 font-medium'
+                            : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                          form.productionCenterIds.includes(center.id)
+                            ? 'border-primary-500 bg-primary-500 text-white'
+                            : 'border-gray-300'
+                        }`}>
+                          {form.productionCenterIds.includes(center.id) && (
+                            <Check className="w-3 h-3 text-white" />
+                          )}
+                        </div>
+                        <span className="text-sm">{center.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -729,7 +792,21 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                   <span className="font-bold text-primary-600">Q {Number(form.basePrice).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500">Elaboración</span>
+                  <span className="text-gray-500">Cat. Impresión</span>
+                  <span className="font-medium text-gray-900 text-right text-sm">
+                    {printCategories.find(pc => pc.id === form.categoriaImpresionId)?.nombre || 'Heredada / Menú'}
+                  </span>
+                </div>
+                {form.centroProduccionExclusivoId && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">Centro Exclusivo</span>
+                    <span className="font-semibold text-purple-700 text-right text-sm">
+                      ⭐ {productionCenters.find(c => c.id === form.centroProduccionExclusivoId)?.name}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">Elaboración Directa</span>
                   <span className="font-medium text-gray-900 text-right text-sm">
                     {form.productionCenterIds.length > 0
                       ? form.productionCenterIds.map(id => productionCenters.find(c => c.id === id)?.name).join(', ')

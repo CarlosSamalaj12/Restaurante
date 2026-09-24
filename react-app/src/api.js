@@ -123,6 +123,9 @@ export const api = {
     method: 'POST',
     body: { centerIds },
   }),
+  createTerminal: (data) => request('/settings/terminals', { method: 'POST', body: data }),
+  updateTerminal: (terminalId, data) => request(`/settings/terminals/${terminalId}`, { method: 'POST', body: data }),
+  deleteTerminal: (terminalId) => request(`/settings/terminals/${terminalId}`, { method: 'DELETE' }),
 
   // Items
   addItem: (accountId, data) => request(`/accounts/${accountId}/items`, {
@@ -390,6 +393,13 @@ export const api = {
     deleteProduct: (productId) => request(`/settings/products/${productId}`, { method: 'DELETE' }),
     deleteCategory: (categoryId) => request(`/settings/categories/${categoryId}`, { method: 'DELETE' }),
     deleteCenter: (centerId) => request(`/settings/operation-centers/${centerId}`, { method: 'DELETE' }),
+    getRoutingMatrix: () => request('/settings/routing-matrix'),
+    saveRoutingRule: (data) => request('/settings/routing-matrix', { method: 'POST', body: data }),
+    deleteRoutingRule: (data) => request('/settings/routing-matrix', { method: 'DELETE', body: data }),
+    getPrintCategories: () => request('/settings/print-categories'),
+    createPrintCategory: (data) => request('/settings/print-categories', { method: 'POST', body: data }),
+    updatePrintCategory: (id, data) => request(`/settings/print-categories/${id}`, { method: 'PUT', body: data }),
+    deletePrintCategory: (id) => request(`/settings/print-categories/${id}`, { method: 'DELETE' }),
   },
   roles: {
     list: () => request('/settings/roles'),

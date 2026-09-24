@@ -11,7 +11,7 @@ import {
   Printer
 } from 'lucide-react';
 
-export function TerminalsSection({ terminals, centers, onReload }) {
+export function TerminalsSection({ terminals, centers, areas = [], onReload }) {
   const [showWizard, setShowWizard] = useState(false);
   const [editingTerminal, setEditingTerminal] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -91,8 +91,19 @@ export function TerminalsSection({ terminals, centers, onReload }) {
                     <Monitor className="w-5 h-5 text-white" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900">{term.name}</p>
-                    <p className="text-xs text-gray-500">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-gray-900">{term.name}</p>
+                      {term.area_name ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60">
+                          📍 {term.area_name}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
+                          ⚠️ Sin área
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
                       {term.printer_name ? `${term.printer_name} · ` : ''}
                       {term.printer_ip ? `${term.printer_ip}:${term.printer_port}` : 'Sin IP configurada'}
                     </p>
@@ -125,7 +136,7 @@ export function TerminalsSection({ terminals, centers, onReload }) {
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => setConfirmDelete({ id: term.id, label: term.label || term.ip_address })}
+                      onClick={() => setConfirmDelete({ id: term.id, label: term.name || term.printer_name })}
                       className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -142,6 +153,7 @@ export function TerminalsSection({ terminals, centers, onReload }) {
         <TerminalWizardModal
           editingTerminal={editingTerminal}
           centers={centers}
+          areas={areas}
           onClose={() => {
             setShowWizard(false);
             setEditingTerminal(null);
@@ -187,11 +199,11 @@ export function TerminalsSection({ terminals, centers, onReload }) {
   );
 }
 
-// Printers Diagnostic Section
-
-function TerminalWizardModal({ editingTerminal, centers, onClose, onCreated }) {
+// Terminal Wizard Modal
+function TerminalWizardModal({ editingTerminal, centers, areas = [], onClose, onCreated }) {
   const [form, setForm] = useState({
     operationCenterId: editingTerminal?.operation_center_id || '',
+    areaTrabajoId: editingTerminal?.area_trabajo_id || '',
     name: editingTerminal?.name || '',
     printerName: editingTerminal?.printer_name || '',
     printerIp: editingTerminal?.printer_ip || '',
@@ -208,16 +220,20 @@ function TerminalWizardModal({ editingTerminal, centers, onClose, onCreated }) {
     }
     setLoading(true);
     try {
+      const payload = {
+        ...form,
+        areaTrabajoId: form.areaTrabajoId ? Number(form.areaTrabajoId) : null,
+      };
       if (editingTerminal) {
-        await api.updateTerminal(editingTerminal.id, form);
+        await api.settings.updateTerminal(editingTerminal.id, payload);
         toast.success('Terminal actualizada');
       } else {
-        await api.settings.createTerminal(form);
+        await api.settings.createTerminal(payload);
         toast.success('Terminal creada');
       }
       onCreated();
     } catch (error) {
-      toast.error('Error al guardar');
+      toast.error(error.message || 'Error al guardar');
     } finally {
       setLoading(false);
     }
@@ -237,7 +253,7 @@ function TerminalWizardModal({ editingTerminal, centers, onClose, onCreated }) {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Centro</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Centro de Operación</label>
               <select
                 value={form.operationCenterId}
                 onChange={e => setForm({ ...form, operationCenterId: Number(e.target.value) })}
@@ -248,6 +264,23 @@ function TerminalWizardModal({ editingTerminal, centers, onClose, onCreated }) {
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Área de Trabajo (Enrutamiento)</label>
+              <select
+                value={form.areaTrabajoId}
+                onChange={e => setForm({ ...form, areaTrabajoId: e.target.value ? Number(e.target.value) : '' })}
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="">Seleccionar área (ej: Terraza, Salón, Bar)...</option>
+                {areas.map(a => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">
+                Vincula las comandas emitidas desde esta estación con la Matriz de Enrutamiento.
+              </p>
             </div>
 
             <div>

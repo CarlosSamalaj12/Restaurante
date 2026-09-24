@@ -13,7 +13,7 @@ const kdsRepository = {
     const params = [];
 
     if (centerId) {
-      whereClause += ` AND pc.id = ?`;
+      whereClause += ` AND COALESCE(pc.id, pc_ppc.id) = ?`;
       params.push(Number(centerId));
     }
 
@@ -27,8 +27,8 @@ const kdsRepository = {
         oi.sent_at,
         oi.completed_at,
         p.name AS product_name,
-        pc.id AS center_id,
-        pc.name AS center_name,
+        COALESCE(pc.id, pc_ppc.id) AS center_id,
+        COALESCE(pc.name, pc_ppc.name, 'Cocina') AS center_name,
         a.id AS account_id,
         a.check_number,
         rt.code AS table_code,
@@ -39,8 +39,13 @@ const kdsRepository = {
        INNER JOIN accounts a ON a.id = oi.account_id
        INNER JOIN restaurant_tables rt ON rt.id = a.table_id
        INNER JOIN staff_users su ON su.id = a.waiter_id
+       LEFT JOIN matriz_enrutamiento me 
+              ON me.area_trabajo_id = rt.area_id 
+             AND me.categoria_impresion_id = p.categoria_impresion_id
+       LEFT JOIN production_centers pc 
+              ON pc.id = COALESCE(oi.production_center_id, p.centro_produccion_exclusivo_id, me.centro_produccion_id)
        LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
-       LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+       LEFT JOIN production_centers pc_ppc ON pc_ppc.id = ppc.center_id
        WHERE ${whereClause}
        ORDER BY pc.name, oi.sent_at ASC`,
       params
@@ -72,7 +77,7 @@ const kdsRepository = {
     const params = [];
 
     if (centerId) {
-      whereClause += ` AND pc.id = ?`;
+      whereClause += ` AND COALESCE(pc.id, pc_ppc.id) = ?`;
       params.push(Number(centerId));
     }
 
@@ -89,8 +94,8 @@ const kdsRepository = {
         oi.voided_at,
         COALESCE(oi.completed_at, 'null') AS completed_at,
         p.name AS product_name,
-        pc.id AS center_id,
-        pc.name AS center_name,
+        COALESCE(pc.id, pc_ppc.id) AS center_id,
+        COALESCE(pc.name, pc_ppc.name, 'Cocina') AS center_name,
         a.id AS account_id,
         a.check_number,
         rt.code AS table_code,
@@ -103,8 +108,13 @@ const kdsRepository = {
        INNER JOIN restaurant_tables rt ON rt.id = a.table_id
        INNER JOIN staff_users su ON su.id = a.waiter_id
        INNER JOIN product_categories c ON c.id = p.category_id
+       LEFT JOIN matriz_enrutamiento me 
+              ON me.area_trabajo_id = rt.area_id 
+             AND me.categoria_impresion_id = p.categoria_impresion_id
+       LEFT JOIN production_centers pc 
+              ON pc.id = COALESCE(oi.production_center_id, p.centro_produccion_exclusivo_id, me.centro_produccion_id)
        LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
-       LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+       LEFT JOIN production_centers pc_ppc ON pc_ppc.id = ppc.center_id
        WHERE ${whereClause}
        ORDER BY pc.name, oi.sent_at ASC`,
       params
@@ -154,7 +164,7 @@ const kdsRepository = {
     const params = [];
 
     if (centerId) {
-      whereClause += ` AND pc.id = ?`;
+      whereClause += ` AND COALESCE(pc.id, pc_ppc.id) = ?`;
       params.push(Number(centerId));
     }
 
@@ -169,7 +179,7 @@ const kdsRepository = {
         oi.sent_at,
         oi.completed_at,
         p.name AS product_name,
-        pc.name AS center_name,
+        COALESCE(pc.name, pc_ppc.name, 'Cocina') AS center_name,
         a.id AS account_id,
         a.check_number,
         rt.code AS table_code
@@ -177,8 +187,13 @@ const kdsRepository = {
        INNER JOIN products p ON p.id = oi.product_id
        INNER JOIN accounts a ON a.id = oi.account_id
        INNER JOIN restaurant_tables rt ON rt.id = a.table_id
+       LEFT JOIN matriz_enrutamiento me 
+              ON me.area_trabajo_id = rt.area_id 
+             AND me.categoria_impresion_id = p.categoria_impresion_id
+       LEFT JOIN production_centers pc 
+              ON pc.id = COALESCE(oi.production_center_id, p.centro_produccion_exclusivo_id, me.centro_produccion_id)
        LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
-       LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+       LEFT JOIN production_centers pc_ppc ON pc_ppc.id = ppc.center_id
        WHERE ${whereClause}
        ORDER BY oi.completed_at DESC
        LIMIT ?`,
@@ -255,7 +270,7 @@ const kdsRepository = {
 
     let centerFilter = "";
     if (centerId) {
-      centerFilter = ` AND pc.id = ?`;
+      centerFilter = ` AND COALESCE(pc.id, pc_ppc.id) = ?`;
       params.push(Number(centerId));
     }
 
@@ -270,7 +285,7 @@ const kdsRepository = {
         oi.completed_at,
         p.name AS product_name,
         c.name AS category_name,
-        pc.name AS center_name,
+        COALESCE(pc.name, pc_ppc.name, 'Cocina') AS center_name,
         a.id AS account_id,
         rt.code AS table_code,
         su.full_name AS waiter_name,
@@ -281,8 +296,13 @@ const kdsRepository = {
        INNER JOIN restaurant_tables rt ON rt.id = a.table_id
        INNER JOIN staff_users su ON su.id = a.waiter_id
        INNER JOIN product_categories c ON c.id = p.category_id
+       LEFT JOIN matriz_enrutamiento me 
+              ON me.area_trabajo_id = rt.area_id 
+             AND me.categoria_impresion_id = p.categoria_impresion_id
+       LEFT JOIN production_centers pc 
+              ON pc.id = COALESCE(oi.production_center_id, p.centro_produccion_exclusivo_id, me.centro_produccion_id)
        LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
-       LEFT JOIN production_centers pc ON pc.id = ppc.center_id
+       LEFT JOIN production_centers pc_ppc ON pc_ppc.id = ppc.center_id
        WHERE oi.status = 'active'
          AND oi.sent_at IS NOT NULL
          AND oi.completed_at IS NOT NULL

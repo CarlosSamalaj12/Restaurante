@@ -495,6 +495,68 @@ async function ensureConfigTables() {
        LIMIT 1`
     );
   }
+
+  // ───────── Matriz de Enrutamiento (Comandas / KDS / Impresión) ─────────
+  await query(`
+    CREATE TABLE IF NOT EXISTS categorias_impresion (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      nombre VARCHAR(80) NOT NULL,
+      descripcion VARCHAR(255) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await safeExec(`ALTER TABLE products ADD COLUMN categoria_impresion_id INT NULL`);
+  await safeExec(`ALTER TABLE products ADD COLUMN centro_produccion_exclusivo_id INT NULL`);
+  await safeExec(`ALTER TABLE terminals ADD COLUMN area_trabajo_id INT NULL`);
+  await safeExec(`ALTER TABLE order_items ADD COLUMN production_center_id INT NULL`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS matriz_enrutamiento (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      area_trabajo_id INT NOT NULL,
+      categoria_impresion_id INT NOT NULL,
+      centro_produccion_id INT NOT NULL,
+      UNIQUE KEY uq_area_cat (area_trabajo_id, categoria_impresion_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  // Auto-poblado inicial de categorías de impresión desde product_categories
+  const [catImpRows] = await query(`SELECT COUNT(*) as c FROM categorias_impresion`);
+  if (catImpRows[0].c === 0) {
+    await query(`
+      INSERT INTO categorias_impresion (id, nombre)
+      SELECT id, name FROM product_categories
+      ON DUPLICATE KEY UPDATE nombre = VALUES(nombre)
+    `);
+  }
+
+  // Asignar categoria_impresion_id en productos si es NULL
+  await query(`
+    UPDATE products p
+    SET p.categoria_impresion_id = p.category_id
+    WHERE p.categoria_impresion_id IS NULL AND p.category_id IS NOT NULL
+  `);
+
+  // Poblar matriz inicial cruzando dining_areas con product_production_centers
+  const [matrizRows] = await query(`SELECT COUNT(*) as c FROM matriz_enrutamiento`);
+  if (matrizRows[0].c === 0) {
+    await query(`
+      INSERT IGNORE INTO matriz_enrutamiento (area_trabajo_id, categoria_impresion_id, centro_produccion_id)
+      SELECT da.id, p.categoria_impresion_id, ppc.center_id
+      FROM dining_areas da
+      CROSS JOIN products p
+      INNER JOIN product_production_centers ppc ON ppc.product_id = p.id
+      WHERE p.categoria_impresion_id IS NOT NULL AND ppc.center_id IS NOT NULL
+      GROUP BY da.id, p.categoria_impresion_id
+    `);
+  }
+
+  // Asignar area_trabajo_id por defecto a terminales si es NULL
+  const [firstArea] = await query(`SELECT id FROM dining_areas WHERE is_active = 1 ORDER BY sort_order, id LIMIT 1`);
+  if (firstArea.length) {
+    await query(`UPDATE terminals SET area_trabajo_id = ? WHERE area_trabajo_id IS NULL`, [firstArea[0].id]);
+  }
 }
 
 module.exports = {

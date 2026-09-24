@@ -16,6 +16,7 @@ import { UsersSection } from '../components/settings/UsersSection';
 import { RolesSection } from '../components/settings/RolesSection';
 import { PaymentsSection } from '../components/settings/PaymentsSection';
 import { PrintersDiagnosticSection } from '../components/settings/PrintersDiagnosticSection';
+import { RoutingMatrixSection } from '../components/settings/RoutingMatrixSection';
 import { SystemSection } from '../components/settings/SystemSection';
 import {
   ArrowLeft,
@@ -39,7 +40,8 @@ import {
   UtensilsCrossed,
   Building2,
   Store,
-  ChevronDown
+  ChevronDown,
+  Network
 } from 'lucide-react';
 
 const GROUPS = [
@@ -117,6 +119,14 @@ const GROUPS = [
         shortDesc: 'Comandas y tickets',
         icon: Printer,
         keywords: ['tickets', 'comandas', 'red', 'escpos', 'imprimir', 'papel', 'puerto'],
+      },
+      {
+        id: 'routing',
+        label: 'Matriz de Enrutamiento',
+        shortDesc: 'Comandas, KDS y rutas',
+        icon: Network,
+        keywords: ['enrutamiento', 'kds', 'comandas', 'impresion', 'matriz', 'cocina', 'bar', 'categorias impresion'],
+        getBadge: (d) => d.routingMatrix?.length,
       },
     ],
   },
@@ -543,6 +553,7 @@ export function SettingsPage({ onBack }) {
               modifierGroups={data.modifierGroups}
               productModifierGroups={data.productModifierGroups}
               centers={data.centers}
+              printCategories={data.printCategories}
               onReload={loadData}
             />
           )}
@@ -582,6 +593,7 @@ export function SettingsPage({ onBack }) {
             <TerminalsSection
               terminals={data.terminals}
               centers={data.centers}
+              areas={data.areas}
               onReload={loadData}
             />
           )}
@@ -623,6 +635,17 @@ export function SettingsPage({ onBack }) {
 
           {activeTab === 'printers' && (
             <PrintersDiagnosticSection />
+          )}
+
+          {activeTab === 'routing' && (
+            <RoutingMatrixSection
+              areas={data.areas}
+              productionCenters={data.productionCenters}
+              printCategories={data.printCategories}
+              routingMatrix={data.routingMatrix}
+              products={data.products}
+              onReload={loadData}
+            />
           )}
 
           {activeTab === 'licenses' && (

@@ -536,7 +536,7 @@ const settingsService = {
 
   // Terminals
   async createTerminal(data) {
-    const { operationCenterId, name, printerName = null, printerIp = null, printerPort = 9100 } = data || {};
+    const { operationCenterId, name, printerName = null, printerIp = null, printerPort = 9100, areaTrabajoId = null } = data || {};
     if (!operationCenterId || !name) throw new BadRequestError("operationCenterId y name son requeridos");
     const terminalId = await settingsRepository.createTerminal({
       operationCenterId,
@@ -544,13 +544,14 @@ const settingsService = {
       printerName,
       printerIp,
       printerPort,
+      areaTrabajoId: areaTrabajoId ? Number(areaTrabajoId) : null,
     });
     return { terminalId };
   },
 
   async updateTerminal(terminalId, data) {
     const tid = Number(terminalId);
-    const { operationCenterId, name, printerName, printerIp, printerPort = 9100, isActive = 1 } = data || {};
+    const { operationCenterId, name, printerName, printerIp, printerPort = 9100, isActive = 1, areaTrabajoId = null } = data || {};
     if (!tid || !operationCenterId || !name) {
       throw new BadRequestError("terminalId, operationCenterId y name son requeridos");
     }
@@ -561,6 +562,7 @@ const settingsService = {
       printerIp,
       printerPort,
       isActive,
+      areaTrabajoId: areaTrabajoId ? Number(areaTrabajoId) : null,
     });
     return { ok: true };
   },
@@ -569,6 +571,55 @@ const settingsService = {
     const tid = Number(terminalId);
     if (!tid) throw new BadRequestError("terminalId es requerido");
     await settingsRepository.deleteTerminal(tid);
+    return { ok: true };
+  },
+
+  // ───────── Matriz de Enrutamiento & Categorías de Impresión ─────────
+  async getRoutingMatrix() {
+    return settingsRepository.getRoutingMatrix();
+  },
+
+  async saveRoutingRule({ areaTrabajoId, categoriaImpresionId, centroProduccionId }) {
+    if (!areaTrabajoId || !categoriaImpresionId || !centroProduccionId) {
+      throw new BadRequestError("areaTrabajoId, categoriaImpresionId y centroProduccionId son requeridos");
+    }
+    await settingsRepository.saveRoutingRule(areaTrabajoId, categoriaImpresionId, centroProduccionId);
+    return { ok: true };
+  },
+
+  async deleteRoutingRule(areaTrabajoId, categoriaImpresionId) {
+    if (!areaTrabajoId || !categoriaImpresionId) {
+      throw new BadRequestError("areaTrabajoId y categoriaImpresionId son requeridos");
+    }
+    await settingsRepository.deleteRoutingRule(areaTrabajoId, categoriaImpresionId);
+    return { ok: true };
+  },
+
+  async getPrintCategories() {
+    return settingsRepository.getPrintCategories();
+  },
+
+  async createPrintCategory({ nombre, descripcion }) {
+    if (!nombre || !String(nombre).trim()) {
+      throw new BadRequestError("nombre es requerido");
+    }
+    const id = await settingsRepository.createPrintCategory(nombre, descripcion);
+    return { id, nombre };
+  },
+
+  async updatePrintCategory(id, { nombre, descripcion }) {
+    const cid = Number(id);
+    if (!cid || !nombre || !String(nombre).trim()) {
+      throw new BadRequestError("id y nombre son requeridos");
+    }
+    await settingsRepository.updatePrintCategory(cid, nombre, descripcion);
+    return { ok: true };
+  },
+
+  async deletePrintCategory(id) {
+    const cid = Number(id);
+    if (!cid) throw new BadRequestError("id es requerido");
+    await settingsRepository.deletePrintCategory(cid);
     return { ok: true };
   },
 };

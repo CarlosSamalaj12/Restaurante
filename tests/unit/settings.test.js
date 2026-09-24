@@ -131,4 +131,43 @@ test("settingsService validation tests", async (t) => {
       }
     );
   });
+
+  await t.test("saveRoutingRule throws BadRequestError if required ids are missing", async () => {
+    await assert.rejects(
+      async () => {
+        await settingsService.saveRoutingRule({ areaTrabajoId: 1, categoriaImpresionId: null });
+      },
+      (err) => {
+        assert(err instanceof BadRequestError);
+        assert.match(err.message, /areaTrabajoId, categoriaImpresionId y centroProduccionId son requeridos/);
+        return true;
+      }
+    );
+  });
+
+  await t.test("deleteRoutingRule throws BadRequestError if areaTrabajoId or categoriaImpresionId missing", async () => {
+    await assert.rejects(
+      async () => {
+        await settingsService.deleteRoutingRule(null, 1);
+      },
+      (err) => {
+        assert(err instanceof BadRequestError);
+        assert.match(err.message, /areaTrabajoId y categoriaImpresionId son requeridos/);
+        return true;
+      }
+    );
+  });
+
+  await t.test("createPrintCategory throws BadRequestError if nombre missing", async () => {
+    await assert.rejects(
+      async () => {
+        await settingsService.createPrintCategory({ nombre: "" });
+      },
+      (err) => {
+        assert(err instanceof BadRequestError);
+        assert.match(err.message, /nombre es requerido/);
+        return true;
+      }
+    );
+  });
 });

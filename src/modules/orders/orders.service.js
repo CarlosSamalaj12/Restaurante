@@ -157,7 +157,11 @@ const ordersService = {
     }
     const tickets = [...ticketsMap.values()];
 
-    await ordersRepository.markItemsAsSent(parsedAccountId);
+    const itemCenters = items.map((it) => ({
+      id: Number(it.id),
+      centerId: it.center_id ? Number(it.center_id) : null,
+    }));
+    await ordersRepository.markItemsAsSent(parsedAccountId, itemCenters);
 
     await accountsService.addAccountEvent(
       parsedAccountId,
