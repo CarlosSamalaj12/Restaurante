@@ -1,0 +1,202 @@
+name: QA
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# Cancel any in-flight run for the same branch when a new commit lands.
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─── Unit tests (Node 18+ built-in test runner, no DB) ──────────────────
+  unit:
+    name: Unit tests (license)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit tests
+        run: node --test tests/unit/
+
+  # ─── Smoke test + E2E (needs MariaDB) ────────────────────────────────────
+  e2e:
+    name: E2E (Playwright + MariaDB)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: rootpw
+          MARIADB_DATABASE: restaurant_pos
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mariadb-admin ping -h 127.0.0.1 -uroot -prootpw"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Backend config
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: rootpw
+      DB_NAME: restaurant_pos
+      PORT: '3000'
+      NODE_ENV: development
+      # Licencia: dev mode autoriza cualquier terminal serial
+      LICENSE_DEV_MODE: 'true'
+      # React app config
+      VITE_API_BASE: http://localhost:3000
+      # E2E config
+      E2E_BASE_URL: http://localhost:5173
+      E2E_ADMIN_PIN: '1234'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: react-app
+        run: npm ci
+
+      - name: Install E2E dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Wait for MariaDB
+        run: |
+          for i in {1..30}; do
+            if mariadb -h 127.0.0.1 -uroot -prootpw -e "SELECT 1" > /dev/null 2>&1; then
+              echo "MariaDB is ready"
+              exit 0
+            fi
+            echo "Waiting for MariaDB... ($i/30)"
+            sleep 2
+          done
+          echo "MariaDB did not become ready in time"
+          exit 1
+
+      - name: Apply database schema
+        run: |
+          mariadb -h 127.0.0.1 -uroot -prootpw restaurant_pos < db/schema.sql
+          mariadb -h 127.0.0.1 -uroot -prootpw restaurant_pos < db/cxc_schema.sql
+
+      - name: Seed minimal test data
+        run: |
+          mariadb -h 127.0.0.1 -uroot -prootpw restaurant_pos <<'SQL'
+            INSERT INTO operation_centers (id, name, is_active) VALUES
+              (1, 'Centro Principal', 1)
+              ON DUPLICATE KEY UPDATE name=VALUES(name);
+
+            INSERT INTO dining_areas (id, name, allow_transfer) VALUES
+              (1, 'Salón Principal', 1)
+              ON DUPLICATE KEY UPDATE name=VALUES(name);
+
+            INSERT INTO restaurant_tables (id, area_id, operation_center_id, code, seats, is_active) VALUES
+              (1, 1, 1, 'M1', 4, 1),
+              (2, 1, 1, 'M2', 4, 1),
+              (3, 1, 1, 'M3', 2, 1)
+              ON DUPLICATE KEY UPDATE code=VALUES(code);
+
+            INSERT INTO product_categories (id, name, sort_order) VALUES
+              (1, 'Bebidas', 1),
+              (2, 'Comidas', 2)
+              ON DUPLICATE KEY UPDATE name=VALUES(name);
+
+            INSERT INTO products (id, category_id, name, base_price, is_active) VALUES
+              (1, 1, 'Café Americano', 15.00, 1),
+              (2, 1, 'Agua Mineral', 10.00, 1),
+              (3, 2, 'Hamburguesa', 45.00, 1)
+              ON DUPLICATE KEY UPDATE name=VALUES(name);
+
+            -- PIN 1234 (hash: bcrypt placeholder; we use a known dev hash below)
+            -- For E2E we keep this simple: the actual PIN check is done in
+            -- /api/auth/pin-login. If your production code hashes PINs, use
+            -- a real hash here. SamaPos uses a custom PIN check — adjust as
+            -- needed for your deployment.
+            INSERT INTO staff_users (id, full_name, role, pin_code, operation_center_id) VALUES
+              (1, 'Admin E2E', 'admin', '1234', 1)
+              ON DUPLICATE KEY UPDATE full_name=VALUES(full_name);
+          SQL
+
+      - name: Build frontend
+        working-directory: react-app
+        run: npm run build
+
+      - name: Start backend server
+        run: |
+          nohup node server.js > server.log 2>&1 &
+          echo $! > server.pid
+          for i in {1..30}; do
+            if curl -s http://localhost:3000/api/license/status > /dev/null 2>&1; then
+              echo "Backend is ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run smoke test
+        run: node scripts/smoke.js --ci --base-url http://localhost:3000
+
+      - name: Start frontend preview server
+        working-directory: react-app
+        run: |
+          # Use vite preview on the build output (lighter than dev mode)
+          nohup npx vite preview --port 5173 --host 127.0.0.1 > preview.log 2>&1 &
+          echo $! > preview.pid
+          for i in {1..30}; do
+            if curl -s http://localhost:5173 > /dev/null 2>&1; then
+              echo "Frontend is ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run Playwright E2E tests
+        working-directory: tests/e2e
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          retention-days: 7
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: tests/e2e/test-results/
+          retention-days: 7
+
+      - name: Stop servers
+        if: always()
+        run: |
+          [ -f server.pid ] && kill $(cat server.pid) 2>/dev/null || true
+          [ -f preview.pid ] && kill $(cat preview.pid) 2>/dev/null || true

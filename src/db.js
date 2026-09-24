@@ -1,19 +1,11 @@
-const mysql = require("mysql2/promise");
+// src/db.js
+// Re-exporta el pool y helpers desde src/common/db.js para compatibilidad retroactiva
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || "127.0.0.1",
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "restaurant_pos",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+const commonDb = require("./common/db");
 
-function query(sql, params = []) {
-  return pool.query(sql, params);
-}
-
-module.exports = { pool, query };
-
+module.exports = {
+  pool: commonDb.pool,
+  query: commonDb.query,
+  withTransaction: commonDb.withTransaction,
+  safeExec: commonDb.safeExec,
+};

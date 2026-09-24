@@ -1,34 +1,22 @@
-﻿import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
-import api from '../api';
-import { useToast } from '../hooks/useToast';
-import { PaymentModal } from '../components/PaymentModal';
-import { AccountActionsMenu } from '../components/AccountActionsMenu';
 import {
   ArrowLeft,
   Send,
-  Loader2,
-  Check,
-  Trash2,
-  Package,
-  ShoppingBag,
-  X,
   MoreVertical,
-  Plus,
-  Store
+  Check,
+  Loader2
 } from 'lucide-react';
+import { useToast } from '../hooks/useToast';
+import { useOrderData } from '../hooks/useOrderData';
+import { PaymentModal } from '../components/PaymentModal';
+import { AccountActionsMenu } from '../components/AccountActionsMenu';
+import { OrderItemsList } from '../components/orders/OrderItemsList';
+import { CatalogGrid } from '../components/orders/CatalogGrid';
+import { ModifierSelectModal } from '../components/orders/ModifierSelectModal';
+import { VoidItemModal } from '../components/orders/VoidItemModal';
 
 export function OrderView({ accountId, tableCode, tableId, onBack }) {
-  const [account, setAccount] = useState(null);
-  const [items, setItems] = useState([]);
-  const [totals, setTotals] = useState({});
-  const [categories, setCategories] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const [centers, setCenters] = useState([]);
-  const [selectedCenter, setSelectedCenter] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [addingItem, setAddingItem] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [showModifierModal, setShowModifierModal] = useState(false);
@@ -42,68 +30,24 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
   const [itemNotes, setItemNotes] = useState('');
   const toast = useToast();
 
-  useEffect(() => {
-    loadData();
-  }, [accountId, selectedCenter]);
-
-  // Reload products when center changes
-  useEffect(() => {
-    if (!loading && centers.length > 0) {
-      loadProductsByCenter();
-    }
-  }, [selectedCenter]);
-
-  const loadProductsByCenter = async () => {
-    try {
-      const [productsData, categoriesData] = await Promise.all([
-        api.getProducts(null, selectedCenter),
-        api.getCategories(selectedCenter)
-      ]);
-      setProducts(productsData || []);
-      setCategories(categoriesData || []);
-      if (categoriesData?.length > 0) {
-        setSelectedCategory(categoriesData[0].id);
-      }
-    } catch (error) {
-      console.error('Error loading products:', error);
-    }
-  };
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [accountData, productsData, categoriesData, bootstrapData] = await Promise.all([
-        api.getAccount(accountId),
-        api.getProducts(null, selectedCenter),
-        api.getCategories(selectedCenter),
-        api.bootstrap()
-      ]);
-      
-      setAccount(accountData.account);
-      setItems(accountData.items || []);
-      setTotals(accountData.totals || {});
-      setCategories(categoriesData || []);
-      setProducts(productsData || []);
-      setCenters(bootstrapData.centers || []);
-      
-      // Set default center from account if not selected
-      if (!selectedCenter && bootstrapData.centers?.length > 0) {
-        const accountCenterId = accountData.account?.operation_center_id;
-        if (accountCenterId) {
-          const match = bootstrapData.centers.find(c => c.id === accountCenterId);
-          if (match) setSelectedCenter(accountCenterId);
-        }
-      }
-      
-      if (productsData.categories?.length > 0) {
-        setSelectedCategory(productsData.categories[0].id);
-      }
-    } catch (error) {
-      toast.error('Error al cargar datos');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    account,
+    items,
+    totals,
+    categories,
+    filteredProducts,
+    centers,
+    selectedCenter,
+    setSelectedCenter,
+    selectedCategory,
+    setSelectedCategory,
+    loading,
+    addingItem,
+    loadData,
+    addItemToAccount,
+    handleSendOrder,
+    confirmVoidItem
+  } = useOrderData(accountId);
 
   const handleAddItem = async (product) => {
     const requiredModifiers = product.modifiers?.filter(m => m.minSelect > 0) || [];
@@ -114,27 +58,9 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
       setShowModifierModal(true);
       return;
     }
-    await addItemToAccount(product.id, 1, [], '');
-  };
-
-  const addItemToAccount = async (productId, qty, modifierOptionIds, notes = '') => {
-    setAddingItem(true);
-    try {
-      await api.addItem(accountId, {
-        productId,
-        qty,
-        seatNo: currentSeat,
-        modifierOptionIds,
-        notes
-      });
-      toast.success(`${selectedProduct?.name || 'Producto'} agregado`);
-      loadData();
-      setShowModifierModal(false);
-    } catch (error) {
-      console.error('Add item error:', error);
-      toast.error(error.message || 'Error al agregar producto');
-    } finally {
-      setAddingItem(false);
+    const success = await addItemToAccount(product.id, 1, currentSeat, [], '');
+    if (success) {
+      toast.success(`${product.name} agregado`);
     }
   };
 
@@ -155,19 +81,13 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
     });
   };
 
-  const handleConfirmModifiers = () => {
+  const handleConfirmModifiers = async () => {
     if (!selectedProduct) return;
     const allOptionIds = Object.values(selectedModifiers).flat();
-    addItemToAccount(selectedProduct.id, 1, allOptionIds, itemNotes);
-  };
-
-  const handleSendOrder = async () => {
-    try {
-      await api.sendOrder(accountId);
-      toast.success('Pedido enviado a cocina');
-      loadData();
-    } catch (error) {
-      toast.error(error.message || 'Error al enviar');
+    const success = await addItemToAccount(selectedProduct.id, 1, currentSeat, allOptionIds, itemNotes);
+    if (success) {
+      toast.success(`${selectedProduct.name} agregado`);
+      setShowModifierModal(false);
     }
   };
 
@@ -178,37 +98,13 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
     setShowVoidModal(true);
   };
 
-  const confirmVoidItem = async () => {
-    if (!itemToVoid) return;
-    
-    // Check if item was sent (needs PIN)
-    if (itemToVoid.sent_at && !voidPin.trim()) {
-      toast.error('Ingresa el PIN de autorización para anular productos enviados');
-      return;
-    }
-    
-    try {
-      const payload = {
-        reason: voidReason || 'Cancelado'
-      };
-      
-      // If item was sent, use PIN auth
-      if (itemToVoid.sent_at) {
-        payload.authPin = voidPin;
-      } else {
-        // If not sent, just pass the waiter ID
-        payload.authorizedBy = account?.waiter_id;
-      }
-      
-      await api.voidItem(itemToVoid.id, payload);
-      toast.success('Producto anulado');
+  const onConfirmVoid = async () => {
+    const success = await confirmVoidItem(itemToVoid, voidPin, voidReason);
+    if (success) {
       setShowVoidModal(false);
       setItemToVoid(null);
       setVoidPin('');
       setVoidReason('');
-      loadData();
-    } catch (error) {
-      toast.error(error.message || 'Error al anular');
     }
   };
 
@@ -216,10 +112,6 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
     toast.success('¡Cuenta cerrada!');
     onBack();
   };
-
-  const filteredProducts = selectedCategory
-    ? products.filter(p => p.category_id === selectedCategory)
-    : products;
 
   if (loading) {
     return (
@@ -278,271 +170,32 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
       </m.header>
 
       <div className="flex flex-col lg:flex-row">
-        {/* Order Summary - Collapsible on mobile */}
-        <m.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="lg:w-72 bg-white border-b lg:border-b-0 lg:border-r border-gray-100"
-        >
-          {/* Order Header */}
-          <div className="px-4 py-3 border-b border-gray-50">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-gray-500" />
-                <h2 className="font-medium text-gray-900 text-sm">Tu Orden</h2>
-              </div>
-              <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
-                {items.length} items
-              </span>
-            </div>
-            <div className="flex gap-1.5">
-              {Array.from({ length: Math.max(account?.guest_count || 4, 1) }, (_, i) => i + 1).map(seat => {
-                const count = items.filter(it => (it.seat_no || 1) === seat).length;
-                return count > 0 ? (
-                  <span key={seat} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                    seat === 1 ? 'bg-blue-100 text-blue-700' :
-                    seat === 2 ? 'bg-emerald-100 text-emerald-700' :
-                    seat === 3 ? 'bg-amber-100 text-amber-700' :
-                    'bg-purple-100 text-purple-700'
-                  }`}>
-                    S{seat}: {count}
-                  </span>
-                ) : null;
-              })}
-            </div>
-          </div>
-          
-          {/* Items List */}
-          <div className="p-3 space-y-2 max-h-[30vh] lg:max-h-[calc(100vh-200px)] overflow-y-auto">
-            <AnimatePresence mode="popLayout">
-              {items.length === 0 ? (
-                <m.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="text-center py-8"
-                >
-                  <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-2">
-                    <Package className="w-6 h-6 text-gray-400" />
-                  </div>
-                  <p className="text-sm text-gray-500">Sin productos</p>
-                </m.div>
-              ) : (
-                items.map((item) => (
-                  <m.div
-                    key={item.id}
-                    layout
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="p-2.5 bg-gray-50 rounded-xl"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                            (item.seat_no || 1) === 1 ? 'bg-blue-100 text-blue-700' :
-                            (item.seat_no || 1) === 2 ? 'bg-emerald-100 text-emerald-700' :
-                            (item.seat_no || 1) === 3 ? 'bg-amber-100 text-amber-700' :
-                            'bg-purple-100 text-purple-700'
-                          }`}>
-                            S{(item.seat_no || 1)}
-                          </span>
-                          <p className="text-sm font-medium text-gray-900 truncate">{item.product_name}</p>
-                        </div>
-                        {item.modifiers?.length > 0 && (
-                          <p className="text-[10px] text-gray-500 mt-0.5 truncate ml-7">
-                            {item.modifiers.map(m => m.name).join(', ')}
-                          </p>
-                        )}
-                        {item.notes && (
-                          <p className="text-[10px] text-amber-600 italic mt-0.5 ml-7">
-                            Nota: {item.notes}
-                          </p>
-                        )}
-                      </div>
-                      <m.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => handleVoidItem(item)}
-                        className="p-1.5 text-red-500/70 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </m.button>
-                    </div>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <span className="text-xs text-gray-500">
-                        {item.qty} × Q{Number(item.unit_price || 0).toFixed(2)}
-                      </span>
-                      <span className="text-sm font-semibold text-gray-900">
-                        Q{Number(item.line_total || 0).toFixed(2)}
-                      </span>
-                    </div>
-                    {item.sent_at && (
-                      <span className="inline-block mt-1 text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                        ✓ Enviado
-                      </span>
-                    )}
-                  </m.div>
-                ))
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Totals */}
-          <div className="p-4 bg-gray-50 border-t border-gray-100">
-                <div className="space-y-1.5 text-sm">
-              <div className="flex justify-between text-gray-600">
-                <span>Subtotal</span>
-                <span>Q {Number(totals.subtotal || 0).toFixed(2)}</span>
-              </div>
-              {Number(totals.discountTotal || 0) > 0 && (
-                <div className="flex justify-between text-red-500">
-                  <span>Descuento</span>
-                  <span>-Q {Number(totals.discountTotal || 0).toFixed(2)}</span>
-                </div>
-              )}
-              {Number(totals.tipAmount || 0) > 0 && (
-                <div className="flex justify-between text-gray-600">
-                  <span>Propina</span>
-                  <span>Q {Number(totals.tipAmount || 0).toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-semibold text-gray-900 pt-2 border-t border-gray-200">
-                <span>Total</span>
-                <span className="text-primary-600">Q {Number(totals.total || 0).toFixed(2)}</span>
-              </div>
-              {Number(totals.pending || 0) > 0 && (
-                <div className="flex justify-between text-amber-600 font-medium">
-                  <span>Pendiente</span>
-                  <span>Q {Number(totals.pending || 0).toFixed(2)}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </m.div>
+        {/* Order Summary */}
+        <OrderItemsList
+          items={items}
+          account={account}
+          totals={totals}
+          handleVoidItem={handleVoidItem}
+        />
 
         {/* Products Panel */}
-        <div className="flex-1 p-3 lg:p-4">
-          {/* Center Selector */}
-          {centers.length > 1 && (
-            <div className="mb-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Store className="w-4 h-4 text-gray-500" />
-                <span className="text-xs font-medium text-gray-500">Centro:</span>
-              </div>
-              <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
-                {centers.map(center => (
-                  <m.button
-                    key={center.id}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setSelectedCenter(center.id)}
-                    className={`
-                      px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all
-                      ${selectedCenter === center.id
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                      }
-                    `}
-                  >
-                    {center.name}
-                  </m.button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Categories - Horizontal scroll */}
-          <div className="flex gap-1.5 overflow-x-auto pb-3 scrollbar-hide">
-            <m.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setSelectedCategory(null)}
-              className={`
-                px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all
-                ${selectedCategory === null
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-600'
-                }
-              `}
-            >
-              Todos
-            </m.button>
-            {categories.map(cat => (
-              <m.button
-                key={cat.id}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`
-                  px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all
-                  ${selectedCategory === cat.id
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-gray-100 text-gray-600'
-                  }
-                `}
-              >
-                {cat.name}
-              </m.button>
-            ))}
-          </div>
-
-          {/* Seat selector */}
-          <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-hide">
-            {Array.from({ length: Math.max(account?.guest_count || 4, 1) }, (_, i) => i + 1).map(seat => (
-              <m.button
-                key={seat}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setCurrentSeat(seat)}
-                className={`
-                  px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5
-                  ${currentSeat === seat
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }
-                `}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${currentSeat === seat ? 'bg-white' : 'bg-gray-400'}`} />
-                Silla {seat}
-              </m.button>
-            ))}
-          </div>
-
-          {/* Products Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            <AnimatePresence mode="popLayout">
-              {filteredProducts.map((product) => {
-                return (
-                  <m.button
-                    key={product.id}
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => handleAddItem(product)}
-                    disabled={addingItem}
-                    className="relative bg-white rounded-2xl p-4 border border-gray-200 text-left disabled:opacity-50 hover:border-emerald-400 hover:shadow-lg transition-all duration-200"
-                  >
-                    <div className="pb-2 mb-2 border-b border-gray-100">
-                      <p className="text-sm font-semibold text-gray-900 leading-snug">
-                        {product.name}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-bold text-emerald-600">
-                        Q{Number(product.base_price || 0).toFixed(0)}
-                      </span>
-                      <div className="w-8 h-8 bg-emerald-500 rounded-xl flex items-center justify-center shadow-sm">
-                        <Plus className="w-5 h-5 text-white" />
-                      </div>
-                    </div>
-                  </m.button>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-        </div>
+        <CatalogGrid
+          centers={centers}
+          selectedCenter={selectedCenter}
+          setSelectedCenter={setSelectedCenter}
+          categories={categories}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={setSelectedCategory}
+          currentSeat={currentSeat}
+          setCurrentSeat={setCurrentSeat}
+          guestCount={account?.guest_count}
+          filteredProducts={filteredProducts}
+          handleAddItem={handleAddItem}
+          addingItem={addingItem}
+        />
       </div>
 
-      {/* Bottom Pay Button */}
+      {/* Bottom Pay Button (Mobile) */}
       <m.div 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -612,203 +265,35 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
       </AnimatePresence>
 
       {/* Modifier Selection Modal */}
-      <AnimatePresence>
-        {showModifierModal && selectedProduct && (
-          <m.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center"
-            onClick={() => setShowModifierModal(false)}
-          >
-            <m.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl max-h-[80vh] overflow-hidden"
-            >
-              <div className="flex justify-center pt-3 pb-2">
-                <div className="w-10 h-1 bg-gray-300 rounded-full" />
-              </div>
-
-              <div className="px-5 pb-4 border-b border-gray-100">
-                <h2 className="font-semibold text-gray-900 text-lg">{selectedProduct.name}</h2>
-                <p className="text-sm text-gray-500">Selecciona las opciones</p>
-              </div>
-
-              <div className="p-5 space-y-5 max-h-[50vh] overflow-y-auto">
-                {selectedProduct.modifiers?.map(modifier => (
-                  <div key={modifier.groupId}>
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-medium text-gray-900">{modifier.name}</h3>
-                      <span className="text-xs text-gray-500">
-                        {modifier.minSelect > 0 && `(Mín: ${modifier.minSelect})`}
-                        {modifier.maxSelect > 0 && ` (Máx: ${modifier.maxSelect})`}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {modifier.options?.map(option => {
-                        const isSelected = (selectedModifiers[modifier.groupId] || []).includes(option.id);
-                        return (
-                          <m.button
-                            key={option.id}
-                            whileTap={{ scale: 0.97 }}
-                            onClick={() => handleModifierToggle(modifier.groupId, option.id)}
-                            className={`
-                              p-3 rounded-xl border-2 text-left transition-all
-                              ${isSelected
-                                ? 'border-primary-500 bg-primary-50'
-                                : 'border-gray-200 bg-gray-50 hover:border-gray-300'
-                              }
-                            `}
-                          >
-                            <p className={`text-sm font-medium ${isSelected ? 'text-primary-700' : 'text-gray-900'}`}>
-                              {option.name}
-                            </p>
-                            {option.price_delta != 0 && (
-                              <p className={`text-xs mt-0.5 ${isSelected ? 'text-primary-600' : 'text-gray-500'}`}>
-                                {option.price_delta > 0 ? '+' : ''}Q{Number(option.price_delta).toFixed(2)}
-                              </p>
-                            )}
-                          </m.button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="px-5 py-3 border-t border-gray-100 space-y-3">
-                <div>
-                  <label className="text-xs text-gray-500 font-medium">Observación (opcional)</label>
-                  <textarea
-                    value={itemNotes}
-                    onChange={(e) => setItemNotes(e.target.value)}
-                    placeholder="Ej: Sin cebolla, término medio..."
-                    rows={2}
-                    className="w-full mt-1 p-3 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-300"
-                  />
-                </div>
-                <m.button
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleConfirmModifiers}
-                  disabled={addingItem}
-                  className="w-full py-3.5 bg-gray-900 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {addingItem ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <>
-                      <Plus className="w-4 h-4" />
-                      Agregar a la orden
-                    </>
-                  )}
-                </m.button>
-              </div>
-            </m.div>
-          </m.div>
-        )}
-      </AnimatePresence>
+      <ModifierSelectModal
+        isOpen={showModifierModal}
+        selectedProduct={selectedProduct}
+        selectedModifiers={selectedModifiers}
+        handleModifierToggle={handleModifierToggle}
+        itemNotes={itemNotes}
+        setItemNotes={setItemNotes}
+        handleConfirmModifiers={handleConfirmModifiers}
+        addingItem={addingItem}
+        onClose={() => setShowModifierModal(false)}
+      />
 
       {/* Void Confirmation Modal */}
-      <AnimatePresence>
-        {showVoidModal && itemToVoid && (
-          <m.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-            onClick={() => setShowVoidModal(false)}
-          >
-            <m.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl"
-            >
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Trash2 className="w-8 h-8 text-red-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
-                ¿Anular producto?
-              </h3>
-              <p className="text-sm text-gray-500 text-center mb-4">
-                Estás por eliminar <strong>{itemToVoid.product_name}</strong> de la orden
-              </p>
-              
-              {/* Warning for sent items */}
-              {itemToVoid.sent_at && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-                  <p className="text-sm text-amber-700 font-medium flex items-center gap-2">
-                    ⚠️ Este producto ya fue enviado a cocina
-                  </p>
-                  <p className="text-xs text-amber-600 mt-1">
-                    Se requiere PIN de autorización
-                  </p>
-                </div>
-              )}
-              
-              {/* PIN Input for sent items */}
-              {itemToVoid.sent_at && (
-                <div className="mb-4">
-                  <label className="text-xs text-gray-500 font-medium">PIN de Autorización *</label>
-                  <input
-                    type="password"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={voidPin}
-                    onChange={(e) => setVoidPin(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Ingresa tu PIN"
-                    maxLength={12}
-                    className="w-full mt-1 p-3 border border-gray-200 rounded-xl text-sm text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
-                  />
-                </div>
-              )}
-              
-              {/* Reason Input */}
-              <div className="mb-4">
-                <label className="text-xs text-gray-500 font-medium">Razón (opcional)</label>
-                <input
-                  type="text"
-                  value={voidReason}
-                  onChange={(e) => setVoidReason(e.target.value)}
-                  placeholder="Ej: Error en pedido, cliente canceló..."
-                  className="w-full mt-1 p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-                />
-              </div>
-              
-              <div className="flex gap-3">
-                <m.button
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    setShowVoidModal(false);
-                    setVoidPin('');
-                    setVoidReason('');
-                  }}
-                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"
-                >
-                  Cancelar
-                </m.button>
-                <m.button
-                  whileTap={{ scale: 0.98 }}
-                  onClick={confirmVoidItem}
-                  disabled={itemToVoid.sent_at && !voidPin.trim()}
-                  className={`flex-1 py-3 rounded-xl font-medium text-sm ${
-                    itemToVoid.sent_at && !voidPin.trim()
-                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-red-600 text-white'
-                  }`}
-                >
-                  Anular
-                </m.button>
-              </div>
-            </m.div>
-          </m.div>
-        )}
-      </AnimatePresence>
+      <VoidItemModal
+        isOpen={showVoidModal}
+        itemToVoid={itemToVoid}
+        voidPin={voidPin}
+        setVoidPin={setVoidPin}
+        voidReason={voidReason}
+        setVoidReason={setVoidReason}
+        onConfirm={onConfirmVoid}
+        onClose={() => {
+          setShowVoidModal(false);
+          setVoidPin('');
+          setVoidReason('');
+        }}
+      />
     </div>
   );
 }
+
+export default OrderView;
