@@ -48,6 +48,7 @@ function slugify(text) {
 }
 
 export function PaymentsSection({ methods = [], onReload }) {
+  const [localMethods, setLocalMethods] = useState(methods || []);
   const [modalOpen, setModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -64,6 +65,27 @@ export function PaymentsSection({ methods = [], onReload }) {
   });
 
   const toast = useToast();
+
+  const fetchMethods = useCallback(async () => {
+    try {
+      const res = await api.settings.getPaymentMethods();
+      if (res?.paymentMethods) {
+        setLocalMethods(res.paymentMethods);
+      }
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    if (methods && methods.length > 0) {
+      setLocalMethods(methods);
+    }
+  }, [methods]);
+
+  useEffect(() => {
+    fetchMethods();
+  }, [fetchMethods]);
+
+  const displayMethods = localMethods.length > 0 ? localMethods : methods;
 
   const handleOpenCreate = () => {
     setIsEditing(false);
@@ -125,6 +147,7 @@ export function PaymentsSection({ methods = [], onReload }) {
 
       toast.success(isEditing ? 'Forma de pago actualizada' : 'Forma de pago creada');
       setModalOpen(false);
+      await fetchMethods();
       if (onReload) await onReload();
     } catch (err) {
       console.error('Error saving payment method:', err);
@@ -146,6 +169,7 @@ export function PaymentsSection({ methods = [], onReload }) {
         appliesTip: method.applies_tip !== false && method.applies_tip !== 0 ? 1 : 0,
       });
       toast.success(`Forma de pago ${newStatus ? 'activada' : 'desactivada'}`);
+      await fetchMethods();
       if (onReload) await onReload();
     } catch (err) {
       console.error('Error toggling payment method:', err);
@@ -169,6 +193,7 @@ export function PaymentsSection({ methods = [], onReload }) {
     try {
       await api.settings.deletePaymentMethod(method.code);
       toast.success('Forma de pago eliminada');
+      await fetchMethods();
       if (onReload) await onReload();
     } catch (err) {
       console.error('Error deleting payment method:', err);
@@ -186,7 +211,7 @@ export function PaymentsSection({ methods = [], onReload }) {
           <div className="flex items-center gap-3 mb-1">
             <h2 className="text-xl font-bold text-gray-900">Formas de Pago</h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary-50 text-primary-700">
-              {methods.length} configuradas
+              {displayMethods.length} configuradas
             </span>
           </div>
           <p className="text-sm text-gray-500">
@@ -205,7 +230,7 @@ export function PaymentsSection({ methods = [], onReload }) {
 
       {/* Lista de formas de pago */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {methods.map(method => {
+        {displayMethods.map(method => {
           const { Icon, bg } = getMethodIcon(method.code);
           const isActive = method.is_active !== false && method.is_active !== 0;
           const appliesTip = method.applies_tip !== false && method.applies_tip !== 0;
@@ -323,7 +348,7 @@ export function PaymentsSection({ methods = [], onReload }) {
         })}
       </div>
 
-      {methods.length === 0 && (
+      {displayMethods.length === 0 && (
         <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
           <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <h3 className="text-base font-semibold text-gray-700 mb-1">No hay formas de pago registradas</h3>

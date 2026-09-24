@@ -36,8 +36,15 @@ export function useSettingsData() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const configData = await api.getConfigData();
-      const bootstrapData = await api.bootstrap();
+      const [configData, bootstrapData, paymentMethodsRes] = await Promise.all([
+        api.getConfigData(),
+        api.bootstrap(),
+        api.settings.getPaymentMethods().catch(() => ({ paymentMethods: [] }))
+      ]);
+
+      const methods = (paymentMethodsRes?.paymentMethods?.length > 0)
+        ? paymentMethodsRes.paymentMethods
+        : (configData.paymentMethods || bootstrapData.paymentMethods || []);
 
       setData({
         categories: configData.categories || [],
@@ -51,7 +58,7 @@ export function useSettingsData() {
         modifierOptions: configData.options || [],
         productProductionCenters: configData.productProductionCenters || [],
         productModifierGroups: configData.productModifierGroups || [],
-        paymentMethods: bootstrapData.paymentMethods || [],
+        paymentMethods: methods,
         staffUsers: configData.staffUsers || [],
         roles: configData.roles || [],
         permissions: configData.permissions || [],

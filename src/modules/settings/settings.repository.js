@@ -546,11 +546,19 @@ const settingsRepository = {
     const logoUrl = businessProfile?.logo_url || (await this.getLogoUrl());
     const loginBgUrl = businessProfile?.login_bg_url || (await this.getLoginBgUrl());
 
+    const [paymentMethods] = await query(
+      `SELECT code, label, is_active, sort_order, applies_tip
+       FROM payment_methods
+       WHERE is_active = 1
+       ORDER BY sort_order ASC, label ASC`
+    );
+
     return {
       centers,
       defaultCenterId,
       autoCenterId,
       tables,
+      paymentMethods,
       userModules,
       deviceModules,
       permissions,
@@ -740,6 +748,12 @@ const settingsRepository = {
       rolesByUser[uid].push(Number(ur.role_id));
     }
 
+    const [paymentMethods] = await query(
+      `SELECT code, label, is_active, sort_order, applies_tip
+       FROM payment_methods
+       ORDER BY sort_order ASC, label ASC`
+    );
+
     return {
       products,
       categories,
@@ -751,6 +765,7 @@ const settingsRepository = {
       groups,
       options,
       productModifierGroups,
+      paymentMethods,
       staffUsers,
       roles,
       permissions,
