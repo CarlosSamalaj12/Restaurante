@@ -7,6 +7,7 @@ const printService = require("../../../server/print-service");
 const { withTransaction } = require("../../common/db");
 const { money, nowSql } = require("../../common/utils");
 const { BadRequestError, NotFoundError, ForbiddenError } = require("../../common/errors");
+const { emitEvent } = require("../../common/sockets");
 
 const ordersService = {
   /**
@@ -210,6 +211,12 @@ const ordersService = {
         });
     }
 
+    emitEvent("sales:order", {
+      accountId: parsedAccountId,
+      checkNumber: account.check_number,
+      itemsCount: items.length,
+    });
+
     return {
       ok: true,
       checkNumber: account.check_number,
@@ -265,10 +272,37 @@ const ordersService = {
   },
 
   /**
+   * Actualiza las notas/observaciones de un platillo antes de que sea enviado a cocina.
+   */
+  async updateItemNotes(itemId, notes) {
+    const parsedItemId = Number(itemId);
+    if (!parsedItemId) {
+      throw new BadRequestError("itemId es requerido");
+    }
+
+    const item = await ordersRepository.findItemForQtyUpdate(parsedItemId);
+    if (!item) throw new NotFoundError("Item no encontrado");
+    if (item.sent_at) {
+      throw new BadRequestError("No puedes cambiar notas de un platillo ya enviado");
+    }
+
+    const cleanNotes = String(notes || "").trim();
+    await ordersRepository.updateItemNotes(parsedItemId, cleanNotes);
+    await accountsService.addAccountEvent(
+      Number(item.account_id),
+      "item_notes_updated",
+      { itemId: parsedItemId, notes: cleanNotes },
+      null
+    );
+
+    return { ok: true, notes: cleanNotes };
+  },
+
+  /**
    * Anula un platillo con auditoría. Si el platillo ya fue enviado a cocina,
    * exige autorización con PIN de gerente/admin y genera un ticket de reversión.
    */
-  async voidItem({ itemId, reason = "", authorizedBy = null, authPin = "" }) {
+  async voidItem({ itemId, reason = "", authorizedBy = null, authPin = "", qtyToVoid = null }) {
     const parsedItemId = Number(itemId);
     if (!parsedItemId) throw new BadRequestError("itemId inválido");
 
@@ -276,6 +310,15 @@ const ordersService = {
     if (!item) throw new NotFoundError("Item no encontrado");
     if (String(item.status) !== "active") {
       throw new BadRequestError("El item ya no esta activo");
+    }
+
+    const currentQty = Number(item.qty || 1);
+    const parsedQtyToVoid = qtyToVoid !== null && qtyToVoid !== undefined
+      ? Number(qtyToVoid)
+      : currentQty;
+
+    if (isNaN(parsedQtyToVoid) || parsedQtyToVoid <= 0 || parsedQtyToVoid > currentQty) {
+      throw new BadRequestError(`Cantidad a anular inválida (debe ser entre 1 y ${currentQty})`);
     }
 
     const accountId = Number(item.account_id);
@@ -286,21 +329,49 @@ const ordersService = {
     if (isSent) {
       const pin = String(authPin || "").trim();
       if (!pin) {
-        throw new BadRequestError("PIN de autorizacion requerido para revertir un platillo enviado");
+        throw new BadRequestError("PIN de autorización requerido para revertir un platillo enviado");
       }
-      const authRows = await ordersRepository.findManagerOrAdminByPin(pin);
-      if (!authRows) {
-        throw new ForbiddenError("PIN invalido o sin permisos para revertir");
+      const authResult = await ordersRepository.findManagerOrAdminByPin(pin);
+      if (!authResult || !authResult.ok) {
+        throw new ForbiddenError(
+          authResult?.message || "PIN inválido o sin permisos de Cajero, Administrador o Gerente para anular"
+        );
       }
-      finalAuthorizedBy = Number(authRows.id);
-      authorizerUser = authRows;
+      finalAuthorizedBy = Number(authResult.user.id);
+      authorizerUser = authResult.user;
     } else if (!finalAuthorizedBy) {
       throw new BadRequestError("authorizedBy es requerido");
     }
 
     const reversedAt = nowSql();
+    let voidedItemId = parsedItemId;
 
-    await ordersRepository.voidOrderItem(parsedItemId, reason, finalAuthorizedBy);
+    if (parsedQtyToVoid < currentQty) {
+      // Reversión parcial: reduce cantidad del ítem activo e inserta registro anulado
+      const remainingQty = currentQty - parsedQtyToVoid;
+      const unitPrice = Number(item.unit_price || 0);
+      const remainingLineTotal = money(unitPrice * remainingQty);
+      const voidedLineTotal = money(unitPrice * parsedQtyToVoid);
+
+      await ordersRepository.reduceOrderItemQty(parsedItemId, remainingQty, remainingLineTotal);
+
+      voidedItemId = await ordersRepository.insertVoidedOrderItem({
+        accountId,
+        productId: item.product_id,
+        seatNo: item.seat_no,
+        qty: parsedQtyToVoid,
+        unitPrice,
+        lineTotal: voidedLineTotal,
+        notes: item.notes,
+        sentAt: item.sent_at,
+        voidReason: reason,
+        voidAuthorizedBy: finalAuthorizedBy,
+        voidedAt: reversedAt,
+      });
+    } else {
+      // Reversión total
+      await ordersRepository.voidOrderItem(parsedItemId, reason, finalAuthorizedBy);
+    }
 
     let reversalTicket = null;
     if (isSent) {
@@ -333,11 +404,11 @@ const ordersService = {
           role: authorizerUser?.role || "manager",
         },
         item: {
-          itemId: parsedItemId,
+          itemId: voidedItemId,
           productId: Number(item.product_id),
           productName: item.product_name,
           seatNo: Number(item.seat_no || 1),
-          qtyReverted: Number(item.qty || 0),
+          qtyReverted: Number(parsedQtyToVoid),
           notes: item.notes || "",
           reason,
         },
@@ -354,11 +425,11 @@ const ordersService = {
     await accountsService.addAccountEvent(
       accountId,
       "item_voided",
-      { itemId: parsedItemId, reason, isSent, reversedAt },
+      { itemId: parsedItemId, voidedItemId, qtyReverted: parsedQtyToVoid, reason, isSent, reversedAt },
       finalAuthorizedBy
     );
 
-    return { ok: true, reversalTicket };
+    return { ok: true, reversalTicket, qtyReverted: parsedQtyToVoid };
   },
 };
 

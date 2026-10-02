@@ -72,10 +72,12 @@ const accountsService = {
       modifiers: itemMods[i.id] || [],
     }));
 
+    const payments = await accountsRepository.findPayments(parsedId);
     const totals = await this.getAccountTotals(parsedId);
     return {
       account,
       items: enrichedItems,
+      payments,
       totals,
     };
   },
@@ -243,6 +245,64 @@ const accountsService = {
     });
 
     return { ok: true };
+  },
+
+  /**
+   * Reabre una cuenta que fue pagada/cerrada para permitir ajustes de platillos o formas de pago.
+   * Regla de integridad: NO se permite reabrir si el turno al que pertenece la cuenta ya fue cerrado.
+   */
+  async reopenAccount({ accountId, userId = null, reason = "" }) {
+    const parsedId = Number(accountId);
+    if (!parsedId) throw new BadRequestError("accountId inválido");
+
+    const account = await accountsRepository.findById(parsedId);
+    if (!account) throw new NotFoundError("Cuenta no encontrada");
+
+    if (String(account.status) === "open") {
+      throw new BadRequestError("La cuenta ya se encuentra abierta");
+    }
+
+    // 1. Validar integridad de turnos
+    if (account.shift_id) {
+      const shift = await accountsRepository.findAccountShift(parsedId);
+      if (shift && String(shift.status) === "closed") {
+        throw new BadRequestError(
+          `No se puede reabrir la cuenta: el turno #${shift.id} ya fue cerrado. Por integridad contable y cuadre de caja, las cuentas de turnos cerrados no pueden modificarse.`
+        );
+      }
+    }
+
+    // 2. Reabrir la cuenta en base de datos
+    await accountsRepository.reopenAccountRecord(parsedId);
+
+    // 3. Registrar evento de auditoría
+    await accountsRepository.addEvent(
+      parsedId,
+      "account_reopened",
+      {
+        reason: reason || "Ajuste de productos o forma de pago",
+        reopenedBy: userId,
+        previousStatus: account.status,
+      },
+      userId
+    );
+
+    // 4. Emitir eventos en tiempo real
+    const { emitEvent } = require("../../common/sockets");
+    emitEvent("sales:update", { accountId: parsedId, status: "open" });
+    emitEvent("table:update", { tableId: account.table_id });
+
+    // 5. Obtener mesa para navegación
+    const table = await tablesRepository.findById(account.table_id);
+
+    return {
+      ok: true,
+      accountId: parsedId,
+      tableId: account.table_id,
+      tableCode: table?.code || "Mesa",
+      checkNumber: account.check_number,
+      message: "Cuenta reabierta exitosamente",
+    };
   },
 
   /**
@@ -499,7 +559,8 @@ const accountsService = {
   },
 
   /**
-   * Crea N cuentas nuevas y transfiere los ítems seleccionados a cada una.
+   * Divide una cuenta en múltiples subcuentas, soportando división de cantidades parciales
+   * y conservando la cuenta origen (Cuenta 1) intacta con sus productos restantes.
    */
   async splitCustom({ accountId, splits }) {
     const sourceAccountId = Number(accountId);
@@ -507,8 +568,12 @@ const accountsService = {
       throw new BadRequestError("Se requieren al menos 2 cuentas para dividir");
     }
 
-    const allItemIds = splits.flatMap((s) => (s.itemIds || []).map((id) => Number(id)));
-    if (allItemIds.length === 0) {
+    const hasAnyItems = splits.some((s) => {
+      const itemsList = s.items || s.itemIds;
+      return Array.isArray(itemsList) && itemsList.length > 0;
+    });
+
+    if (!hasAnyItems) {
       throw new BadRequestError("Debes asignar al menos un producto a las cuentas");
     }
 
@@ -522,10 +587,38 @@ const accountsService = {
       const shiftId = openShift ? openShift.id : null;
 
       const results = [];
+      const hasExplicitSource = splits.some((s) => Boolean(s.isSource));
 
-      for (const split of splits) {
-        const itemIds = (split.itemIds || []).map((id) => Number(id));
-        if (itemIds.length === 0) continue;
+      for (let i = 0; i < splits.length; i++) {
+        const split = splits[i];
+        const isSourceSplit = hasExplicitSource ? Boolean(split.isSource) : false;
+
+        // Si es la cuenta origen, sus productos asignados simplemente se quedan en sourceAccountId
+        if (isSourceSplit) {
+          results.push({
+            accountId: sourceAccountId,
+            checkNumber: src.check_number,
+            name: split.name || "Cuenta 1 (Principal)",
+            isSource: true,
+          });
+          continue;
+        }
+
+        // Extraer ítems a mover a esta nueva cuenta
+        const targetItems = [];
+        if (Array.isArray(split.items)) {
+          for (const it of split.items) {
+            const id = Number(it.id || it.itemId);
+            const qty = it.qty !== undefined && it.qty !== null ? Number(it.qty) : null;
+            if (id > 0) targetItems.push({ id, qty });
+          }
+        } else if (Array.isArray(split.itemIds)) {
+          for (const id of split.itemIds) {
+            if (Number(id) > 0) targetItems.push({ id: Number(id), qty: null });
+          }
+        }
+
+        if (targetItems.length === 0) continue;
 
         const tempCheckNumber = `TMP-${Date.now().toString().slice(-8)}-${Math.floor(Math.random() * 1000)
           .toString()
@@ -547,8 +640,51 @@ const accountsService = {
         const checkNumber = `CHK-${String(newAccountId).padStart(4, "0")}`;
         await accountsRepository.updateCheckNumber(newAccountId, checkNumber, conn);
 
-        for (const iId of itemIds) {
-          await accountsRepository.reassignItemAccount(iId, newAccountId, conn);
+        let movedCount = 0;
+        for (const targetItem of targetItems) {
+          const currentItem = await accountsRepository.findItemById(targetItem.id, sourceAccountId, conn);
+          if (!currentItem) continue;
+
+          const currentQty = Number(currentItem.qty || 1);
+          const unitPrice = Number(currentItem.unit_price || 0);
+          const moveQty =
+            targetItem.qty !== null && targetItem.qty !== undefined && !isNaN(targetItem.qty) && targetItem.qty > 0
+              ? Math.min(Number(targetItem.qty), currentQty)
+              : currentQty;
+
+          if (moveQty >= currentQty) {
+            // Mover la línea completa a la nueva cuenta
+            await accountsRepository.reassignItemAccount(targetItem.id, newAccountId, conn);
+            movedCount++;
+          } else {
+            // División parcial: reducir la línea original y crear una nueva en newAccountId
+            const remainingQty = Number((currentQty - moveQty).toFixed(2));
+            const remainingLineTotal = money(unitPrice * remainingQty);
+            await accountsRepository.updateItemQtyAndTotal(targetItem.id, remainingQty, remainingLineTotal, conn);
+
+            const newLineTotal = money(unitPrice * moveQty);
+            const newItemId = await accountsRepository.insertOrderItem(
+              {
+                accountId: newAccountId,
+                productId: currentItem.product_id,
+                seatNo: currentItem.seat_no,
+                qty: moveQty,
+                unitPrice,
+                lineTotal: newLineTotal,
+                notes: currentItem.notes,
+                sentAt: currentItem.sent_at,
+                productionCenterId: currentItem.production_center_id,
+              },
+              conn
+            );
+
+            // Replicar modificadores de la línea
+            const mods = await accountsRepository.findModifiersForItem(targetItem.id, conn);
+            if (mods && mods.length > 0) {
+              await accountsRepository.insertOrderItemModifiers(newItemId, mods, conn);
+            }
+            movedCount++;
+          }
         }
 
         await accountsRepository.addEvent(
@@ -561,7 +697,7 @@ const accountsService = {
         await accountsRepository.addEvent(
           sourceAccountId,
           "items_split_out",
-          { toAccountId: newAccountId, count: itemIds.length },
+          { toAccountId: newAccountId, count: movedCount },
           null,
           conn
         );
@@ -570,11 +706,12 @@ const accountsService = {
           accountId: newAccountId,
           checkNumber,
           name: split.name || `Cuenta ${results.length + 1}`,
-          itemIds,
+          isSource: false,
+          movedCount,
         });
       }
 
-      return { ok: true, splits: results };
+      return { ok: true, sourceAccountId, splits: results };
     });
   },
 

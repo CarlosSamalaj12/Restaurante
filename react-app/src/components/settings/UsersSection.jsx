@@ -7,7 +7,8 @@ import {
   Plus,
   Edit,
   Trash2,
-  Check
+  Check,
+  Shield
 } from 'lucide-react';
 
 export function UsersSection({ centers, roles, staffUsers, onReload }) {
@@ -33,53 +34,84 @@ export function UsersSection({ centers, roles, staffUsers, onReload }) {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">
-          Usuarios del Sistema
-        </h2>
+      <div className="flex justify-between items-center mb-5">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            Usuarios del Sistema
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Administra cajeros, meseros, gerentes y códigos PIN de acceso
+          </p>
+        </div>
         <button
           onClick={() => setShowWizard(true)}
-          className="bg-primary-600 text-white px-4 py-2 rounded-xl font-medium flex items-center gap-2"
+          className="group bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-200 active:scale-[0.98]"
         >
-          <Plus className="w-4 h-4" />
-          Nuevo
+          <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+          <span>Nuevo Usuario</span>
         </button>
       </div>
 
-      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
-        <p className="text-yellow-800 text-sm">
-          Usa el PIN de acceso para identificarte en el sistema.
-        </p>
+      <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 mb-4 text-xs text-amber-900 flex items-center gap-2 shadow-2xs">
+        <span className="font-semibold">Nota:</span> Cada usuario utiliza su código PIN único para iniciar sesión y operar en los terminales.
       </div>
 
       {/* User list */}
-      <div className="space-y-2 mb-6">
-        {staffUsers.map(user => (
-          <div key={user.id} className="bg-white rounded-xl p-4 border border-gray-100 flex items-center gap-4">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center text-white font-bold">
-              {user.full_name.charAt(0).toUpperCase()}
+      <div className="space-y-2.5 mb-6">
+        {staffUsers.map(user => {
+          const isSuper = user.role === 'superadmin' || String(user.role_names || '').toLowerCase().includes('superadmin');
+          return (
+            <div key={user.id} className="group bg-white rounded-2xl p-4 border border-slate-200 hover:border-slate-300 transition-all duration-200 hover:shadow-sm flex items-center gap-4">
+              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold text-base shadow-sm ${
+                isSuper
+                  ? 'bg-gradient-to-br from-purple-600 to-indigo-700'
+                  : 'bg-gradient-to-br from-blue-500 to-indigo-600'
+              }`}>
+                {user.full_name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-bold text-slate-900 text-[15px]">{user.full_name}</p>
+                  {isSuper && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+                      <Shield className="w-2.5 h-2.5" /> Superadmin
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 truncate mt-0.5">{user.role_names || user.role}</p>
+              </div>
+              <span className="text-xs text-slate-400 font-mono bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/80 shrink-0 font-medium">
+                PIN: {user.pin_code || '---'}
+              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => setEditingUser(user)}
+                  className="p-2.5 rounded-xl transition-all duration-200 bg-blue-50/70 hover:bg-blue-100 text-blue-600 hover:text-blue-700 border border-blue-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
+                  title="Editar usuario"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                {isSuper ? (
+                  <button
+                    disabled
+                    className="p-2.5 rounded-xl bg-slate-100 text-slate-300 border border-slate-200/60 cursor-not-allowed flex items-center justify-center"
+                    title="El Superadministrador está protegido y no puede ser eliminado"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleDelete(user)}
+                    className="p-2.5 rounded-xl transition-all duration-200 bg-rose-50/70 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
+                    title="Eliminar usuario"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900">{user.full_name}</p>
-              <p className="text-xs text-gray-500 truncate">{user.role_names || user.role}</p>
-            </div>
-            <span className="text-xs text-gray-400 font-mono shrink-0">PIN: {user.pin_code || '---'}</span>
-            <button
-              onClick={() => setEditingUser(user)}
-              className="p-2 rounded-xl hover:bg-blue-50 text-blue-600 transition-colors"
-              title="Editar"
-            >
-              <Edit className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => handleDelete(user)}
-              className="p-2 rounded-xl hover:bg-red-50 text-red-500 transition-colors"
-              title="Eliminar"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {showWizard && (
@@ -120,16 +152,23 @@ function UserWizardModal({ centers, roles, onClose, onCreated }) {
       toast.error('Selecciona un centro de trabajo');
       return;
     }
+    if (!form.pin || form.pin.length !== 6) {
+      toast.error('El PIN debe tener exactamente 6 dígitos numéricos');
+      setStep(2);
+      return;
+    }
     if (!form.roleId) {
       toast.error('Selecciona un rol');
       return;
     }
     setLoading(true);
     try {
+      const selectedRoleObj = (roles || []).find(r => r.id === form.roleId);
+      const roleSlug = selectedRoleObj?.slug || 'waiter';
       const result = await api.settings.createStaffUser({
         fullName: form.name,
         pinCode: form.pin,
-        role: 'waiter',
+        role: roleSlug,
         operationCenterId: form.operationCenterId
       });
       await api.users.setRoles(result.userId, [form.roleId]);
@@ -191,11 +230,11 @@ function UserWizardModal({ centers, roles, onClose, onCreated }) {
                 value={form.pin}
                 onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '').slice(0, 6) })}
                 className="w-full px-4 py-4 border-2 border-gray-200 rounded-xl text-2xl font-bold text-center tracking-widest focus:border-primary-500 focus:outline-none transition-colors"
-                placeholder="••••"
+                placeholder="••••••"
                 maxLength={6}
                 autoFocus
               />
-              <p className="text-center text-xs text-gray-400">Mínimo 4 dígitos numéricos</p>
+              <p className="text-center text-xs text-gray-400">Exactamente 6 dígitos numéricos</p>
             </div>
           )}
           {step === 3 && (
@@ -324,18 +363,31 @@ function EditUserModal({ user, centers, roles, onClose, onSaved }) {
   const [fullName, setFullName] = useState(user.full_name || '');
   const [pinCode, setPinCode] = useState(user.pin_code || '');
   const [centerId, setCenterId] = useState(user.operation_center_id || '');
+  const [roleSlug, setRoleSlug] = useState(user.role || 'waiter');
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
   const handleSave = async () => {
     if (!fullName.trim()) { toast.error('El nombre es requerido'); return; }
+    if (pinCode.trim() && pinCode.trim().length !== 6) {
+      toast.error('El nuevo PIN debe tener exactamente 6 dígitos numéricos');
+      return;
+    }
+
     setSaving(true);
     try {
       await api.settings.updateStaffUser(user.id, {
         fullName: fullName.trim(),
         pinCode: pinCode.trim() || undefined,
+        role: roleSlug,
         operationCenterId: centerId || null,
       });
+
+      const targetRole = (roles || []).find(r => r.slug === roleSlug);
+      if (targetRole) {
+        await api.users.setRoles(user.id, [targetRole.id]);
+      }
+
       toast.success('Usuario actualizado');
       onSaved();
       onClose();
@@ -371,6 +423,18 @@ function EditUserModal({ user, centers, roles, onClose, onSaved }) {
               placeholder="Dejar vacío para mantener el actual"
               maxLength={6}
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+            <select
+              value={roleSlug}
+              onChange={e => setRoleSlug(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none"
+            >
+              {(roles || []).map(r => (
+                <option key={r.id} value={r.slug}>{r.name} ({r.slug})</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Centro de trabajo</label>

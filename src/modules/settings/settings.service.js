@@ -4,7 +4,8 @@
 const fs = require("fs");
 const path = require("path");
 const settingsRepository = require("./settings.repository");
-const { BadRequestError, NotFoundError, ConflictError } = require("../../common/errors");
+const { BadRequestError, NotFoundError, ConflictError, ForbiddenError } = require("../../common/errors");
+const { query } = require("../../common/db");
 const { normalizePaymentMethodCode } = require("../../common/utils");
 
 // Importar servicio de impresión para diagnósticos
@@ -232,7 +233,7 @@ const settingsService = {
     return { ok: true };
   },
 
-  async setRolePermissions(roleId, permissionIds) {
+  async setRolePermissions(roleId, permissionIds, defaultView = null) {
     const rid = Number(roleId);
     if (!rid || !Array.isArray(permissionIds)) {
       throw new BadRequestError("roleId y permissionIds son requeridos");
@@ -241,6 +242,9 @@ const settingsService = {
     if (!existing) throw new NotFoundError("Rol no encontrado");
 
     await settingsRepository.setRolePermissions(rid, permissionIds);
+    if (defaultView) {
+      await settingsRepository.updateRoleDefaultView(rid, defaultView);
+    }
     return { ok: true };
   },
 
@@ -249,7 +253,49 @@ const settingsService = {
     if (!uid || !Array.isArray(roleIds)) {
       throw new BadRequestError("userId y roleIds son requeridos");
     }
+
+    const [userRows] = await query("SELECT role FROM staff_users WHERE id = ?", [uid]);
+    const isCurrentSuper = userRows?.[0] && String(userRows[0].role).toLowerCase() === "superadmin";
+
+    let newRolesIncludeSuper = false;
+    if (roleIds.length > 0) {
+      const [superRoleRows] = await query(
+        `SELECT id FROM roles WHERE slug = 'superadmin' AND id IN (${roleIds.map(() => '?').join(',')})`,
+        roleIds.map(r => Number(r))
+      );
+      if (superRoleRows && superRoleRows.length > 0) {
+        newRolesIncludeSuper = true;
+      }
+    }
+
+    if (isCurrentSuper && !newRolesIncludeSuper) {
+      const [superCount] = await query(
+        "SELECT COUNT(*) as count FROM staff_users WHERE role = 'superadmin' AND id != ?",
+        [uid]
+      );
+      if (Number(superCount?.[0]?.count || 0) === 0) {
+        throw new ForbiddenError("No puedes degradar al único Superadministrador del sistema");
+      }
+    }
+
     await settingsRepository.setUserRoles(uid, roleIds);
+
+    if (roleIds.length > 0) {
+      const [roleRows] = await query(
+        `SELECT slug FROM roles WHERE id IN (${roleIds.map(() => '?').join(',')})`,
+        roleIds.map(r => Number(r))
+      );
+      const slugs = (roleRows || []).map(r => String(r.slug).toLowerCase());
+      let primaryRole = "waiter";
+      if (slugs.includes("superadmin")) primaryRole = "superadmin";
+      else if (slugs.includes("admin") || slugs.includes("administrador")) primaryRole = "admin";
+      else if (slugs.includes("manager") || slugs.includes("gerente")) primaryRole = "manager";
+      else if (slugs.includes("cashier") || slugs.includes("cajero")) primaryRole = "cashier";
+      else if (slugs[0]) primaryRole = slugs[0];
+
+      await query("UPDATE staff_users SET role = ? WHERE id = ?", [primaryRole, uid]);
+    }
+
     return { ok: true };
   },
 
@@ -264,11 +310,26 @@ const settingsService = {
     return { centerId };
   },
 
-  async updateOperationCenter(centerId, { name, isActive = 1 }) {
+  async updateOperationCenter(centerId, { name, isActive }) {
     const cid = Number(centerId);
     if (!cid || !name || !String(name).trim()) {
       throw new BadRequestError("centerId y name son requeridos");
     }
+
+    // Si se desea desactivar el centro, validar que no tenga operaciones activas en vivo (turnos o cuentas abiertas)
+    const wantsDeactivate = isActive !== undefined && (isActive === false || isActive === 0 || isActive === "0");
+    if (wantsDeactivate) {
+      const usage = await settingsRepository.getCenterUsageDetails(cid);
+      if (usage.hasActiveOperations) {
+        const parts = [];
+        if (usage.openAccountsCount > 0) parts.push(`${usage.openAccountsCount} cuenta(s) abierta(s)`);
+        if (usage.openShiftsCount > 0) parts.push(`${usage.openShiftsCount} turno(s) de caja abierto(s)`);
+        throw new BadRequestError(
+          `No se puede desactivar el centro porque tiene ${parts.join(" y ")} actualmente en curso. Cierra las operaciones activas primero.`
+        );
+      }
+    }
+
     await settingsRepository.updateOperationCenter(cid, {
       name: String(name).trim(),
       isActive,
@@ -276,18 +337,33 @@ const settingsService = {
     return { ok: true };
   },
 
+  async getOperationCenterUsage(centerId) {
+    const cid = Number(centerId);
+    if (!cid) throw new BadRequestError("centerId es requerido");
+    return settingsRepository.getCenterUsageDetails(cid);
+  },
+
   async deleteOperationCenter(centerId) {
     const cid = Number(centerId);
     if (!cid) throw new BadRequestError("centerId es requerido");
 
-    const hasAccounts = await settingsRepository.hasAccountsInCenter(cid);
-    if (hasAccounts) {
-      throw new BadRequestError("No se puede eliminar el centro porque tiene cuentas asociadas");
-    }
+    const usage = await settingsRepository.getCenterUsageDetails(cid);
+    if (usage.hasLinkedData) {
+      const reasons = [];
+      if (usage.accountsCount > 0) reasons.push(`${usage.accountsCount} cuenta(s)`);
+      if (usage.shiftsCount > 0) reasons.push(`${usage.shiftsCount} turno(s)`);
+      if (usage.tablesCount > 0) reasons.push(`${usage.tablesCount} mesa(s)`);
+      if (usage.usersCount > 0) reasons.push(`${usage.usersCount} usuario(s)`);
+      if (usage.terminalsCount > 0) reasons.push(`${usage.terminalsCount} terminal(es)`);
+      if (usage.categoriesCount > 0) reasons.push(`${usage.categoriesCount} categoría(s)`);
+      if (usage.prodCentersCount > 0) reasons.push(`${usage.prodCentersCount} centro(s) de producción`);
 
-    const hasTables = await settingsRepository.hasTablesInCenter(cid);
-    if (hasTables) {
-      throw new BadRequestError("No se puede eliminar el centro porque tiene mesas asociadas");
+      const err = new BadRequestError(
+        `No se puede eliminar el centro porque tiene registros asociados (${reasons.join(", ")}). Desactívalo en su lugar para proteger la integridad histórica.`
+      );
+      err.canDeactivate = true;
+      err.code = "CENTER_HAS_DEPENDENCIES";
+      throw err;
     }
 
     await settingsRepository.deleteOperationCenter(cid);
@@ -473,12 +549,18 @@ const settingsService = {
   // Staff Users
   async createStaffUser({ fullName, pinCode, role = "waiter", operationCenterId = null }) {
     if (!fullName || !pinCode) throw new BadRequestError("fullName y pinCode son requeridos");
-    if (await settingsRepository.checkDuplicatePin(pinCode)) {
+    const cleanPin = String(pinCode).trim();
+    if (!/^\d{6}$/.test(cleanPin)) {
+      throw new BadRequestError("El PIN debe tener exactamente 6 dígitos numéricos");
+    }
+    const { hashPin } = require("../../common/pinHash");
+    const hashedPin = hashPin(cleanPin);
+    if (await settingsRepository.checkDuplicatePin(hashedPin)) {
       throw new ConflictError("Ya existe un usuario con ese PIN");
     }
     const userId = await settingsRepository.createStaffUser({
       fullName: String(fullName).trim(),
-      pinCode: String(pinCode).trim(),
+      pinCode: hashedPin,
       role,
       operationCenterId: operationCenterId ? Number(operationCenterId) : null,
     });
@@ -491,8 +573,17 @@ const settingsService = {
     const { fullName, pinCode, role, operationCenterId } = data || {};
     if (!fullName) throw new BadRequestError("fullName es requerido");
 
-    if (pinCode && (await settingsRepository.checkDuplicatePin(pinCode, uid))) {
-      throw new ConflictError("Ya existe otro usuario con ese PIN");
+    let hashedPin = null;
+    if (pinCode && String(pinCode).trim() && !String(pinCode).includes('•')) {
+      const cleanPin = String(pinCode).trim();
+      if (!/^\d{6}$/.test(cleanPin)) {
+        throw new BadRequestError("El PIN debe tener exactamente 6 dígitos numéricos");
+      }
+      const { hashPin } = require("../../common/pinHash");
+      hashedPin = hashPin(cleanPin);
+      if (await settingsRepository.checkDuplicatePin(hashedPin, uid)) {
+        throw new ConflictError("Ya existe otro usuario con ese PIN");
+      }
     }
 
     const fields = [];
@@ -501,11 +592,20 @@ const settingsService = {
       fields.push("full_name = ?");
       params.push(String(fullName).trim());
     }
-    if (pinCode) {
+    if (hashedPin) {
       fields.push("pin_code = ?");
-      params.push(String(pinCode).trim());
+      params.push(hashedPin);
     }
     if (role) {
+      if (role !== "superadmin") {
+        const [u] = await query("SELECT role FROM staff_users WHERE id = ?", [uid]);
+        if (u?.[0] && String(u[0].role).toLowerCase() === "superadmin") {
+          const [superCount] = await query("SELECT COUNT(*) as count FROM staff_users WHERE role = 'superadmin' AND id != ?", [uid]);
+          if (Number(superCount?.[0]?.count || 0) === 0) {
+            throw new ForbiddenError("No puedes degradar al único Superadministrador del sistema");
+          }
+        }
+      }
       fields.push("role = ?");
       params.push(role);
     }
@@ -523,6 +623,10 @@ const settingsService = {
   async deleteStaffUser(userId) {
     const uid = Number(userId);
     if (!uid) throw new BadRequestError("userId es requerido");
+    const [userRows] = await query("SELECT id, role FROM staff_users WHERE id = ?", [uid]);
+    if (userRows?.[0] && String(userRows[0].role).toLowerCase() === "superadmin") {
+      throw new ForbiddenError("No se puede eliminar un usuario con rol Superadministrador");
+    }
     await settingsRepository.deleteStaffUser(uid);
     return { ok: true };
   },
@@ -620,6 +724,47 @@ const settingsService = {
     const cid = Number(id);
     if (!cid) throw new BadRequestError("id es requerido");
     await settingsRepository.deletePrintCategory(cid);
+    return { ok: true };
+  },
+
+  // ───────── Observaciones y Atajos Rápidos de Cocina ─────────
+  async getKitchenNotes({ activeOnly = false } = {}) {
+    return settingsRepository.getKitchenNotes({ activeOnly });
+  },
+
+  async createKitchenNote(data) {
+    const { label, category = "General", sortOrder = 0, isActive = 1 } = data || {};
+    if (!label || !String(label).trim()) {
+      throw new BadRequestError("label es requerido");
+    }
+    return settingsRepository.createKitchenNote({
+      label: String(label).trim(),
+      category: category ? String(category).trim() : "General",
+      sortOrder: Number(sortOrder) || 0,
+      isActive: isActive ? 1 : 0,
+    });
+  },
+
+  async updateKitchenNote(id, data) {
+    const nid = Number(id);
+    if (!nid) throw new BadRequestError("id es requerido");
+    const { label, category, sortOrder, isActive } = data || {};
+    if (label !== undefined && !String(label).trim()) {
+      throw new BadRequestError("label no puede estar vacío");
+    }
+    await settingsRepository.updateKitchenNote(nid, {
+      label: label !== undefined ? String(label).trim() : undefined,
+      category: category !== undefined ? String(category).trim() : undefined,
+      sortOrder: sortOrder !== undefined ? Number(sortOrder) : undefined,
+      isActive: isActive !== undefined ? (isActive ? 1 : 0) : undefined,
+    });
+    return { ok: true };
+  },
+
+  async deleteKitchenNote(id) {
+    const nid = Number(id);
+    if (!nid) throw new BadRequestError("id es requerido");
+    await settingsRepository.deleteKitchenNote(nid);
     return { ok: true };
   },
 };

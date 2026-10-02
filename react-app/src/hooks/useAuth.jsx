@@ -17,11 +17,24 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [restaurantName, setRestaurantName] = useState('SamaPos');
   const [logoUrl, setLogoUrl] = useState('');
+  const [currencySymbol, setCurrencySymbol] = useState('$');
 
   useEffect(() => {
-    // user/token ya vienen del initializer. Sólo refrescar branding.
-    loadBranding();
-    setLoading(false);
+    let cancelled = false;
+    (async () => {
+      await loadBranding();
+      if (tokenStorage.getToken()) {
+        try {
+          const res = await api.refreshSession();
+          if (!cancelled && res?.user) {
+            setUser(res.user);
+            tokenStorage.setUser(res.user);
+          }
+        } catch (_) {}
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -30,6 +43,7 @@ export function AuthProvider({ children }) {
       const data = await api.bootstrap();
       if (data.restaurantName) setRestaurantName(data.restaurantName);
       if (data.logoUrl) setLogoUrl(data.logoUrl);
+      if (data.businessProfile?.currency_symbol) setCurrencySymbol(data.businessProfile.currency_symbol);
     } catch (e) {
       // ignore
     }
@@ -66,14 +80,36 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const hasPermission = (slug) => {
+    if (!user) return false;
+    if (['superadmin', 'admin'].includes(user.role)) return true;
+    const perms = user.permissions || [];
+    return perms.includes(slug) || perms.includes('*');
+  };
+
+  const canView = (viewName) => {
+    if (!user) return false;
+    if (['superadmin', 'admin'].includes(user.role)) return true;
+    if (user.default_view === viewName) return true;
+    if (hasPermission(`views.${viewName}`)) return true;
+    if (viewName === 'reprints' && hasPermission('views.reprint')) return true;
+    if (viewName === 'reprint' && hasPermission('views.reprints')) return true;
+    if ((viewName === 'executive-dashboard' || viewName === 'executive') && 
+        (hasPermission('views.executive') || hasPermission('dashboard.executive'))) return true;
+    if (viewName === 'accounts' && (hasPermission('views.shifts') || hasPermission('views.cxc') || hasPermission('views.accounts'))) return true;
+    if (viewName === 'settings' && ['superadmin', 'admin', 'manager'].includes(user.role)) return true;
+    return false;
+  };
+
   // value estable: evita que todos los consumers re-renderizen cuando
   // se recrea el objeto por cualquier razón. (react-doctor/no-constructed-context-values)
   const value = useMemo(
     () => ({
       user, token, modules, selectedTerminal, selectTerminal,
-      login, logout, loading, restaurantName, logoUrl,
+      login, logout, loading, restaurantName, logoUrl, currencySymbol,
+      hasPermission, canView,
     }),
-    [user, token, modules, selectedTerminal, loading, restaurantName, logoUrl],
+    [user, token, modules, selectedTerminal, loading, restaurantName, logoUrl, currencySymbol],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

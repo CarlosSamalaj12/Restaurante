@@ -56,6 +56,42 @@ const paymentsController = {
 
     res.json(result);
   }),
+
+  /**
+   * DELETE /api/accounts/:accountId/payments/:paymentId
+   */
+  deletePayment: asyncHandler(async (req, res) => {
+    const accountId = Number(req.params.accountId);
+    const paymentId = Number(req.params.paymentId);
+    const userId = req.user?.id || req.session?.userId || null;
+
+    const totals = await paymentsService.deletePayment({
+      paymentId,
+      accountId,
+      userId,
+    });
+
+    res.json(totals);
+  }),
+
+  /**
+   * POST /api/accounts/:accountId/change-payment-method
+   */
+  changePaymentMethod: asyncHandler(async (req, res) => {
+    const accountId = Number(req.params.accountId);
+    const { paymentId, newMethod, reason = "", authPin } = req.body || {};
+
+    const result = await paymentsService.changePaymentMethod({
+      accountId,
+      paymentId,
+      newMethod,
+      reason,
+      authPin,
+      session: req.session,
+    });
+
+    res.json(result);
+  }),
 };
 
 module.exports = paymentsController;

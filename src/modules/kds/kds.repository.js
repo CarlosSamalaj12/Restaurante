@@ -8,13 +8,38 @@ const kdsRepository = {
   /**
    * Obtiene los platillos enviados y activos de cuentas abiertas.
    */
-  async findActiveOrders(centerId = null) {
+  _parseFilters(filters) {
+    let productionCenterId = null;
+    let operationCenterId = null;
+
+    if (filters && typeof filters === "object") {
+      productionCenterId = filters.productionCenterId || filters.centerId || null;
+      operationCenterId = filters.operationCenterId || null;
+    } else if (filters) {
+      productionCenterId = filters;
+    }
+
+    return {
+      productionCenterId: productionCenterId ? Number(productionCenterId) : null,
+      operationCenterId: operationCenterId ? Number(operationCenterId) : null,
+    };
+  },
+
+  /**
+   * Obtiene los platillos enviados y activos de cuentas abiertas con soporte de estación y salón.
+   */
+  async findActiveOrders(filters = null) {
+    const parsed = this._parseFilters(filters);
     let whereClause = `a.status = 'open' AND oi.status = 'active' AND oi.sent_at IS NOT NULL`;
     const params = [];
 
-    if (centerId) {
+    if (parsed.productionCenterId) {
       whereClause += ` AND COALESCE(pc.id, pc_ppc.id) = ?`;
-      params.push(Number(centerId));
+      params.push(parsed.productionCenterId);
+    }
+    if (parsed.operationCenterId) {
+      whereClause += ` AND rt.operation_center_id = ?`;
+      params.push(parsed.operationCenterId);
     }
 
     const [rows] = await query(
@@ -32,12 +57,15 @@ const kdsRepository = {
         a.id AS account_id,
         a.check_number,
         rt.code AS table_code,
+        rt.operation_center_id,
+        oc.name AS operation_center_name,
         su.full_name AS waiter_name,
         a.guest_count
        FROM order_items oi
        INNER JOIN products p ON p.id = oi.product_id
        INNER JOIN accounts a ON a.id = oi.account_id
        INNER JOIN restaurant_tables rt ON rt.id = a.table_id
+       LEFT JOIN operation_centers oc ON oc.id = rt.operation_center_id
        INNER JOIN staff_users su ON su.id = a.waiter_id
        LEFT JOIN matriz_enrutamiento me 
               ON me.area_trabajo_id = rt.area_id 
@@ -70,15 +98,20 @@ const kdsRepository = {
   },
 
   /**
-   * Obtiene platillos enviados (activos y anulados) para visualización en pantalla.
+   * Obtiene platillos enviados (activos y anulados) para visualización en pantalla con filtros de estación y salón.
    */
-  async findOrdersWithVoided(centerId = null) {
+  async findOrdersWithVoided(filters = null) {
+    const parsed = this._parseFilters(filters);
     let whereClause = `a.status = 'open' AND oi.sent_at IS NOT NULL AND (oi.status = 'active' OR oi.status = 'void')`;
     const params = [];
 
-    if (centerId) {
+    if (parsed.productionCenterId) {
       whereClause += ` AND COALESCE(pc.id, pc_ppc.id) = ?`;
-      params.push(Number(centerId));
+      params.push(parsed.productionCenterId);
+    }
+    if (parsed.operationCenterId) {
+      whereClause += ` AND rt.operation_center_id = ?`;
+      params.push(parsed.operationCenterId);
     }
 
     const [rows] = await query(
@@ -99,6 +132,8 @@ const kdsRepository = {
         a.id AS account_id,
         a.check_number,
         rt.code AS table_code,
+        rt.operation_center_id,
+        oc.name AS operation_center_name,
         su.full_name AS waiter_name,
         a.guest_count,
         c.name AS category_name
@@ -106,6 +141,7 @@ const kdsRepository = {
        INNER JOIN products p ON p.id = oi.product_id
        INNER JOIN accounts a ON a.id = oi.account_id
        INNER JOIN restaurant_tables rt ON rt.id = a.table_id
+       LEFT JOIN operation_centers oc ON oc.id = rt.operation_center_id
        INNER JOIN staff_users su ON su.id = a.waiter_id
        INNER JOIN product_categories c ON c.id = p.category_id
        LEFT JOIN matriz_enrutamiento me 
@@ -145,8 +181,26 @@ const kdsRepository = {
 
   /**
    * Marca todos los ítems activos y enviados de una cuenta como completados.
+   * Si se especifica productionCenterId, solo despacha los ítems de esa estación.
    */
-  async markAccountItemsDone(accountId, completedAt = nowSql()) {
+  async markAccountItemsDone(accountId, completedAt = nowSql(), productionCenterId = null) {
+    if (productionCenterId) {
+      const [result] = await query(
+        `UPDATE order_items oi
+         INNER JOIN products p ON p.id = oi.product_id
+         LEFT JOIN matriz_enrutamiento me ON me.categoria_impresion_id = p.categoria_impresion_id
+         LEFT JOIN production_centers pc 
+                ON pc.id = COALESCE(oi.production_center_id, p.centro_produccion_exclusivo_id, me.centro_produccion_id)
+         LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id
+         LEFT JOIN production_centers pc_ppc ON pc_ppc.id = ppc.center_id
+         SET oi.completed_at = ?
+         WHERE oi.account_id = ? AND oi.status = 'active' AND oi.sent_at IS NOT NULL AND oi.completed_at IS NULL
+           AND COALESCE(pc.id, pc_ppc.id) = ?`,
+        [completedAt, Number(accountId), Number(productionCenterId)]
+      );
+      return result.affectedRows;
+    }
+
     const [result] = await query(
       `UPDATE order_items 
        SET completed_at = ? 
@@ -154,6 +208,65 @@ const kdsRepository = {
       [completedAt, Number(accountId)]
     );
     return result.affectedRows;
+  },
+
+  /**
+   * Obtiene la lista de centros de producción (estaciones: Bar, Cocina, etc.)
+   */
+  async findProductionCenters() {
+    const [rows] = await query(
+      `SELECT id, name, is_active FROM production_centers WHERE is_active = 1 ORDER BY name ASC`
+    );
+    return rows;
+  },
+
+  /**
+   * Obtiene la lista de centros de consumo (salones: Vaqueros, Flor de Café, ElDeck, etc.)
+   */
+  async findOperationCenters() {
+    const [rows] = await query(
+      `SELECT id, name, is_active FROM operation_centers WHERE is_active = 1 ORDER BY name ASC`
+    );
+    return rows;
+  },
+
+  /**
+   * Resuelve la estación KDS configurada para un dispositivo/terminal.
+   */
+  async findTerminalStation({ serial = null, ip = null, terminalId = null } = {}) {
+    const conditions = [];
+    const params = [];
+
+    if (terminalId) {
+      conditions.push("t.id = ?");
+      params.push(Number(terminalId));
+    }
+    if (serial) {
+      conditions.push("t.device_serial = ?");
+      params.push(String(serial).trim());
+    }
+    if (ip) {
+      conditions.push("t.printer_ip = ?");
+      params.push(String(ip).trim());
+    }
+
+    if (!conditions.length) return null;
+
+    const [rows] = await query(
+      `SELECT t.id, t.name AS terminal_name, t.is_kds, 
+              t.kds_production_center_id, t.kds_operation_center_id,
+              t.device_serial,
+              pc.name AS production_center_name,
+              oc.name AS operation_center_name
+       FROM terminals t
+       LEFT JOIN production_centers pc ON pc.id = t.kds_production_center_id
+       LEFT JOIN operation_centers oc ON oc.id = t.kds_operation_center_id
+       WHERE (${conditions.join(" OR ")})
+       ORDER BY (t.device_serial IS NOT NULL AND t.device_serial = ?) DESC, (t.id = ?) DESC
+       LIMIT 1`,
+      [...params, String(serial || '').trim(), Number(terminalId) || 0]
+    );
+    return rows[0] || null;
   },
 
   /**

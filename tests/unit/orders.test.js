@@ -57,6 +57,13 @@ test("ordersService validation tests", async (t) => {
     );
   });
 
+  await t.test("updateItemNotes throws BadRequestError if itemId missing", async () => {
+    await assert.rejects(
+      () => ordersService.updateItemNotes(0, "Sin cebolla"),
+      (err) => err instanceof BadRequestError && err.message.includes("itemId")
+    );
+  });
+
   await t.test("voidItem throws BadRequestError if itemId invalid", async () => {
     await assert.rejects(
       () => ordersService.voidItem({ itemId: 0 }),

@@ -113,6 +113,39 @@ async function ensureConfigTables() {
     )`
   );
 
+  await query(
+    `CREATE TABLE IF NOT EXISTS kitchen_quick_notes (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      label VARCHAR(100) NOT NULL,
+      category VARCHAR(50) NOT NULL DEFAULT 'General',
+      sort_order INT NOT NULL DEFAULT 0,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_active_sort (is_active, sort_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+
+  const [existingKitchenNotes] = await query(`SELECT id FROM kitchen_quick_notes LIMIT 1`);
+  if (!existingKitchenNotes || !existingKitchenNotes.length) {
+    const defaultNotes = [
+      { label: "Sin cebolla", category: "Ingredientes", sort_order: 1 },
+      { label: "Salsa aparte", category: "Servicio", sort_order: 2 },
+      { label: "Término medio", category: "Cocción", sort_order: 3 },
+      { label: "Bien cocido", category: "Cocción", sort_order: 4 },
+      { label: "Sin picante", category: "Ingredientes", sort_order: 5 },
+      { label: "Para llevar", category: "Empaque", sort_order: 6 },
+      { label: "Bien caliente", category: "Servicio", sort_order: 7 },
+      { label: "Sin sal", category: "Ingredientes", sort_order: 8 },
+    ];
+    for (const note of defaultNotes) {
+      await query(
+        `INSERT INTO kitchen_quick_notes (label, category, sort_order, is_active) VALUES (?, ?, ?, 1)`,
+        [note.label, note.category, note.sort_order]
+      );
+    }
+  }
+
   await safeExec(
     `ALTER TABLE order_items ADD COLUMN completed_at DATETIME NULL AFTER sent_at`
   );
@@ -408,12 +441,27 @@ async function ensureConfigTables() {
 
   const newPermissions = [
     { name: "Cuenta compartida", slug: "orders.shared", module: "restaurant" },
+    { name: "Ver Dashboard Ejecutivo", slug: "dashboard.executive", module: "restaurant", description: "Acceso al Dashboard Ejecutivo y métricas financieras en tiempo real" },
   ];
   for (const p of newPermissions) {
     await query(
       `INSERT IGNORE INTO permissions (name, slug, module_code, description) VALUES (?, ?, ?, ?)`,
-      [p.name, p.slug, p.module, p.name]
+      [p.name, p.slug, p.module, p.description || p.name]
     );
+  }
+
+  // Asignar dashboard.executive a admin y manager automáticamente
+  try {
+    const [execPermRows] = await query(`SELECT id FROM permissions WHERE slug = 'dashboard.executive' LIMIT 1`);
+    if (execPermRows.length) {
+      const execPermId = execPermRows[0].id;
+      const [execRoles] = await query(`SELECT id FROM roles WHERE slug IN ('admin', 'manager')`);
+      for (const r of execRoles) {
+        await query(`INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`, [r.id, execPermId]);
+      }
+    }
+  } catch (permAssignErr) {
+    console.warn("[MIGRATION] Error asignando dashboard.executive:", permAssignErr.message);
   }
 
   await safeExec(`ALTER TABLE restaurant_tables ADD COLUMN operation_center_id INT NULL`);
@@ -509,6 +557,10 @@ async function ensureConfigTables() {
   await safeExec(`ALTER TABLE products ADD COLUMN categoria_impresion_id INT NULL`);
   await safeExec(`ALTER TABLE products ADD COLUMN centro_produccion_exclusivo_id INT NULL`);
   await safeExec(`ALTER TABLE terminals ADD COLUMN area_trabajo_id INT NULL`);
+  await safeExec(`ALTER TABLE terminals ADD COLUMN is_kds TINYINT(1) NOT NULL DEFAULT 0`);
+  await safeExec(`ALTER TABLE terminals ADD COLUMN kds_production_center_id INT NULL`);
+  await safeExec(`ALTER TABLE terminals ADD COLUMN kds_operation_center_id INT NULL`);
+  await safeExec(`ALTER TABLE terminals ADD COLUMN device_serial VARCHAR(128) NULL`);
   await safeExec(`ALTER TABLE order_items ADD COLUMN production_center_id INT NULL`);
 
   await query(`
@@ -556,6 +608,74 @@ async function ensureConfigTables() {
   const [firstArea] = await query(`SELECT id FROM dining_areas WHERE is_active = 1 ORDER BY sort_order, id LIMIT 1`);
   if (firstArea.length) {
     await query(`UPDATE terminals SET area_trabajo_id = ? WHERE area_trabajo_id IS NULL`, [firstArea[0].id]);
+  }
+
+  // Asegurar tablas del módulo de Facturación Electrónica (FEL)
+  try {
+    const { ensureFelTables } = require("../fel/fel.migration");
+    await ensureFelTables();
+  } catch (felErr) {
+    console.warn("[MIGRATION] Error asegurando tablas FEL:", felErr.message);
+  }
+
+  // Asegurar columnas y tablas del módulo de Sincronización Offline
+  try {
+    const { ensureSyncTables } = require("../sync/sync.migration");
+    await ensureSyncTables();
+  } catch (syncErr) {
+    console.warn("[MIGRATION] Error asegurando tablas de sincronización:", syncErr.message);
+  }
+
+  // Asegurar columna default_view en roles y permisos de navegación de vistas
+  try {
+    await safeExec(`ALTER TABLE roles ADD COLUMN default_view VARCHAR(40) NOT NULL DEFAULT 'dashboard'`);
+    await query(`UPDATE roles SET default_view = 'tables' WHERE slug = 'waiter' AND (default_view = 'dashboard' OR default_view IS NULL)`);
+    await query(`UPDATE roles SET default_view = 'kds' WHERE slug = 'kitchen' AND (default_view = 'dashboard' OR default_view IS NULL)`);
+    await query(`UPDATE roles SET default_view = 'shifts' WHERE slug = 'cashier' AND (default_view = 'dashboard' OR default_view IS NULL)`);
+
+    // Sembrar permisos de navegación de vistas
+    const viewPermissions = [
+      { name: "Ver Inicio / Dashboard", slug: "views.dashboard", module: "views", desc: "Acceso a la pantalla principal de inicio y accesos rápidos" },
+      { name: "Ver Mesas y Salones", slug: "views.tables", module: "views", desc: "Acceso al mapa de mesas para toma de pedidos" },
+      { name: "Ver Pantalla de Cocina (KDS)", slug: "views.kds", module: "views", desc: "Acceso a la pantalla de cocina y preparación de comandas" },
+      { name: "Ver Turnos y Cajas", slug: "views.shifts", module: "views", desc: "Acceso al módulo de arqueos, aperturas y cortes de caja" },
+      { name: "Ver Reportes", slug: "views.reports", module: "views", desc: "Acceso a reportes de ventas, cortes y propinas" },
+      { name: "Ver Reimpresión de Cuentas", slug: "views.reprint", module: "views", desc: "Acceso a consulta y reimpresión de recibos" },
+      { name: "Ver Dashboard Ejecutivo", slug: "views.executive", module: "views", desc: "Acceso a métricas y analítica ejecutiva en vivo" },
+      { name: "Ver Cuentas por Cobrar (CXC)", slug: "views.cxc", module: "views", desc: "Acceso a créditos de clientes y cuentas por cobrar" },
+      { name: "Ver Cuentas y Pagos (Cuentas Abiertas)", slug: "views.accounts", module: "views", desc: "Acceso al módulo de cuentas abiertas, cobros y pre-cuentas" },
+    ];
+
+    for (const vp of viewPermissions) {
+      await query(`
+        INSERT INTO permissions (name, slug, module_code, description)
+        VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), module_code = VALUES(module_code), description = VALUES(description)
+      `, [vp.name, vp.slug, vp.module, vp.desc]);
+    }
+
+    // Asignar permisos de vistas al Administrador y Superadmin
+    await query(`
+      INSERT IGNORE INTO role_permissions (role_id, permission_id)
+      SELECT r.id, p.id FROM roles r, permissions p
+      WHERE r.slug IN ('admin', 'superadmin') AND p.slug LIKE 'views.%'
+    `);
+
+    // Asignar permiso de ver mesas a meseros si no lo tienen
+    await query(`
+      INSERT IGNORE INTO role_permissions (role_id, permission_id)
+      SELECT r.id, p.id FROM roles r, permissions p
+      WHERE r.slug = 'waiter' AND p.slug = 'views.tables'
+    `);
+
+    // Asignar permiso de ver kds a cocina
+    await query(`
+      INSERT IGNORE INTO role_permissions (role_id, permission_id)
+      SELECT r.id, p.id FROM roles r, permissions p
+      WHERE r.slug = 'kitchen' AND p.slug = 'views.kds'
+    `);
+  } catch (viewPermErr) {
+    console.warn("[MIGRATION] Error asegurando permisos de vistas:", viewPermErr.message);
   }
 }
 

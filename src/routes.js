@@ -65,6 +65,18 @@ router.use("/bootstrap", bootstrapRouter);
 router.use("/config", configRouter);
 router.use("/settings", settingsRouter);
 
+// 11. Módulo de Facturación Electrónica en Línea (FEL Guatemala)
+const felRouter = require("./modules/fel/fel.routes");
+router.use("/fel", felRouter);
+
+// 12. Módulo de Dashboard Ejecutivo y Analítica en Tiempo Real
+const analyticsRouter = require("./modules/analytics/analytics.routes");
+router.use("/analytics", analyticsRouter);
+
+// 13. Módulo de Sincronización Offline (PWA / Autónomo)
+const syncRouter = require("./modules/sync/sync.routes");
+router.use("/sync", syncRouter);
+
 module.exports = router;
 
 

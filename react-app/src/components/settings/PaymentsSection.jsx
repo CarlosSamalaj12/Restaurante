@@ -221,9 +221,9 @@ export function PaymentsSection({ methods = [], onReload }) {
 
         <button
           onClick={handleOpenCreate}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white text-sm font-medium rounded-xl shadow-sm transition-all hover:shadow"
+          className="group bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-200 active:scale-[0.98] cursor-pointer"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
           <span>Nueva Forma de Pago</span>
         </button>
       </div>
@@ -242,20 +242,20 @@ export function PaymentsSection({ methods = [], onReload }) {
             <div
               key={method.code}
               className={`bg-white rounded-2xl p-5 border transition-all hover:shadow-md flex flex-col justify-between ${
-                isActive ? 'border-gray-200' : 'border-gray-200 bg-gray-50/50 opacity-80'
+                isActive ? 'border-gray-200 shadow-2xs' : 'border-gray-200 bg-gray-50/50 opacity-80'
               }`}
             >
               <div>
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${bg}`}>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border border-black/5 ${bg}`}>
                       <Icon className="w-6 h-6" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-gray-900 text-base">{method.label}</h3>
                         {isSystem && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
                             Sistema
                           </span>
                         )}
@@ -278,7 +278,7 @@ export function PaymentsSection({ methods = [], onReload }) {
 
                 {/* Tags / Config */}
                 <div className="flex items-center gap-2 flex-wrap text-xs text-gray-600 my-3">
-                  <span className={`px-2 py-1 rounded-lg border flex items-center gap-1.5 font-medium ${
+                  <span className={`px-2.5 py-1 rounded-lg border flex items-center gap-1.5 font-medium ${
                     appliesTip 
                       ? 'bg-blue-50/60 text-blue-700 border-blue-200/60' 
                       : 'bg-gray-50 text-gray-500 border-gray-200'
@@ -287,7 +287,7 @@ export function PaymentsSection({ methods = [], onReload }) {
                     {appliesTip ? 'Aplica propina' : 'Sin propina'}
                   </span>
 
-                  <span className="px-2 py-1 rounded-lg bg-gray-50 text-gray-500 border border-gray-200 font-mono">
+                  <span className="px-2.5 py-1 rounded-lg bg-gray-50 text-gray-500 border border-gray-200 font-mono">
                     Prioridad #{method.sort_order ?? 0}
                   </span>
                 </div>
@@ -299,17 +299,17 @@ export function PaymentsSection({ methods = [], onReload }) {
                   type="button"
                   onClick={() => handleToggleActive(method)}
                   disabled={isToggling}
-                  className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors inline-flex items-center gap-1.5 ${
+                  className={`text-xs font-semibold px-3 py-2 rounded-xl border transition-all duration-200 inline-flex items-center gap-1.5 shadow-2xs hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50 disabled:hover:scale-100 ${
                     isActive
-                      ? 'border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-red-600'
-                      : 'border-emerald-200 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-50'
+                      ? 'border-amber-200/70 text-amber-700 bg-amber-50/70 hover:bg-amber-100 hover:text-amber-800'
+                      : 'border-emerald-200/70 text-emerald-700 bg-emerald-50/70 hover:bg-emerald-100'
                   }`}
                 >
                   {isToggling ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : isActive ? (
                     <>
-                      <XCircle className="w-3.5 h-3.5 text-gray-400" />
+                      <XCircle className="w-3.5 h-3.5 text-amber-500" />
                       Desactivar
                     </>
                   ) : (
@@ -324,8 +324,8 @@ export function PaymentsSection({ methods = [], onReload }) {
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(method)}
-                    className="p-1.5 rounded-lg text-gray-500 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-                    title="Editar"
+                    className="p-2.5 rounded-xl transition-all duration-200 bg-blue-50/70 hover:bg-blue-100 text-blue-600 hover:text-blue-700 border border-blue-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
+                    title="Editar forma de pago"
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
@@ -335,10 +335,10 @@ export function PaymentsSection({ methods = [], onReload }) {
                       type="button"
                       onClick={() => handleDelete(method)}
                       disabled={isDeleting}
-                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                      className="p-2.5 rounded-xl transition-all duration-200 bg-rose-50/70 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer disabled:opacity-50 disabled:hover:scale-100"
                       title="Eliminar forma de pago"
                     >
-                      {isDeleting ? <Loader2 className="w-4 h-4 animate-spin text-red-600" /> : <Trash2 className="w-4 h-4" />}
+                      {isDeleting ? <Loader2 className="w-4 h-4 animate-spin text-rose-600" /> : <Trash2 className="w-4 h-4" />}
                     </button>
                   )}
                 </div>
@@ -355,9 +355,9 @@ export function PaymentsSection({ methods = [], onReload }) {
           <p className="text-sm text-gray-400 mb-4">Crea una nueva forma de pago para comenzar a cobrar en el POS.</p>
           <button
             onClick={handleOpenCreate}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-700"
+            className="group bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-semibold text-sm inline-flex items-center gap-2 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-200 active:scale-[0.98] cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
             Crear primera forma de pago
           </button>
         </div>

@@ -1,12 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { useToast } from './useToast';
+import { getOrCreateSerial } from '../lib/terminalSerial';
 import dayjs from 'dayjs';
 
-export function useKdsData(selectedCenter) {
+export function useKdsData(options = {}) {
   const [orders, setOrders] = useState([]);
   const [categories, setCategories] = useState([]);
   const [centers, setCenters] = useState([]);
+  const [operationCenters, setOperationCenters] = useState([]);
+  const [stationConfig, setStationConfig] = useState(null);
+  const [stationLoaded, setStationLoaded] = useState(false);
+
+  // Filtros activos (estación de preparación y centro de consumo / salón)
+  const [selectedProductionCenter, setSelectedProductionCenter] = useState(
+    options.productionCenterId !== undefined ? options.productionCenterId : null
+  );
+  const [selectedOperationCenter, setSelectedOperationCenter] = useState(
+    options.operationCenterId !== undefined ? options.operationCenterId : null
+  );
+
   const [loading, setLoading] = useState(true);
   const [completingItems, setCompletingItems] = useState(new Set());
   const [reportData, setReportData] = useState(null);
@@ -14,26 +27,56 @@ export function useKdsData(selectedCenter) {
   const [reportDate, setReportDate] = useState(dayjs().format('YYYY-MM-DD'));
   const toast = useToast();
 
+  // Carga automática de la estación configurada para este dispositivo o terminal
+  useEffect(() => {
+    let isMounted = true;
+    const loadStation = async () => {
+      try {
+        const serial = getOrCreateSerial();
+        const res = await api.kds.getMyStation({ serial });
+        if (isMounted && res?.station) {
+          setStationConfig(res.station);
+          if (res.station.kds_production_center_id) {
+            setSelectedProductionCenter(res.station.kds_production_center_id);
+          }
+          if (res.station.kds_operation_center_id) {
+            setSelectedOperationCenter(res.station.kds_operation_center_id);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not auto-resolve KDS station:', e.message);
+      } finally {
+        if (isMounted) setStationLoaded(true);
+      }
+    };
+    loadStation();
+    return () => { isMounted = false; };
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       const [ordersData, centersData] = await Promise.all([
-        api.kds.getOrdersWithVoided(selectedCenter),
+        api.kds.getOrdersWithVoided({
+          productionCenterId: selectedProductionCenter,
+          operationCenterId: selectedOperationCenter,
+        }),
         api.kds.getProductionCenters()
       ]);
       setOrders(ordersData.orders || []);
       setCategories(ordersData.categories || []);
       setCenters(centersData.centers || []);
+      setOperationCenters(centersData.operationCenters || []);
     } catch (error) {
       console.error('Error loading KDS orders:', error);
       toast.error('Error al cargar órdenes');
     } finally {
       setLoading(false);
     }
-  }, [selectedCenter]);
+  }, [selectedProductionCenter, selectedOperationCenter]);
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 10000);
+    const interval = setInterval(loadData, 8000);
     return () => clearInterval(interval);
   }, [loadData]);
 
@@ -56,8 +99,8 @@ export function useKdsData(selectedCenter) {
 
   const handleMarkAllDone = async (accountId) => {
     try {
-      await api.kds.markAccountDone(accountId);
-      toast.success('Ticket completado ✓');
+      await api.kds.markAccountDone(accountId, selectedProductionCenter);
+      toast.success('Ticket despachado ✓');
       loadData();
     } catch (error) {
       toast.error('Error al completar');
@@ -67,7 +110,7 @@ export function useKdsData(selectedCenter) {
   const loadKdsReport = async () => {
     setReportLoading(true);
     try {
-      const data = await api.kds.getKdsReport(reportDate, selectedCenter);
+      const data = await api.kds.getKdsReport(reportDate, selectedProductionCenter);
       setReportData(data);
     } catch (error) {
       toast.error('Error al cargar reporte');
@@ -80,6 +123,13 @@ export function useKdsData(selectedCenter) {
     orders,
     categories,
     centers,
+    operationCenters,
+    stationConfig,
+    stationLoaded,
+    selectedProductionCenter,
+    setSelectedProductionCenter,
+    selectedOperationCenter,
+    setSelectedOperationCenter,
     loading,
     completingItems,
     loadData,

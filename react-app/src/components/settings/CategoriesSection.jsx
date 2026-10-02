@@ -9,6 +9,7 @@ import {
   Trash2,
   X
 } from 'lucide-react';
+import { ProductIconBadge } from '../../utils/productIcons';
 
 export function CategoriesSection({ categories, onReload, centers }) {
   const [showForm, setShowForm] = useState(false);
@@ -81,59 +82,67 @@ export function CategoriesSection({ categories, onReload, centers }) {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-gray-900">
-          {categories.length} categorías
-        </h2>
+      <div className="flex justify-between items-center mb-5">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            {categories.length} {categories.length === 1 ? 'categoría' : 'categorías'}
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Organiza los grupos de productos para comandas y catálogo
+          </p>
+        </div>
         <button
           onClick={() => setShowForm(true)}
-          className="bg-primary-600 text-white px-4 py-2 rounded-xl font-medium flex items-center gap-2"
+          className="group bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-200 active:scale-[0.98]"
         >
-          <Plus className="w-4 h-4" />
-          Nueva
+          <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+          <span>Nueva Categoría</span>
         </button>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {categories.map(cat => {
           const catCenter = centers?.find(c => c.id === cat.operation_center_id);
           return (
             <div
               key={cat.id}
-              className="bg-white rounded-xl p-4 flex items-center gap-3 shadow-sm"
+              className="group bg-white rounded-2xl p-4 flex items-center gap-3.5 border border-slate-200 hover:border-slate-300 transition-all duration-200 hover:shadow-sm"
             >
-              <div
-                className="w-5 h-12 rounded-full flex-shrink-0"
-                style={{ backgroundColor: cat.color || '#6366f1' }}
-              />
+              <ProductIconBadge categoryName={cat.name} size="md" />
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900">{cat.name}</p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-xs px-2 py-0.5 rounded ${cat.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                <p className="font-bold text-slate-900 text-[15px]">{cat.name}</p>
+                <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                  <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
+                    cat.is_active 
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80' 
+                      : 'bg-slate-100 text-slate-500 border-slate-200'
+                  }`}>
                     {cat.is_active ? 'Activa' : 'Inactiva'}
                   </span>
                   {catCenter && (
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                    <span className="text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/80 px-2.5 py-0.5 rounded-full">
                       {catCenter.name}
                     </span>
                   )}
                   {!catCenter && cat.operation_center_id && (
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                    <span className="text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full">
                       Centro #{cat.operation_center_id}
                     </span>
                   )}
                 </div>
               </div>
-              <div className="flex gap-1 flex-shrink-0">
+              <div className="flex items-center gap-1.5 flex-shrink-0">
                 <button
                   onClick={() => handleOpenForm(cat)}
-                  className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                  title="Editar categoría"
+                  className="p-2.5 rounded-xl transition-all duration-200 bg-blue-50/70 hover:bg-blue-100 text-blue-600 hover:text-blue-700 border border-blue-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
                 >
                   <Edit className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setConfirmDelete({ id: cat.id, name: cat.name })}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Eliminar categoría"
+                  className="p-2.5 rounded-xl transition-all duration-200 bg-rose-50/70 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

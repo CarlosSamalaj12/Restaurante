@@ -6,8 +6,10 @@ import {
   Plus,
   Edit,
   Trash2,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
+import { ModifierGroupIconBadge } from '../../utils/productIcons';
 
 export function ModifiersSection({ groups, options, onReload }) {
   const [showWizard, setShowWizard] = useState(false);
@@ -44,67 +46,107 @@ export function ModifiersSection({ groups, options, onReload }) {
         </h2>
         <button
           onClick={() => setShowWizard(true)}
-          className="bg-primary-600 text-white px-4 py-2 rounded-xl font-medium flex items-center gap-2"
+          className="group bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-200 active:scale-[0.98] cursor-pointer"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
           Nuevo Grupo
         </button>
       </div>
 
-      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
-        <p className="text-yellow-800 text-sm">
-          Los modificadores permiten personalizar productos. Ej: "Salsas", "Guarniciones", "Término de carne".
+      {/* Modern Info Banner */}
+      <div className="bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-white border border-blue-200/60 rounded-2xl p-4 mb-4 flex items-center gap-3 shadow-2xs">
+        <div className="w-9 h-9 rounded-xl bg-blue-100/80 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200/50">
+          <Sparkles className="w-4 h-4" />
+        </div>
+        <p className="text-xs text-blue-900/90 font-medium">
+          Los modificadores permiten personalizar productos según las preferencias del comensal. Ej: <strong>"Guarniciones"</strong>, <strong>"Salsas"</strong>, <strong>"Término de carne"</strong> o <strong>"Tipo de Leche"</strong>.
         </p>
       </div>
 
-      <div className="space-y-4">
-        {groups.map(group => (
-          <m.div
-            key={group.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl p-4"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="font-semibold text-gray-900">{group.name}</p>
-                <p className="text-xs text-gray-500">
-                  {group.group_type === 'single' ? 'Selección única' : 'Selección múltiple'} •
-                  Min: {group.min_select} • Max: {group.max_select} •
-                  {group.is_mandatory ? ' Obligatorio' : ' Opcional'}
-                </p>
+      <div className="space-y-3">
+        {groups.map(group => {
+          const groupOptions = getGroupOptions(group.id);
+
+          return (
+            <m.div
+              key={group.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-2xl p-4 border border-gray-200/90 shadow-2xs hover:shadow-xs transition-all space-y-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <ModifierGroupIconBadge name={group.name} size="md" className="mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-gray-900 text-sm leading-snug">{group.name}</h3>
+                    
+                    {/* Modern Metadata Badges */}
+                    <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        group.is_mandatory
+                          ? 'bg-rose-50 text-rose-700 border border-rose-200/80'
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                      }`}>
+                        {group.is_mandatory ? 'Obligatorio' : 'Opcional'}
+                      </span>
+
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80">
+                        {group.group_type === 'single' ? 'Selección Única' : `Múltiple (Min: ${group.min_select} • Max: ${group.max_select})`}
+                      </span>
+
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-50 text-gray-500 border border-gray-200">
+                        {groupOptions.length} {groupOptions.length === 1 ? 'opción' : 'opciones'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => {
+                      setEditingGroup(group);
+                      setShowWizard(true);
+                    }}
+                    className="p-2.5 rounded-xl transition-all duration-200 bg-blue-50/70 hover:bg-blue-100 text-blue-600 hover:text-blue-700 border border-blue-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
+                    title="Editar grupo"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete({ id: group.id, name: group.name })}
+                    className="p-2.5 rounded-xl transition-all duration-200 bg-rose-50/70 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
+                    title="Eliminar grupo"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => {
-                    setEditingGroup(group);
-                    setShowWizard(true);
-                  }}
-                  className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setConfirmDelete({ id: group.id, name: group.name })}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {getGroupOptions(group.id).map(opt => (
-                <span
-                  key={opt.id}
-                  className="px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-700"
-                >
-                  {opt.name}
-                  {opt.price_delta > 0 && <span className="text-primary-600 ml-1">+Q{opt.price_delta}</span>}
-                </span>
-              ))}
-            </div>
-          </m.div>
-        ))}
+
+              {/* Styled Option Chips with emerald extra prices */}
+              {groupOptions.length > 0 ? (
+                <div className="flex flex-wrap gap-2 pt-2.5 border-t border-gray-100">
+                  {groupOptions.map(opt => (
+                    <div
+                      key={opt.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50/90 hover:bg-slate-100 border border-slate-200/80 rounded-xl text-xs font-semibold text-gray-800 shadow-2xs transition-colors"
+                    >
+                      <span>{opt.name}</span>
+                      {Number(opt.price_delta) > 0 && (
+                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                          +Q{Number(opt.price_delta).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-gray-100">
+                  <span className="text-xs text-gray-400 italic">Sin opciones asignadas a este grupo</span>
+                </div>
+              )}
+            </m.div>
+          );
+        })}
       </div>
 
       {showWizard && (
@@ -345,16 +387,17 @@ function ModifierGroupWizard({ editingGroup, options, onClose, onCreated }) {
               />
               <button
                 onClick={addOption}
-                className="px-4 py-2 bg-primary-600 text-white rounded-xl"
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-medium shadow-sm hover:scale-105 active:scale-95 transition-all flex items-center justify-center cursor-pointer"
+                title="Agregar opción"
               >
                 <Plus className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-2">
               {form.options.map((opt, i) => (
-                <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
-                  <span className="flex-1 text-sm">{opt.name}</span>
-                  <span className="text-sm text-gray-500">Q</span>
+                <div key={i} className="flex items-center gap-2 bg-gray-50/90 border border-gray-200/60 rounded-xl p-2.5 shadow-2xs">
+                  <span className="flex-1 text-sm font-medium text-gray-800">{opt.name}</span>
+                  <span className="text-sm font-semibold text-gray-500">Q</span>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -366,12 +409,13 @@ function ModifierGroupWizard({ editingGroup, options, onClose, onCreated }) {
                         updateOptionPrice(i, val === '' ? 0 : Number(val));
                       }
                     }}
-                    className="w-20 px-2 py-1 border border-gray-200 rounded text-sm"
+                    className="w-20 px-2.5 py-1 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     placeholder="0.00"
                   />
                   <button
                     onClick={() => removeOption(i)}
-                    className="p-1 text-red-500 hover:bg-red-50 rounded"
+                    className="p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700 rounded-lg transition-all hover:scale-110 active:scale-90 cursor-pointer"
+                    title="Eliminar opción"
                   >
                     <X className="w-4 h-4" />
                   </button>

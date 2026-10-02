@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
 import { exportToExcel, exportToPDF } from '../../utils/exports';
+import { BackButton } from '../BackButton';
 import {
   ArrowLeft,
   Loader2,
@@ -179,9 +180,7 @@ export function ProductSalesReportPage({ onBack }) {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="px-4 py-3 flex items-center gap-3">
-          <button onClick={onBack} className="p-2 -ml-2 rounded-xl hover:bg-gray-100">
-            <ArrowLeft className="w-6 h-6 text-gray-700" />
-          </button>
+          <BackButton onClick={onBack} label="Reportes" title="Volver a reportes" />
           <h1 className="font-bold text-gray-900 text-lg">Ventas por Categoría</h1>
         </div>
       </header>

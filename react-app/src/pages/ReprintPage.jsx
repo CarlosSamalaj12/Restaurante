@@ -3,20 +3,24 @@ import { useToast } from '../hooks/useToast';
 import { api } from '../api';
 import {
   ArrowLeft, Search, Printer, Receipt, FileText,
-  Clock, ChevronDown, ChevronUp, Loader2, DollarSign, CreditCard,
-  Building2, Users, Hash, Calendar, CheckCircle, X, AlertTriangle
+  Clock, ChevronDown, ChevronUp, Loader2, Coins, CreditCard,
+  Building2, Users, Hash, Calendar, CheckCircle, X, AlertTriangle,
+  RotateCcw, Lock, LogOut
 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { BackButton } from '../components/BackButton';
 
 const METHOD_CONFIG = {
-  cash: { label: 'Efectivo', icon: DollarSign },
+  cash: { label: 'Efectivo', icon: Coins },
   card: { label: 'Tarjeta', icon: CreditCard },
   transfer: { label: 'Transferencia', icon: Building2 },
   cxc: { label: 'CXC', icon: Users },
-  other: { label: 'Otro', icon: DollarSign },
+  other: { label: 'Otro', icon: Coins },
 };
 
-export function ReprintPage({ onBack, user }) {
+export function ReprintPage({ onBack, onSelectAccount }) {
   const toast = useToast();
+  const { logout } = useAuth();
   const [tab, setTab] = useState('account');
   const [centers, setCenters] = useState([]);
   const [selectedCenter, setSelectedCenter] = useState('');
@@ -78,6 +82,42 @@ export function ReprintPage({ onBack, user }) {
       toast.error(e.message);
     } finally {
       setLoadingReceipt(false);
+    }
+  };
+
+  const [reopening, setReopening] = useState(false);
+
+  const handleReopen = async () => {
+    if (!receiptData?.account) return;
+    const { account } = receiptData;
+    if (account.shift_status === 'closed') {
+      toast.error('No se puede reabrir: el turno de caja ya fue cerrado para mantener la integridad contable.');
+      return;
+    }
+    const confirmReopen = window.confirm(
+      `¿Deseas reabrir la cuenta #${account.check_number} (Mesa ${account.table_code || ''})?\n\n` +
+      `Se habilitará la modificación de platillos y ajuste o eliminación de formas de pago.`
+    );
+    if (!confirmReopen) return;
+
+    setReopening(true);
+    try {
+      const res = await api.reopenAccount(account.id, 'Reapertura para modificación desde reimpresiones');
+      toast.success(res.message || 'Cuenta reabierta correctamente');
+      if (onSelectAccount) {
+        onSelectAccount({
+          id: res.accountId || account.id,
+          table_code: res.tableCode || account.table_code,
+          table_id: res.tableId || account.table_id
+        });
+      } else {
+        doSearch();
+        setReceiptData(null);
+      }
+    } catch (e) {
+      toast.error(e.message || 'Error al reabrir cuenta');
+    } finally {
+      setReopening(false);
     }
   };
 
@@ -271,11 +311,19 @@ export function ReprintPage({ onBack, user }) {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <header className="bg-white border-b border-gray-100">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <button onClick={onBack} className="p-2 -ml-2 rounded-xl hover:bg-gray-100">
-            <ArrowLeft className="w-6 h-6 text-gray-700" />
+        <div className="px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <BackButton onClick={onBack} label="Volver" title="Regresar" />
+            <h1 className="font-bold text-gray-900 text-lg">Reimprimir</h1>
+          </div>
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+            title="Cerrar sesión / Salir (PIN)"
+          >
+            <LogOut className="w-4 h-4 text-red-600" />
+            <span className="hidden sm:inline">Salir (PIN)</span>
           </button>
-          <h1 className="font-bold text-gray-900 text-lg">Reimprimir</h1>
         </div>
       </header>
 
@@ -357,7 +405,16 @@ export function ReprintPage({ onBack, user }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-medium text-gray-900">{r.check_number}</span>
-                        <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">M{r.table_code}</span>
+                        <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">M{r.table_code}</span>
+                        {r.shift_status === 'closed' ? (
+                          <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-medium border border-amber-200">
+                            Turno cerrado
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-medium border border-emerald-200">
+                            Turno activo
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-gray-500 mt-0.5">
                         {r.waiter_name} · {formatDate(r.closed_at)}
@@ -376,14 +433,52 @@ export function ReprintPage({ onBack, user }) {
             {/* Receipt data */}
             {receiptData && (
               <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-900">
-                    Cuenta #{receiptData.account.check_number}
-                  </h3>
-                  <button onClick={handlePrintReceipt}
-                    className="px-4 py-2 bg-primary-500 text-white rounded-xl flex items-center gap-2 text-sm font-medium">
-                    <Printer className="w-4 h-4" /> Imprimir
-                  </button>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">
+                      Cuenta #{receiptData.account.check_number}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                        receiptData.account.shift_status === 'closed'
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      }`}>
+                        {receiptData.account.shift_status === 'closed' ? 'Turno Cerrado (Bloqueado)' : 'Turno Activo (Reabrible)'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {receiptData.account.shift_status === 'closed' ? (
+                      <div
+                        title="El turno de caja en que se cobró esta cuenta ya fue cerrado. Por auditoría contable no se puede reabrir."
+                        className="px-3 py-2 bg-gray-100 text-gray-400 rounded-xl flex items-center gap-1.5 text-xs font-medium cursor-not-allowed border border-gray-200"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-gray-400" />
+                        <span>Turno Cerrado</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleReopen}
+                        disabled={reopening}
+                        title="Reabrir cuenta para modificar productos o formas de pago"
+                        className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-xl flex items-center gap-1.5 text-xs font-semibold shadow-xs transition-all disabled:opacity-50"
+                      >
+                        {reopening ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        )}
+                        <span>Reabrir Cuenta</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={handlePrintReceipt}
+                      className="px-4 py-2 bg-primary-500 hover:bg-primary-600 active:scale-95 text-white rounded-xl flex items-center gap-2 text-xs font-semibold shadow-xs transition-all"
+                    >
+                      <Printer className="w-4 h-4" /> Imprimir
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm bg-gray-50 rounded-xl p-3">
                   <div><span className="text-gray-500">Mesa:</span> <span className="font-medium">{receiptData.account.table_code || '---'}</span></div>
@@ -512,7 +607,7 @@ export function ReprintPage({ onBack, user }) {
                     {(s.methods || []).map((m, i) => {
                       const total = Number(s[m.code + '_total'] || 0);
                       if (total === 0) return null;
-                      const Icon = METHOD_CONFIG[m.code]?.icon || DollarSign;
+                      const Icon = METHOD_CONFIG[m.code]?.icon || Coins;
                       return (
                         <div key={i} className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-4 py-3">
                           <div className="flex items-center gap-3">

@@ -24,11 +24,12 @@ const accountsRepository = {
   async findDetailsForReceipt(accountId, conn = null) {
     const [rows] = await query(
       `SELECT a.*, t.code AS table_code, u.full_name AS waiter_name,
-              oc.name AS center_name
+              oc.name AS center_name, s.status AS shift_status
        FROM accounts a
        INNER JOIN restaurant_tables t ON t.id = a.table_id
        INNER JOIN staff_users u ON u.id = a.waiter_id
        LEFT JOIN operation_centers oc ON oc.id = t.operation_center_id
+       LEFT JOIN shifts s ON s.id = a.shift_id
        WHERE a.id = ?
        LIMIT 1`,
       [Number(accountId)],
@@ -50,6 +51,27 @@ const accountsRepository = {
     return rows[0] || null;
   },
 
+  async findAccountShift(accountId, conn = null) {
+    const [rows] = await query(
+      `SELECT s.id, s.status, s.opened_at, s.closed_at, s.cashier_id
+       FROM accounts a
+       INNER JOIN shifts s ON s.id = a.shift_id
+       WHERE a.id = ?
+       LIMIT 1`,
+      [Number(accountId)],
+      conn
+    );
+    return rows[0] || null;
+  },
+
+  async reopenAccountRecord(accountId, conn = null) {
+    const q = conn ? conn.query.bind(conn) : query;
+    await q(
+      `UPDATE accounts SET status = 'open', closed_at = NULL WHERE id = ?`,
+      [Number(accountId)]
+    );
+  },
+
   async findOpenAccountsByTableId(tableId, conn = null) {
     const [rows] = await query(
       `SELECT a.id, a.check_number, a.guest_count, a.waiter_id, u.full_name AS waiter_name, a.opened_at
@@ -67,6 +89,7 @@ const accountsRepository = {
     const [rows] = await query(
       `SELECT a.id, a.check_number, a.status, a.table_id, a.waiter_id, a.guest_count, a.opened_at,
               t.code AS table_code, t.operation_center_id,
+              da.name AS area_name,
               u.full_name AS waiter_name,
               oc.name AS center_name,
               (SELECT COALESCE(SUM(oi.line_total), 0) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS total,
@@ -74,6 +97,7 @@ const accountsRepository = {
               (SELECT MAX(oi.created_at) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS last_activity
        FROM accounts a
        INNER JOIN restaurant_tables t ON t.id = a.table_id
+       LEFT JOIN dining_areas da ON da.id = t.area_id
        INNER JOIN staff_users u ON u.id = a.waiter_id
        LEFT JOIN operation_centers oc ON oc.id = t.operation_center_id
        WHERE a.status = 'open' AND (? = 0 OR t.operation_center_id = ?)
@@ -124,16 +148,18 @@ const accountsRepository = {
     }
 
     const [rows] = await query(
-      `SELECT a.id, a.check_number, a.status, a.guest_count, a.closed_at, a.table_id, t.code AS table_code,
+      `SELECT a.id, a.check_number, a.status, a.guest_count, a.closed_at, a.table_id, a.shift_id,
+              s.status AS shift_status, t.code AS table_code,
               u.full_name AS waiter_name, oc.name AS center_name,
               (SELECT COALESCE(SUM(oi.line_total), 0) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS total
        FROM accounts a
        INNER JOIN staff_users u ON u.id = a.waiter_id
        INNER JOIN restaurant_tables t ON t.id = a.table_id
        INNER JOIN operation_centers oc ON oc.id = t.operation_center_id
+       LEFT JOIN shifts s ON s.id = a.shift_id
        WHERE ${conditions.join(" AND ")}
        ORDER BY a.closed_at DESC
-       LIMIT 20`,
+       LIMIT 50`,
       params,
       conn
     );
@@ -173,7 +199,7 @@ const accountsRepository = {
 
   async findPayments(accountId, conn = null) {
     const [rows] = await query(
-      `SELECT pm.label AS method_label, p.method, p.amount, p.reference_no, p.created_at
+      `SELECT p.id, pm.label AS method_label, p.method, p.amount, p.reference_no, p.created_at
        FROM account_payments p
        LEFT JOIN payment_methods pm ON pm.code = p.method
        WHERE p.account_id = ?
@@ -311,7 +337,7 @@ const accountsRepository = {
 
   async findItemById(itemId, accountId, conn = null) {
     const [rows] = await query(
-      `SELECT id, account_id, product_id, seat_no, qty, unit_price, line_total, notes, sent_at, created_at
+      `SELECT id, account_id, product_id, seat_no, qty, unit_price, line_total, notes, sent_at, production_center_id, created_at
        FROM order_items
        WHERE id = ? AND account_id = ? AND status = 'active'
        LIMIT 1`,
@@ -343,10 +369,10 @@ const accountsRepository = {
   },
 
   async insertOrderItem(itemData, conn = null) {
-    const { accountId, productId, seatNo, qty, unitPrice, lineTotal, notes, sentAt } = itemData;
+    const { accountId, productId, seatNo, qty, unitPrice, lineTotal, notes, sentAt, productionCenterId } = itemData;
     const [result] = await query(
-      `INSERT INTO order_items (account_id, product_id, seat_no, qty, unit_price, line_total, notes, sent_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO order_items (account_id, product_id, seat_no, qty, unit_price, line_total, notes, sent_at, production_center_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         Number(accountId),
         Number(productId),
@@ -356,6 +382,7 @@ const accountsRepository = {
         lineTotal,
         notes || "",
         sentAt || null,
+        productionCenterId ? Number(productionCenterId) : null,
         nowSql(),
       ],
       conn

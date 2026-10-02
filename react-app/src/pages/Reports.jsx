@@ -18,6 +18,7 @@ import { ProductSalesReportPage } from '../components/reports/ProductSalesReport
 import { PaymentMethodReportPage } from '../components/reports/PaymentMethodReportPage';
 import { SalesByCenterReportPage } from '../components/reports/SalesByCenterReportPage';
 import { SalesByUserReportPage } from '../components/reports/SalesByUserReportPage';
+import { BackButton } from '../components/BackButton';
 
 export function ReportsPage({ onBack }) {
   const [report, setReport] = useState(null);
@@ -125,9 +126,7 @@ export function ReportsPage({ onBack }) {
     <div className="min-h-screen bg-gray-50 pb-20">
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="px-4 py-3 flex items-center gap-3">
-          <button onClick={onBack} className="p-2 -ml-2 rounded-xl hover:bg-gray-100">
-            <ArrowLeft className="w-6 h-6 text-gray-700" />
-          </button>
+          <BackButton onClick={onBack} label="Volver" title="Regresar" />
           <h1 className="font-bold text-gray-900 text-lg">Reportes</h1>
         </div>
       </header>

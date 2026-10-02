@@ -1,49 +1,195 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
+import { MacDock } from '../components/MacDock';
+import { BackButton } from '../components/BackButton';
 import {
   ArrowLeft,
   Users,
   Plus,
   Loader2,
-  CheckCircle,
   Clock,
-  Circle,
   LayoutGrid,
-  UtensilsCrossed
+  UtensilsCrossed,
+  Printer,
+  X,
+  Coffee,
+  Receipt,
+  User,
+  Check,
+  Lock
 } from 'lucide-react';
+
+// Formato de tiempo transcurrido desde opened_at (ej. "42m", "1h 15m")
+function formatElapsedTime(openedAt) {
+  if (!openedAt) return null;
+  const opened = new Date(openedAt).getTime();
+  if (isNaN(opened)) return null;
+  const now = Date.now();
+  const diffMinutes = Math.floor(Math.max(0, now - opened) / 60000);
+  if (diffMinutes < 60) {
+    return `${Math.max(1, diffMinutes)}m`;
+  }
+  const hours = Math.floor(diffMinutes / 60);
+  const mins = diffMinutes % 60;
+  return `${hours}h ${mins}m`;
+}
+
+// Icono gráfico vectorial para mesas rectangulares (Salón / General)
+function RectangularTableSVG({ isOccupied, seats = 4 }) {
+  const isLarge = seats >= 6;
+  return (
+    <div className="relative flex flex-col items-center justify-center my-1 select-none pointer-events-none">
+      {/* Sillas superiores */}
+      <div className="flex gap-1.5 mb-1">
+        <span
+          className={`h-1.5 rounded-full transition-colors ${
+            isOccupied ? 'bg-[#F6ACA3]' : 'bg-[#9FE1CD]'
+          } ${isLarge ? 'w-3.5' : 'w-4'}`}
+        />
+        <span
+          className={`h-1.5 rounded-full transition-colors ${
+            isOccupied ? 'bg-[#F6ACA3]' : 'bg-[#9FE1CD]'
+          } ${isLarge ? 'w-3.5' : 'w-4'}`}
+        />
+        {isLarge && (
+          <span
+            className={`h-1.5 w-3.5 rounded-full transition-colors ${
+              isOccupied ? 'bg-[#F6ACA3]' : 'bg-[#9FE1CD]'
+            }`}
+          />
+        )}
+      </div>
+
+      {/* Tablero central */}
+      <div
+        className={`rounded-lg flex items-center justify-center transition-colors shadow-xs ${
+          isOccupied
+            ? 'bg-[#FCEAE7] border border-[#F8B7AF] text-[#D13B2C]'
+            : 'bg-white/80 border border-[#BCECE0] text-[#0D8267]'
+        } ${isLarge ? 'w-16 h-8' : 'w-14 h-8'}`}
+      >
+        {isOccupied ? (
+          <div className="flex items-center justify-center">
+            <UtensilsCrossed className="w-4 h-4 text-[#D13B2C]" />
+          </div>
+        ) : (
+          <div className="flex gap-1 items-center justify-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#9FE1CD]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#9FE1CD]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#9FE1CD]" />
+            {isLarge && <span className="w-1.5 h-1.5 rounded-full bg-[#9FE1CD]" />}
+          </div>
+        )}
+      </div>
+
+      {/* Sillas inferiores */}
+      <div className="flex gap-1.5 mt-1">
+        <span
+          className={`h-1.5 rounded-full transition-colors ${
+            isOccupied ? 'bg-[#F6ACA3]' : 'bg-[#9FE1CD]'
+          } ${isLarge ? 'w-3.5' : 'w-4'}`}
+        />
+        <span
+          className={`h-1.5 rounded-full transition-colors ${
+            isOccupied ? 'bg-[#F6ACA3]' : 'bg-[#9FE1CD]'
+          } ${isLarge ? 'w-3.5' : 'w-4'}`}
+        />
+        {isLarge && (
+          <span
+            className={`h-1.5 w-3.5 rounded-full transition-colors ${
+              isOccupied ? 'bg-[#F6ACA3]' : 'bg-[#9FE1CD]'
+            }`}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Icono gráfico vectorial para mesas redondas (Terraza / Exterior)
+function RoundTableSVG({ isOccupied }) {
+  return (
+    <div className="relative flex items-center justify-center my-1 select-none pointer-events-none">
+      {/* Halo exterior de sillas redondas */}
+      <div
+        className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
+          isOccupied ? 'bg-[#FDE2DF]/70' : 'bg-[#D9F4ED]/80'
+        }`}
+      >
+        {/* Mesa redonda interior */}
+        <div
+          className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors shadow-xs ${
+            isOccupied
+              ? 'bg-white border border-[#F8B7AF] text-[#D13B2C]'
+              : 'bg-white border border-[#BCECE0] text-[#0D8267]'
+          }`}
+        >
+          {isOccupied ? (
+            <Coffee className="w-4 h-4 text-[#D13B2C]" />
+          ) : (
+            <svg
+              className="w-4 h-4 text-[#0D8267]"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 2v20M4 12a8 8 0 0 1 16 0" />
+            </svg>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNavigate }) {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCenter, setSelectedCenter] = useState(null);
-  const [showNewAccount, setShowNewAccount] = useState(false);
-  const [selectedTable, setSelectedTable] = useState(null);
-  const [accounts, setAccounts] = useState([]);
+
+  // Modales
+  const [activeTable, setActiveTable] = useState(null);
+  const [showQuickOpen, setShowQuickOpen] = useState(false);
+  const [showAccountPicker, setShowAccountPicker] = useState(false);
+  const [showAccountsModal, setShowAccountsModal] = useState(false);
+  const [modalAccounts, setModalAccounts] = useState([]);
+  const [loadingModalAccounts, setLoadingModalAccounts] = useState(false);
   const [guestCount, setGuestCount] = useState(4);
+  const [printingId, setPrintingId] = useState(null);
+
   const toast = useToast();
-  const { user, selectedTerminal, restaurantName, logoUrl } = useAuth();
+  const { user, selectedTerminal, restaurantName, logoUrl, currencySymbol = '$', canView, logout } = useAuth();
+
+  const isKioskMode = user?.default_view === 'tables' && !canView('dashboard');
+  const lockedCenterId = selectedTerminal?.operation_center_id || user?.operation_center_id;
+  const canSwitchCenters = !isKioskMode && (!lockedCenterId || canView('dashboard'));
 
   useEffect(() => {
-    if (selectedTerminal?.operation_center_id && !selectedCenter) {
+    if (lockedCenterId && (!selectedCenter || !canSwitchCenters)) {
+      setSelectedCenter(lockedCenterId);
+    } else if (selectedTerminal?.operation_center_id && !selectedCenter) {
       setSelectedCenter(selectedTerminal.operation_center_id);
     } else if (user?.operation_center_id && !selectedCenter) {
       setSelectedCenter(user.operation_center_id);
     }
-  }, [user, selectedTerminal]);
+  }, [user, selectedTerminal, lockedCenterId, canSwitchCenters]);
 
   useEffect(() => {
     loadTables();
   }, [selectedCenter]);
 
-  // Auto-open table when navigated from OpenAccountsPanel
+  // Manejo de auto-open cuando se navega con cuenta preseleccionada
   useEffect(() => {
     if (autoOpenTable && tables.length > 0) {
-      const table = tables.find(t => t.id === autoOpenTable.tableId);
+      const table = tables.find((t) => t.id === autoOpenTable.tableId);
       if (table) {
-        handleTablePress(table, autoOpenTable.accountId);
+        onSelectTable(autoOpenTable.accountId, table.code, table.id);
       }
     }
   }, [autoOpenTable, tables]);
@@ -60,416 +206,838 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
     }
   };
 
-  const handleTablePress = async (table, preselectedAccountId = null) => {
-    setSelectedTable(table);
-    setGuestCount(table.seats || 4);
+  // Cargar cuentas frescas para una mesa
+  const fetchTableAccounts = async (tableId) => {
+    setLoadingModalAccounts(true);
     try {
-      const accts = await api.getAccounts(table.id);
-      setAccounts(accts);
-      
-      // If coming from OpenAccountsPanel with a specific account, go directly to it
-      if (preselectedAccountId) {
-        const account = accts.find(a => a.id === preselectedAccountId);
-        if (account) {
-          onSelectTable(account.id, table.code, table.id);
-          return;
-        }
-      }
-      
-      setShowNewAccount(true);
+      const accts = await api.getAccounts(tableId);
+      setModalAccounts(accts || []);
+      return accts;
     } catch (error) {
-      toast.error('Error al cargar cuentas');
+      toast.error('Error al cargar cuentas de la mesa');
+      return [];
+    } finally {
+      setLoadingModalAccounts(false);
     }
   };
 
-  const handleCreateAccount = async () => {
-    if (!selectedTable) return;
-    
+  // 1. Manejador para Abrir Mesa Libre
+  const handleOpenFreeTable = (table) => {
+    setActiveTable(table);
+    setGuestCount(Number(table.seats) || 4);
+    setShowQuickOpen(true);
+  };
+
+  const handleConfirmCreateAccount = async () => {
+    if (!activeTable) return;
     try {
-      const result = await api.createAccount(selectedTable.id, {
+      const result = await api.createAccount(activeTable.id, {
         waiterId: user?.id || 1,
         guestCount,
-        centerId: selectedCenter
+        centerId: selectedCenter,
       });
-      toast.success(`Cuenta ${result.checkNumber} creada`);
-      setShowNewAccount(false);
-      setSelectedTable(null);
+      toast.success(`Cuenta ${result.checkNumber || ''} creada`);
+      setShowQuickOpen(false);
+      const targetTable = activeTable;
+      setActiveTable(null);
       loadTables();
-      onSelectTable(result.accountId, selectedTable.code, selectedTable.id);
+      onSelectTable(result.accountId, targetTable.code, targetTable.id);
+    } catch (error) {
+      toast.error(error.message || 'Error al abrir mesa');
+    }
+  };
+
+  // 2. Manejador para botón [+ Comanda] en mesa ocupada
+  const handleComandaPress = async (e, table) => {
+    e.stopPropagation();
+    setActiveTable(table);
+
+    // Si la mesa ya tiene cuentas precargadas del backend
+    const tableAccounts = table.accounts || [];
+
+    if (tableAccounts.length === 1) {
+      // 1 sola cuenta: Ir directo a ordenar
+      onSelectTable(tableAccounts[0].id, table.code, table.id);
+      return;
+    }
+
+    if (tableAccounts.length > 1) {
+      // Múltiples cuentas: Mostrar selector rápido de cuenta
+      setModalAccounts(tableAccounts);
+      setShowAccountPicker(true);
+      return;
+    }
+
+    // Fallback: Si no vinieron en el objeto table, consultarlas al server
+    const fetched = await fetchTableAccounts(table.id);
+    if (fetched.length === 1) {
+      onSelectTable(fetched[0].id, table.code, table.id);
+    } else if (fetched.length > 1) {
+      setShowAccountPicker(true);
+    } else {
+      // No había cuenta activa, abrir creación
+      setGuestCount(table.seats || 4);
+      setShowQuickOpen(true);
+    }
+  };
+
+  // 3. Manejador para botón [Cuentas (N)] o clic en el cuerpo de mesa ocupada
+  const handleAccountsModalPress = async (e, table) => {
+    if (e) e.stopPropagation();
+    setActiveTable(table);
+    setGuestCount(table.seats || 4);
+    setShowAccountsModal(true);
+    // Usar las cuentas que ya tiene la mesa si están disponibles, y refrescar en paralelo
+    if (table.accounts && table.accounts.length > 0) {
+      setModalAccounts(table.accounts);
+    }
+    fetchTableAccounts(table.id);
+  };
+
+  // Crear cuenta adicional dentro del modal de cuentas
+  const handleCreateAdditionalAccount = async () => {
+    if (!activeTable) return;
+    try {
+      const result = await api.createAccount(activeTable.id, {
+        waiterId: user?.id || 1,
+        guestCount,
+        centerId: selectedCenter,
+      });
+      toast.success(`Cuenta adicional ${result.checkNumber || ''} creada`);
+      setShowAccountsModal(false);
+      setShowAccountPicker(false);
+      const targetTable = activeTable;
+      setActiveTable(null);
+      loadTables();
+      onSelectTable(result.accountId, targetTable.code, targetTable.id);
     } catch (error) {
       toast.error(error.message || 'Error al crear cuenta');
     }
   };
 
-  const handleSelectAccount = (account) => {
-    setShowNewAccount(false);
-    onSelectTable(account.id, selectedTable.code, selectedTable.id);
+  // Imprimir pre-cuenta desde el modal
+  const handlePrintPrecheck = async (e, accountId) => {
+    e.stopPropagation();
+    setPrintingId(accountId);
+    try {
+      await api.printPrecheck(accountId);
+      toast.success('Pre-cuenta enviada a imprimir');
+    } catch (error) {
+      toast.error(error.message || 'Error al imprimir pre-cuenta');
+    } finally {
+      setPrintingId(null);
+    }
   };
 
-  // Group tables by area
-  const tablesByArea = tables.reduce((acc, table) => {
-    const areaKey = `${table.area_id || 'unknown'}-${table.area_name || 'Sin área'}`;
-    const areaName = table.area_name || 'Sin área';
-    if (!acc[areaKey]) acc[areaKey] = { name: areaName, tables: [] };
-    acc[areaKey].tables.push(table);
-    return acc;
-  }, {});
+  // Agrupar mesas por área
+  const tablesByArea = useMemo(() => {
+    return tables.reduce((acc, table) => {
+      const areaKey = `${table.area_id || 'unknown'}-${table.area_name || 'Sin área'}`;
+      const areaName = table.area_name || 'Sin área';
+      if (!acc[areaKey]) acc[areaKey] = { name: areaName, tables: [] };
+      acc[areaKey].tables.push(table);
+      return acc;
+    }, {});
+  }, [tables]);
 
-  const freeTables = tables.filter(t => t.open_accounts === 0).length;
-  const busyTables = tables.filter(t => t.open_accounts > 0).length;
+  const freeTables = tables.filter((t) => Number(t.open_accounts) === 0).length;
+  const busyTables = tables.filter((t) => Number(t.open_accounts) > 0).length;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-100">
-        <div className="px-4 pt-4 pb-3">
-          <div className="flex items-center gap-3">
-            <m.button
-              whileTap={{ scale: 0.95 }}
-              onClick={onBack}
-              className="p-2 -ml-2 rounded-xl hover:bg-gray-100 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </m.button>
-            <div className="flex-1">
-              <h1 className="font-semibold text-gray-900">Mesas</h1>
-              <p className="text-xs text-gray-500">
+    <div className={`min-h-screen bg-[#F6F8F8] text-gray-900 select-none ${isKioskMode ? 'pb-8' : 'pb-24'}`}>
+      {/* Header Principal */}
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          {/* Lado Izquierdo: Regresar + Título + Resumen + Pastillas de Estado */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {canView('dashboard') && (
+              <BackButton
+                onClick={onBack}
+                label="Inicio"
+                title="Volver al Panel Principal"
+              />
+            )}
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-gray-900 leading-tight">Mesas</h1>
+              <p className="text-xs text-gray-500 font-medium">
                 {tables.length} mesas · {busyTables} ocupadas
               </p>
             </div>
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center overflow-hidden bg-gradient-to-br from-primary-500 to-primary-600 shadow-sm">
-              {logoUrl ? (
-                <img src={logoUrl} alt={restaurantName} className="w-full h-full object-contain p-1" />
+
+            {/* Badges de estado */}
+            <div className="flex items-center gap-2 ml-1">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#D7F3EB] text-[#0D8267]">
+                <span className="w-2 h-2 rounded-full bg-[#0D8267]" />
+                {freeTables} libres
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FDE2DF] text-[#D13B2C]">
+                <span className="w-2 h-2 rounded-full bg-[#D13B2C] animate-pulse" />
+                {busyTables} ocupadas
+              </span>
+            </div>
+          </div>
+
+          {/* Lado Derecho: Filtro de Centros / Centro Asignado + Salir (PIN) + Avatar */}
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-1">
+            {canSwitchCenters ? (
+              <div className="flex items-center bg-gray-100 p-1 rounded-xl gap-1">
+                <button
+                  onClick={() => setSelectedCenter(null)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                    selectedCenter === null
+                      ? 'bg-white text-gray-900 shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Todas
+                </button>
+                {centers?.map((center) => (
+                  <button
+                    key={center.id}
+                    onClick={() => setSelectedCenter(center.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                      selectedCenter === center.id
+                        ? 'bg-white text-gray-900 shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {center.name}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-xl text-xs font-bold text-gray-800 border border-gray-200/60">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>
+                  {centers?.find((c) => c.id === selectedCenter)?.name ||
+                    selectedTerminal?.center_name ||
+                    'Salón Asignado'}
+                </span>
+              </div>
+            )}
+
+            {/* Botón Salir (PIN) para meseros y operadores */}
+            <button
+              onClick={logout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 text-xs font-bold transition-all shadow-2xs"
+              title="Cerrar sesión / Cambiar de PIN"
+            >
+              <Lock className="w-3.5 h-3.5 text-red-600" />
+              <span>Salir (PIN)</span>
+            </button>
+
+            {/* Avatar / Branding */}
+            <div
+              className="w-9 h-9 rounded-full bg-gray-900 text-white flex items-center justify-center font-bold text-xs shadow-xs ml-1 shrink-0"
+              title={user?.full_name || ''}
+            >
+              {user?.full_name ? (
+                user.full_name.charAt(0).toUpperCase()
               ) : (
-                <UtensilsCrossed className="w-5 h-5 text-white" />
+                <User className="w-4 h-4" />
               )}
             </div>
           </div>
         </div>
-
-        {/* Quick Stats */}
-        <div className="px-4 pb-3 flex gap-3">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 rounded-lg">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-            <span className="text-xs font-medium text-emerald-700">{freeTables} libres</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 rounded-lg">
-            <div className="w-2 h-2 bg-red-500 rounded-full" />
-            <span className="text-xs font-medium text-red-700">{busyTables} ocupadas</span>
-          </div>
-        </div>
-
-        {/* Center Filter */}
-        {centers?.length > 0 && (
-          <div className="px-4 pb-3 flex gap-2 overflow-x-auto scrollbar-hide">
-            <m.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setSelectedCenter(null)}
-              className={`
-                px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all
-                ${selectedCenter === null
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-600'
-                }
-              `}
-            >
-              Todas
-            </m.button>
-            {centers.map(center => (
-              <m.button
-                key={center.id}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setSelectedCenter(center.id)}
-                className={`
-                  px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all
-                  ${selectedCenter === center.id
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-gray-100 text-gray-600'
-                  }
-                `}
-              >
-                {center.name}
-              </m.button>
-            ))}
-          </div>
-        )}
       </header>
 
-      {/* Tables Grid */}
-      <div className="p-4">
+      {/* Contenido Principal */}
+      <main className="max-w-7xl mx-auto px-4 py-5">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+          <div className="flex flex-col items-center justify-center py-28 text-gray-400">
+            <Loader2 className="w-9 h-9 animate-spin text-gray-400 mb-3" />
+            <p className="text-sm font-medium">Cargando mesas...</p>
           </div>
         ) : (
           <AnimatePresence mode="popLayout">
-            {Object.entries(tablesByArea).map(([areaKey, { name: areaName, tables: areaTables }]) => (
-              <m.div
-                key={areaKey}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="mb-6"
-              >
-                {/* Area Header */}
-                <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    {areaName}
-                  </h2>
-                  <div className="flex-1 h-px bg-gray-200" />
-                  <span className="text-xs text-gray-400">{areaTables.length} mesas</span>
-                </div>
+            {Object.entries(tablesByArea).map(([areaKey, { name: areaName, tables: areaTables }]) => {
+              const isTerrazaArea =
+                areaName.toLowerCase().includes('terraza') ||
+                areaName.toLowerCase().includes('exterior');
+              const freeInArea = areaTables.filter((t) => Number(t.open_accounts) === 0).length;
 
-                {/* Tables Grid */}
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-                  {areaTables.map((table, index) => {
-                    const isBusy = table.open_accounts > 0;
-                    const hasMultipleAccounts = table.open_accounts > 1;
-                    
-                    return (
-                      <m.button
-                        key={table.id}
-                        layout
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        transition={{ delay: index * 0.03, type: "spring", stiffness: 200 }}
-                        whileTap={{ scale: 0.96 }}
-                        onClick={() => handleTablePress(table)}
-                        className={`
-                          relative flex flex-col items-center justify-center p-4 rounded-2xl
-                          transition-all duration-300 shadow-sm hover:shadow-lg
-                          ${isBusy
-                            ? 'bg-red-50 border-2 border-red-300 shadow-red-200'
-                            : 'bg-gradient-to-b from-emerald-100 via-emerald-50 to-green-100 border-2 border-emerald-300 shadow-emerald-200'
-                          }
-                        `}
-                      >
-                        {/* Table Visual Shape */}
-                        <div className={`
-                          w-14 h-10 rounded-lg flex items-center justify-center mb-2
-                          ${isBusy
-                            ? 'bg-red-400 shadow-md'
-                            : 'bg-gradient-to-br from-emerald-300 to-green-400 shadow-md'
-                          }
-                        `}>
-                          <div className="w-10 h-1 bg-white/60 rounded-full mb-1" />
-                          <div className="flex gap-1">
-                            <div className="w-1.5 h-1.5 bg-white/60 rounded-full" />
-                            <div className="w-1.5 h-1.5 bg-white/60 rounded-full" />
-                            <div className="w-1.5 h-1.5 bg-white/60 rounded-full" />
+              return (
+                <m.section
+                  key={areaKey}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mb-8"
+                >
+                  {/* Encabezado del Área */}
+                  <div className="flex items-center justify-between mb-3.5 px-1">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-gray-800" />
+                      <h2 className="text-sm font-black text-gray-800 tracking-wider uppercase">
+                        {areaName}
+                      </h2>
+                    </div>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50/80 text-blue-700 border border-blue-100/60">
+                      {freeInArea === 0
+                        ? `${areaTables.length} Mesas en Sala`
+                        : `${freeInArea} Mesas Disponibles`}
+                    </span>
+                  </div>
+
+                  {/* Cuadrícula de Mesas */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-3.5">
+                    {areaTables.map((table, index) => {
+                      const isOccupied = Number(table.open_accounts) > 0;
+                      const accountsCount = Number(table.open_accounts) || 0;
+                      const isRound =
+                        isTerrazaArea ||
+                        table.code.toUpperCase().startsWith('TE') ||
+                        Number(table.seats) <= 2;
+                      const elapsedTime = formatElapsedTime(table.opened_at);
+                      const tableTotal = Number(table.total) || 0;
+                      const accountsList = table.accounts || [];
+
+                      return (
+                        <m.div
+                          key={table.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: index * 0.02, duration: 0.2 }}
+                          whileHover={{ y: -2 }}
+                          onClick={() => {
+                            if (isOccupied) {
+                              handleAccountsModalPress(null, table);
+                            } else {
+                              handleOpenFreeTable(table);
+                            }
+                          }}
+                          className={`
+                            relative flex flex-col justify-between p-3.5 rounded-2xl cursor-pointer
+                            transition-all duration-200 border shadow-xs hover:shadow-md
+                            ${
+                              isOccupied
+                                ? 'bg-[#FDF2F0] border-[#FED7D2] text-[#931D14]'
+                                : 'bg-[#EAF8F5] border-[#BCECE0] text-[#095C48]'
+                            }
+                          `}
+                        >
+                          {/* Badge flotante de número de cuentas en esquina superior derecha */}
+                          {isOccupied && accountsCount > 1 && (
+                            <div className="absolute -top-2 -right-2 w-5 h-5 bg-black text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md z-10 ring-2 ring-white">
+                              {accountsCount}
+                            </div>
+                          )}
+
+                          {/* Fila Superior de la Tarjeta: Badges e Info */}
+                          <div className="flex items-center justify-between w-full mb-1">
+                            {isOccupied ? (
+                              <>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#FDE2DF] text-[#D13B2C]">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#D13B2C] animate-pulse" />
+                                  {elapsedTime || '1m'}
+                                </span>
+                                <span className="text-xs font-black text-[#D13B2C]">
+                                  {currencySymbol}
+                                  {tableTotal.toFixed(2)}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#D7F3EB] text-[#0D8267]">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#0D8267]" />
+                                  Libre
+                                </span>
+                                <span className="text-[11px] font-semibold text-[#0D8267]/75">
+                                  {table.seats >= 6 ? `Mesa Grande: ${table.seats}p` : `Cap: ${table.seats || 4}p`}
+                                </span>
+                              </>
+                            )}
                           </div>
-                        </div>
-                        
-                        {/* Table Code */}
-                        <span className={`
-                          text-lg font-bold tracking-wide
-                          ${isBusy ? 'text-red-700' : 'text-emerald-700'}
-                        `}>
-                          {table.code}
-                        </span>
-                        
-                        {/* Seats */}
-                        <div className={`
-                          flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-xs
-                          ${isBusy ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}
-                        `}>
-                          <Users className="w-3 h-3" />
-                          <span className="font-medium">{table.seats}</span>
-                        </div>
 
-                        {/* Waiter name for busy tables */}
-                        {isBusy && table.waiter_name && (
-                          <div className="mt-2 pt-2 border-t border-red-200/50 w-full">
-                            <p className="text-[10px] text-red-600 font-medium truncate text-center">
-                              {table.waiter_name}
-                            </p>
+                          {/* Gráfico Central: Silueta de la Mesa */}
+                          <div className="py-1 flex items-center justify-center">
+                            {isRound ? (
+                              <RoundTableSVG isOccupied={isOccupied} />
+                            ) : (
+                              <RectangularTableSVG isOccupied={isOccupied} seats={table.seats} />
+                            )}
                           </div>
-                        )}
 
-                        {/* Multiple accounts badge */}
-                        {hasMultipleAccounts && (
-                          <div className={`
-                            absolute -top-2 -right-2 w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center shadow-lg
-                            ${isBusy ? 'animate-bounce' : ''}
-                          `}>
-                            <span className="text-[10px] font-bold text-white">
-                              {table.open_accounts}
+                          {/* Nombre de la Mesa y Subtítulos */}
+                          <div className="text-center w-full mt-0.5">
+                            <span
+                              className={`text-lg font-black tracking-tight block ${
+                                isOccupied ? 'text-[#C02E20]' : 'text-[#0D6353]'
+                              }`}
+                            >
+                              {table.code}
                             </span>
-                          </div>
-                        )}
 
-                        {/* Status indicator */}
-                        <div className={`
-                          absolute -bottom-1 w-3 h-3 rounded-full border-2 border-white
-                          ${isBusy ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}
-                        `} />
-                      </m.button>
-                    );
-                  })}
-                </div>
-              </m.div>
-            ))}
+                            {isOccupied ? (
+                              <div className="space-y-1 mt-0.5">
+                                <p className="text-[11px] font-medium text-[#C02E20]/80 truncate">
+                                  {table.waiter_name || 'Sin mesero'}
+                                </p>
+
+                                {/* Desglose de cuentas */}
+                                {accountsList.length > 0 && (
+                                  <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-[#C02E20] bg-white/70 py-0.5 px-1.5 rounded-md border border-[#FAD7D2] truncate">
+                                    {accountsList.slice(0, 2).map((acc, idx) => (
+                                      <span key={acc.id} className="whitespace-nowrap">
+                                        Cta {idx + 1}: {currencySymbol}
+                                        {Number(acc.total).toFixed(2)}
+                                      </span>
+                                    ))}
+                                    {accountsList.length > 2 && (
+                                      <span className="text-[9px] text-[#C02E20]/70 font-semibold">
+                                        +{accountsList.length - 2}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-1 text-[11px] font-medium text-[#0D8267]/80 mt-0.5">
+                                <Users className="w-3 h-3 opacity-70" />
+                                <span>{table.seats || 4}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Botones Inferiores de Acción */}
+                          <div className="mt-3 w-full">
+                            {isOccupied ? (
+                              <div className="grid grid-cols-2 gap-1.5 w-full">
+                                <m.button
+                                  whileTap={{ scale: 0.94 }}
+                                  onClick={(e) => handleComandaPress(e, table)}
+                                  className="py-1.5 px-1 bg-white text-[#C02E20] text-[11px] font-extrabold rounded-lg border border-[#F8B7AF] hover:bg-[#FDECE9] active:scale-[0.98] transition-all flex items-center justify-center gap-0.5 shadow-2xs"
+                                  title="Tomar comanda"
+                                >
+                                  <Plus className="w-3 h-3 stroke-[3]" />
+                                  <span>Comanda</span>
+                                </m.button>
+                                <m.button
+                                  whileTap={{ scale: 0.94 }}
+                                  onClick={(e) => handleAccountsModalPress(e, table)}
+                                  className="py-1.5 px-1 bg-black text-white text-[11px] font-extrabold rounded-lg hover:bg-neutral-800 active:scale-[0.98] transition-all flex items-center justify-center gap-1 shadow-2xs"
+                                  title="Ver cuentas"
+                                >
+                                  <span>Cuentas ({accountsCount})</span>
+                                </m.button>
+                              </div>
+                            ) : (
+                              <m.button
+                                whileTap={{ scale: 0.96 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenFreeTable(table);
+                                }}
+                                className="w-full py-2 px-2 bg-white text-[#0D8267] text-xs font-bold rounded-xl border border-[#BCECE0] hover:bg-[#E5F8F3] active:scale-[0.98] transition-all flex items-center justify-center gap-1 shadow-2xs"
+                              >
+                                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                                <span>Abrir Mesa</span>
+                              </m.button>
+                            )}
+                          </div>
+                        </m.div>
+                      );
+                    })}
+                  </div>
+                </m.section>
+              );
+            })}
           </AnimatePresence>
         )}
 
-        {/* Empty state */}
+        {/* Estado Vacío */}
         {!loading && tables.length === 0 && (
-          <div className="text-center py-20">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <LayoutGrid className="w-8 h-8 text-gray-400" />
+          <div className="text-center py-28">
+            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3 text-gray-400">
+              <LayoutGrid className="w-8 h-8" />
             </div>
-            <h3 className="font-medium text-gray-900 mb-1">Sin mesas</h3>
-            <p className="text-sm text-gray-500">No hay mesas configuradas para este centro</p>
+            <h3 className="font-bold text-gray-800 text-base mb-1">No hay mesas disponibles</h3>
+            <p className="text-xs text-gray-500">No encontramos mesas para el centro seleccionado</p>
           </div>
         )}
-      </div>
+      </main>
 
-      {/* Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2">
-        <div className="flex justify-around">
-          <button 
-            onClick={() => onNavigate ? onNavigate('dashboard') : onBack()}
-            className="flex flex-col items-center gap-0.5 p-2 text-gray-400 hover:text-primary-600"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-            </svg>
-            <span className="text-[10px] font-medium">Inicio</span>
-          </button>
-          <button className="flex flex-col items-center gap-0.5 p-2 text-primary-600">
-            <LayoutGrid className="w-5 h-5" />
-            <span className="text-[10px] font-medium">Mesas</span>
-          </button>
-          <button 
-            onClick={() => onNavigate ? onNavigate('accounts') : null}
-            className="flex flex-col items-center gap-0.5 p-2 text-gray-400 hover:text-primary-600"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-            <span className="text-[10px] font-medium">Caja</span>
-          </button>
-          {['admin', 'manager'].includes(user?.role) && (
-            <button 
-              onClick={() => onNavigate ? onNavigate('settings') : null}
-              className="flex flex-col items-center gap-0.5 p-2 text-gray-400 hover:text-primary-600"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span className="text-[10px] font-medium">Config</span>
-            </button>
-          )}
-        </div>
-      </nav>
+      {/* Barra de Navegación Inferior Flotante Estilo macOS */}
+      {!isKioskMode && (
+        <MacDock currentView="tables" onNavigate={onNavigate} />
+      )}
 
-      {/* Account Selection Modal */}
+      {/* ======================================================== */}
+      {/* 1. MODAL RÁPIDO PARA ABRIR MESA LIBRE */}
+      {/* ======================================================== */}
       <AnimatePresence>
-        {showNewAccount && selectedTable && (
+        {showQuickOpen && activeTable && (
           <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center"
-            onClick={() => setShowNewAccount(false)}
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4"
+            onClick={() => setShowQuickOpen(false)}
+          >
+            <m.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-gray-100"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-[#EAF8F5] border border-[#BCECE0] text-[#0D8267] flex items-center justify-center font-black text-lg">
+                    {activeTable.code}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-base">Abrir Mesa</h3>
+                    <p className="text-xs text-gray-500 font-medium">
+                      {activeTable.area_name} · Capacidad: {activeTable.seats}p
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowQuickOpen(false)}
+                  className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Selector de Comensales */}
+              <div className="my-5">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                  Número de comensales
+                </label>
+                <div className="flex items-center justify-between bg-gray-50 p-2 rounded-2xl border border-gray-100">
+                  <m.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                    className="w-12 h-12 bg-white rounded-xl shadow-xs text-xl font-black text-gray-700 hover:bg-gray-100 flex items-center justify-center"
+                  >
+                    −
+                  </m.button>
+                  <div className="text-center">
+                    <span className="text-3xl font-black text-gray-900">{guestCount}</span>
+                    <span className="block text-[11px] font-medium text-gray-500">
+                      {guestCount === 1 ? 'persona' : 'personas'}
+                    </span>
+                  </div>
+                  <m.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setGuestCount(Math.min(20, guestCount + 1))}
+                    className="w-12 h-12 bg-white rounded-xl shadow-xs text-xl font-black text-gray-700 hover:bg-gray-100 flex items-center justify-center"
+                  >
+                    +
+                  </m.button>
+                </div>
+
+                {/* Accesos rápidos de comensales */}
+                <div className="flex justify-between gap-2 mt-3">
+                  {[1, 2, 4, 6, 8].map((num) => (
+                    <button
+                      key={num}
+                      onClick={() => setGuestCount(num)}
+                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                        guestCount === num
+                          ? 'bg-[#0D8267] text-white border-[#0D8267] shadow-xs'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {num}p
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Botón de Apertura */}
+              <m.button
+                whileTap={{ scale: 0.97 }}
+                onClick={handleConfirmCreateAccount}
+                className="w-full py-3.5 bg-gray-950 text-white rounded-2xl font-bold text-sm shadow-md hover:bg-black transition-all flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                Abrir Mesa y Tomar Comanda
+              </m.button>
+            </m.div>
+          </m.div>
+        )}
+      </AnimatePresence>
+
+      {/* ======================================================== */}
+      {/* 2. MODAL SELECTOR RÁPIDO DE CUENTA (+ Comanda con múltiples) */}
+      {/* ======================================================== */}
+      <AnimatePresence>
+        {showAccountPicker && activeTable && (
+          <m.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4"
+            onClick={() => setShowAccountPicker(false)}
+          >
+            <m.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-gray-100"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-11 min-w-[50px] px-3 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-black text-sm whitespace-nowrap shadow-sm">
+                    {activeTable.code}
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm">Mesa {activeTable.code}</h3>
+                    <p className="text-xs text-slate-500 font-medium">¿A qué cuenta agregarás comanda?</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAccountPicker(false)}
+                  className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Lista de Cuentas */}
+              <div className="space-y-2.5 my-3 max-h-60 overflow-y-auto pr-1">
+                {modalAccounts.map((account, idx) => (
+                  <m.button
+                    key={account.id}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      setShowAccountPicker(false);
+                      onSelectTable(account.id, activeTable.code, activeTable.id);
+                    }}
+                    className="w-full p-3.5 bg-slate-50 hover:bg-blue-50/50 border border-slate-200/80 hover:border-blue-200 rounded-2xl flex items-center justify-between transition-all text-left group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-slate-900 text-white shadow-2xs flex items-center justify-center text-xs font-black">
+                        {idx + 1}
+                      </div>
+                      <div>
+                        <p className="font-extrabold text-slate-900 text-xs">
+                          {account.check_number || `Cuenta #${idx + 1}`}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-500">
+                          <User className="w-3 h-3 text-slate-400" />
+                          <span className="font-semibold text-slate-700">{account.waiter_name || activeTable.waiter_name}</span>
+                          <span>•</span>
+                          <span>{account.guest_count} {Number(account.guest_count) === 1 ? 'comensal' : 'comensales'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-extrabold text-xs text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg">
+                        {currencySymbol} {Number(account.totals?.total ?? account.total ?? 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </m.button>
+                ))}
+              </div>
+
+              {/* Opción para crear cuenta nueva */}
+              <button
+                onClick={handleCreateAdditionalAccount}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                Crear Nueva Cuenta en esta Mesa
+              </button>
+            </m.div>
+          </m.div>
+        )}
+      </AnimatePresence>
+
+      {/* ======================================================== */}
+      {/* 3. MODAL DE GESTIÓN DE CUENTAS (Cuentas (N) / Clic en Ocupada) */}
+      {/* ======================================================== */}
+      <AnimatePresence>
+        {showAccountsModal && activeTable && (
+          <m.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center sm:p-4"
+            onClick={() => setShowAccountsModal(false)}
           >
             <m.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl max-h-[70vh] overflow-hidden"
+              className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl border border-gray-100 overflow-hidden"
             >
-              {/* Handle */}
-              <div className="flex justify-center pt-3 pb-2">
+              {/* Barra superior de arrastre en móvil */}
+              <div className="sm:hidden flex justify-center pt-3 pb-1">
                 <div className="w-10 h-1 bg-gray-300 rounded-full" />
               </div>
 
-              {/* Header */}
-              <div className="px-5 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 bg-gradient-to-br from-gray-700 to-gray-900 rounded-2xl flex items-center justify-center shadow-md">
-                    <span className="text-lg font-extrabold text-white leading-none">
-                      {selectedTable.code?.replace(/^Mesa\s*/i, '').substring(0, 3)}
-                    </span>
+              {/* Cabecera del Modal */}
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white">
+                <div className="flex items-center gap-3.5">
+                  <div className="h-12 min-w-[54px] px-3.5 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-black text-base shadow-sm whitespace-nowrap tracking-wide flex-shrink-0">
+                    {activeTable.code}
                   </div>
                   <div>
-                    <h2 className="font-semibold text-gray-900 text-lg">{selectedTable.code}</h2>
-                    <p className="text-sm text-gray-500">{selectedTable.area_name}</p>
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-extrabold text-gray-900 text-lg leading-tight">
+                        Mesa {activeTable.code}
+                      </h2>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200/80">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                        Ocupada
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 font-medium">
+                      <span>{activeTable.area_name || 'Salón Principal'}</span>
+                      <span className="text-gray-300">•</span>
+                      <span>Total en mesa:</span>
+                      <span className="font-extrabold text-amber-900 bg-amber-50 border border-amber-200/70 px-2 py-0.5 rounded-lg text-xs">
+                        {currencySymbol} {Number(activeTable.total || 0).toFixed(2)}
+                      </span>
+                    </div>
                   </div>
                 </div>
+                <button
+                  onClick={() => setShowAccountsModal(false)}
+                  className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <div className="px-5 pb-5 space-y-3 max-h-[40vh] overflow-y-auto">
-                {/* Existing Accounts */}
-                {accounts.length > 0 && (
-                  <div>
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                      Cuentas Abiertas
-                    </h3>
-                    {accounts.map(account => (
-                      <m.button
-                        key={account.id}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => handleSelectAccount(account)}
-                        className="w-full p-3 bg-amber-50 rounded-xl flex items-center justify-between mb-2 border border-amber-100"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                            <Clock className="w-4 h-4 text-amber-600" />
-                          </div>
-                          <div className="text-left">
-                            <p className="font-medium text-gray-900 text-sm">{account.check_number}</p>
-                            <p className="text-xs text-gray-500">{account.guest_count} invitados</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-amber-600">Q {account.totals?.total?.toFixed(2) || '0.00'}</p>
-                        </div>
-                      </m.button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Guest count selector */}
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Comensales
+              {/* Contenido: Cuentas Abiertas */}
+              <div className="p-6 overflow-y-auto space-y-3.5 flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider">
+                    Cuentas Activas ({modalAccounts.length})
                   </h3>
-                  <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-2">
-                    <m.button
-                      whileTap={{ scale: 0.9 }}
-                      onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
-                      className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-lg font-bold text-gray-600 shadow-sm"
-                    >
-                      −
-                    </m.button>
-                    <div className="flex-1 text-center">
-                      <span className="text-2xl font-bold text-gray-900">{guestCount}</span>
-                      <span className="text-sm text-gray-500 ml-1">personas</span>
-                    </div>
-                    <m.button
-                      whileTap={{ scale: 0.9 }}
-                      onClick={() => setGuestCount(Math.min(20, guestCount + 1))}
-                      className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-lg font-bold text-gray-600 shadow-sm"
-                    >
-                      +
-                    </m.button>
-                  </div>
+                  {loadingModalAccounts && (
+                    <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin" />
+                  )}
                 </div>
 
-                {/* New Account Button */}
-                <m.button
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleCreateAccount}
-                  className="w-full py-3 bg-gray-900 text-white rounded-xl font-medium flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Nueva Cuenta — {guestCount} {guestCount === 1 ? 'persona' : 'personas'}
-                </m.button>
+                {modalAccounts.length === 0 && !loadingModalAccounts && (
+                  <p className="text-xs text-gray-400 py-6 text-center">No hay cuentas abiertas en esta mesa</p>
+                )}
+
+                {modalAccounts.map((account, index) => {
+                  const accTotal = Number(account.totals?.total ?? account.total ?? 0);
+                  const isPrintingThis = printingId === account.id;
+                  const waiterName = account.waiter_name || activeTable.waiter_name || 'Mesero';
+
+                  return (
+                    <div
+                      key={account.id}
+                      className="p-4 bg-white hover:bg-slate-50/80 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-sm transition-all space-y-3.5"
+                    >
+                      {/* Cabecera de la cuenta: Número, Nombre de responsable / mesero, comensales y monto */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center text-xs font-black shadow-xs flex-shrink-0">
+                            {index + 1}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-slate-900 text-sm tracking-tight">
+                                {account.check_number || `Cuenta #${index + 1}`}
+                              </span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                                <Users className="w-3 h-3 text-slate-500" />
+                                {account.guest_count || 1} {Number(account.guest_count) === 1 ? 'comensal' : 'comensales'}
+                              </span>
+                            </div>
+
+                            {/* Fila del Nombre del Mesero / Responsable */}
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <div className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                                <User className="w-2.5 h-2.5" />
+                              </div>
+                              <span className="text-xs font-bold text-slate-800">
+                                {waiterName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                (Atiende)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Total de la Cuenta */}
+                        <div className="text-right flex-shrink-0">
+                          <span className={`inline-block px-2.5 py-1 rounded-xl font-extrabold text-sm ${
+                            accTotal > 0 
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200/70' 
+                              : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {currencySymbol} {accTotal.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Botones de acción por cuenta */}
+                      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                        <button
+                          onClick={() => {
+                            setShowAccountsModal(false);
+                            onSelectTable(account.id, activeTable.code, activeTable.id);
+                          }}
+                          className="py-2.5 px-3 bg-slate-900 hover:bg-black active:scale-[0.98] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all"
+                        >
+                          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                          + Comanda
+                        </button>
+                        <button
+                          onClick={(e) => handlePrintPrecheck(e, account.id)}
+                          disabled={isPrintingThis}
+                          className="py-2.5 px-3 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all disabled:opacity-50"
+                        >
+                          {isPrintingThis ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
+                          ) : (
+                            <Printer className="w-3.5 h-3.5 text-slate-500" />
+                          )}
+                          Pre-cuenta
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Sección para agregar nueva cuenta */}
+                <div className="pt-3 border-t border-slate-100 space-y-2.5">
+                  <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                    <span className="text-xs font-bold text-slate-700">Comensales nueva cuenta:</span>
+                    <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-xl border border-slate-200 shadow-2xs">
+                      <button
+                        onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                        className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 flex items-center justify-center transition-colors"
+                      >
+                        −
+                      </button>
+                      <span className="text-xs font-black text-slate-900 w-5 text-center font-mono">
+                        {guestCount}
+                      </span>
+                      <button
+                        onClick={() => setGuestCount(guestCount + 1)}
+                        className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 flex items-center justify-center transition-colors"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <m.button
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleCreateAdditionalAccount}
+                    className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-2xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                  >
+                    <Plus className="w-4 h-4 stroke-[3]" />
+                    Abrir Nueva Cuenta en Mesa {activeTable.code}
+                  </m.button>
+                </div>
               </div>
             </m.div>
           </m.div>
@@ -478,3 +1046,5 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
     </div>
   );
 }
+
+export default Tables;

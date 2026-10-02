@@ -60,6 +60,19 @@ const accountsController = {
     res.json(result);
   }),
 
+  reopenAccount: asyncHandler(async (req, res) => {
+    const accountId = Number(req.params.accountId);
+    const userId = req.user?.id || req.session?.userId || null;
+    const { reason = "" } = req.body || {};
+
+    const result = await accountsService.reopenAccount({
+      accountId,
+      userId,
+      reason,
+    });
+    res.json(result);
+  }),
+
   removeTip: asyncHandler(async (req, res) => {
     const result = await accountsService.removeTip(req.params.accountId);
     res.json(result);

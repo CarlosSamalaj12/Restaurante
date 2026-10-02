@@ -5,8 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev:all": "concurrently \"node server.js\" \"cd react-app && npm run dev\"",
-    "dev:server": "node server.js",
+    "dev:all": "concurrently \"node --watch server.js\" \"cd react-app && npm run dev\"",
+    "dev:server": "node --watch server.js",
     "dev:client": "cd react-app && npm run dev",
     "license:bootstrap": "node bin/bootstrap-license.js",
     "test:unit": "node tests/unit/run.js",
@@ -31,7 +31,8 @@
     "escpos-network": "^3.0.0-alpha.5",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
-    "mysql2": "^3.18.0"
+    "mysql2": "^3.18.0",
+    "socket.io": "^4.8.4"
   },
   "devDependencies": {
     "concurrently": "^10.0.3"

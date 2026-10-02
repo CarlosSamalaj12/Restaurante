@@ -56,4 +56,15 @@ test("paymentsService validation tests", async (t) => {
       (err) => err instanceof BadRequestError && err.message.includes("accountId")
     );
   });
+
+  await t.test("deletePayment throws BadRequestError if paymentId or accountId missing", async () => {
+    await assert.rejects(
+      () => paymentsService.deletePayment({ paymentId: 0, accountId: 1 }),
+      (err) => err instanceof BadRequestError && err.message.includes("paymentId y accountId")
+    );
+    await assert.rejects(
+      () => paymentsService.deletePayment({ paymentId: 1, accountId: 0 }),
+      (err) => err instanceof BadRequestError && err.message.includes("paymentId y accountId")
+    );
+  });
 });

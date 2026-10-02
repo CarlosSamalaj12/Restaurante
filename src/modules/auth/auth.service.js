@@ -120,8 +120,8 @@ const authService = {
    */
   async pinLogin({ pin, ip, userAgent }) {
     const cleanPin = String(pin || "").trim();
-    if (!/^\d{4,}$/.test(cleanPin)) {
-      throw new BadRequestError("La contraseña debe tener al menos 4 dígitos numéricos");
+    if (!/^\d{6}$/.test(cleanPin)) {
+      throw new BadRequestError("El PIN debe tener exactamente 6 dígitos numéricos");
     }
 
     const user = await authRepository.findUserByPin(cleanPin);
@@ -129,11 +129,15 @@ const authService = {
       throw new ForbiddenError("Contraseña inválida");
     }
 
+    const permissions = await authRepository.getUserPermissions(Number(user.id));
     const allowedModules = await this.getAllowedModulesForContext(user, ip);
     const authToken = await this.createAuthSession(user, { ip, userAgent });
 
     return {
-      user,
+      user: {
+        ...user,
+        permissions,
+      },
       allowedModules,
       authToken,
     };
@@ -187,7 +191,10 @@ const authService = {
     } catch (_) {}
 
     return {
-      user,
+      user: {
+        ...user,
+        permissions,
+      },
       permissions,
       expiresAt,
     };
@@ -230,6 +237,25 @@ const authService = {
 
   hasPermission(session, slug) {
     if (!session) return false;
+    const role = String(session.role || "").toLowerCase();
+    if (role === "superadmin") return true;
+    if (role === "admin") {
+      // Los permisos técnicos sensibles están reservados exclusivamente para superadmin
+      const superadminSlugs = [
+        "settings.printers",
+        "settings.terminals",
+        "settings.licenses",
+        "settings.users",
+        "settings.roles",
+        "settings.production_centers",
+        "settings.routing",
+        "settings.payments",
+        "settings.fel",
+        "settings.system",
+      ];
+      if (superadminSlugs.includes(slug)) return false;
+      return true;
+    }
     return Array.isArray(session.permissions) && session.permissions.includes(slug);
   },
 
@@ -263,8 +289,34 @@ const authService = {
         if (!user) {
           throw new UnauthorizedError("Usuario no encontrado");
         }
-        if (String(user.role || "") !== "admin") {
-          throw new ForbiddenError("Solo un administrador puede acceder a esta sección");
+        const role = String(user.role || "").toLowerCase();
+        if (role !== "admin" && role !== "superadmin") {
+          throw new ForbiddenError("Solo un administrador o superadministrador puede acceder a esta sección");
+        }
+        req.session = session;
+        req.authUser = user;
+        next();
+      } catch (err) {
+        next(err);
+      }
+    };
+  },
+
+  requireSuperadmin() {
+    return async (req, res, next) => {
+      try {
+        const token = String(req.headers["x-auth-token"] || "").trim();
+        const session = await authService.getAuthSession(token);
+        if (!session) {
+          throw new UnauthorizedError("Sesión inválida o vencida");
+        }
+        const user = await authRepository.findUserById(session.userId);
+        if (!user) {
+          throw new UnauthorizedError("Usuario no encontrado");
+        }
+        const role = String(user.role || "").toLowerCase();
+        if (role !== "superadmin") {
+          throw new ForbiddenError("Acceso exclusivo para Superadministrador");
         }
         req.session = session;
         req.authUser = user;
@@ -288,6 +340,45 @@ const authService = {
         }
         req.session = session;
         next();
+      } catch (err) {
+        next(err);
+      }
+    };
+  },
+
+  requirePermissionOrSupervisor(slug) {
+    return async (req, res, next) => {
+      try {
+        const token = String(req.headers["x-auth-token"] || "").trim();
+        const session = await authService.getAuthSession(token);
+        if (!session) {
+          throw new UnauthorizedError("Sesión inválida o vencida");
+        }
+        req.session = session;
+
+        if (authService.hasPermission(session, slug)) {
+          return next();
+        }
+
+        const pin = req.body?.authPin || req.body?.supervisorPin || req.headers["x-supervisor-pin"];
+        if (pin) {
+          const ordersRepository = require("../orders/orders.repository");
+          const authResult = await ordersRepository.findManagerOrAdminByPin(String(pin).trim());
+          if (authResult && authResult.ok) {
+            req.user = req.user || {};
+            req.user.id = authResult.user.id;
+            req.authorizedBySupervisor = authResult.user;
+            return next();
+          } else {
+            return res.status(403).json({
+              ok: false,
+              code: "FORBIDDEN",
+              message: authResult?.message || "PIN de supervisor inválido o no autorizado",
+            });
+          }
+        }
+
+        throw new ForbiddenError(`No tienes el permiso requerido: ${slug}. Se requiere autorización de supervisor.`);
       } catch (err) {
         next(err);
       }

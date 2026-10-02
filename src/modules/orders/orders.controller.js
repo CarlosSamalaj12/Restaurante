@@ -39,14 +39,22 @@ const ordersController = {
     res.json(result);
   }),
 
+  updateNotes: asyncHandler(async (req, res) => {
+    const itemId = Number(req.params.itemId);
+    const { notes } = req.body || {};
+    const result = await ordersService.updateItemNotes(itemId, notes);
+    res.json(result);
+  }),
+
   voidItem: asyncHandler(async (req, res) => {
     const itemId = Number(req.params.itemId);
-    const { reason, authorizedBy, authPin } = req.body || {};
+    const { reason, authorizedBy, authPin, qtyToVoid, qty } = req.body || {};
     const result = await ordersService.voidItem({
       itemId,
       reason,
       authorizedBy,
       authPin,
+      qtyToVoid: qtyToVoid !== undefined ? qtyToVoid : qty,
     });
     res.json(result);
   }),

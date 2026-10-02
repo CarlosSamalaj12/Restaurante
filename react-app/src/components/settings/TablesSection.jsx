@@ -7,8 +7,10 @@ import {
   Plus,
   Edit,
   Trash2,
-  Check
+  Check,
+  Users
 } from 'lucide-react';
+import { TableIconBadge } from '../../utils/productIcons';
 
 export function TablesSection({ tables, centers, onReload }) {
   const [showWizard, setShowWizard] = useState(false);
@@ -37,47 +39,65 @@ export function TablesSection({ tables, centers, onReload }) {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">
-          {tables.length} mesas configuradas
-        </h2>
+      <div className="flex justify-between items-center mb-5">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            {tables.length} {tables.length === 1 ? 'mesa configurada' : 'mesas configuradas'}
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Distribución de mesas y capacidad de asientos por salón
+          </p>
+        </div>
         <button
-          onClick={() => setShowWizard(true)}
-          className="bg-primary-600 text-white px-4 py-2 rounded-xl font-medium flex items-center gap-2"
+          onClick={() => {
+            setEditingTable(null);
+            setShowWizard(true);
+          }}
+          className="group bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-200 active:scale-[0.98]"
         >
-          <Plus className="w-4 h-4" />
-          Nueva
+          <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+          <span>Nueva Mesa</span>
         </button>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {tables.map(table => (
           <m.div
             key={table.id}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl p-4 flex items-center gap-3"
+            className="group bg-white rounded-2xl p-4 flex items-center gap-3.5 border border-slate-200 hover:border-slate-300 transition-all duration-200 hover:shadow-sm"
           >
-            <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center">
-              <div className="w-6 h-4 rounded bg-white/30" />
-            </div>
+            <TableIconBadge seats={table.seats} size="md" />
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900">Mesa {table.code}</p>
-              <p className="text-xs text-gray-500">{table.area_name} • {table.seats} asientos</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-bold text-slate-900 text-sm">Mesa {table.code}</p>
+                {table.area_name && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/70">
+                    {table.area_name}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200/70">
+                  <Users className="w-3 h-3 text-amber-600" />
+                  <span>{table.seats} {Number(table.seats) === 1 ? 'asiento' : 'asientos'}</span>
+                </span>
+              </div>
             </div>
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => {
                   setEditingTable(table);
                   setShowWizard(true);
                 }}
-                className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                title="Editar mesa"
+                className="p-2.5 rounded-xl transition-all duration-200 bg-blue-50/70 hover:bg-blue-100 text-blue-600 hover:text-blue-700 border border-blue-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
               >
                 <Edit className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setConfirmDelete({ id: table.id, code: table.code })}
-                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="Eliminar mesa"
+                className="p-2.5 rounded-xl transition-all duration-200 bg-rose-50/70 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>

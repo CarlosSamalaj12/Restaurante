@@ -1,40 +1,138 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import api from '../api';
+import { BackButton } from '../components/BackButton';
 import { 
   Receipt, 
   Printer, 
   Link2, 
   Check, 
   Users, 
-  Clock,
-  ChevronRight,
-  RefreshCw,
-  Loader2,
-  ArrowLeft
+  Clock, 
+  RefreshCw, 
+  Loader2, 
+  ArrowLeft,
+  Search,
+  User,
+  Coins,
+  AlertTriangle,
+  ShoppingBag,
+  X,
+  RotateCcw,
+  Lock,
+  History,
+  Building2,
+  LogOut
 } from 'lucide-react';
 
 export function AccountsPage({ onBack, onSelectAccount }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const toast = useToast();
+  const [activeTab, setActiveTab] = useState('open'); // 'open' | 'closed'
   const [accounts, setAccounts] = useState([]);
+  const [closedAccounts, setClosedAccounts] = useState([]);
+  const [loadingClosed, setLoadingClosed] = useState(false);
+  const [reopeningId, setReopeningId] = useState(null);
+  const [centers, setCenters] = useState([]);
+  const [selectedCenterId, setSelectedCenterId] = useState('');
+  const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState([]);
   const [joining, setJoining] = useState(false);
   const [printing, setPrinting] = useState(null);
 
+  // Filters & Search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedArea, setSelectedArea] = useState('ALL');
+  const [filterMyTables, setFilterMyTables] = useState(false);
+
   const loadAccounts = async () => {
     setLoading(true);
     try {
-      const data = await api.getOpenAccounts(null);
-      setAccounts(data);
+      const [accountsRes, tablesRes, bootstrapRes] = await Promise.allSettled([
+        api.getOpenAccounts(null),
+        api.getTables(),
+        api.bootstrap()
+      ]);
+
+      if (accountsRes.status === 'fulfilled') {
+        const accs = accountsRes.value || [];
+        setAccounts(accs);
+        // If user has accounts, default to their tables
+        const myCount = accs.filter(a => a.waiter_id === user?.id).length;
+        if (myCount > 0) {
+          setFilterMyTables(true);
+        }
+      }
+      if (tablesRes.status === 'fulfilled') {
+        setTables(tablesRes.value || []);
+      }
+      if (bootstrapRes.status === 'fulfilled') {
+        const bCenters = bootstrapRes.value?.centers || [];
+        setCenters(bCenters);
+        if (bCenters.length > 0 && !selectedCenterId) {
+          setSelectedCenterId(bCenters[0].id);
+        }
+      }
     } catch (err) {
       toast.error('Error al cargar cuentas');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadClosedAccounts = async (centerId = selectedCenterId) => {
+    setLoadingClosed(true);
+    try {
+      const cId = centerId || centers[0]?.id || 1;
+      const today = new Date().toISOString().split('T')[0];
+      const results = await api.searchPaidAccounts(searchQuery || '', cId, today, today);
+      setClosedAccounts(results || []);
+    } catch (err) {
+      console.error('Error al cargar cuentas cerradas:', err);
+    } finally {
+      setLoadingClosed(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'closed') {
+      loadClosedAccounts();
+    }
+  }, [activeTab, selectedCenterId]);
+
+  const handleReopenAccount = async (account) => {
+    if (account.shift_status === 'closed') {
+      toast.error('No se puede reabrir: el turno de caja ya fue cerrado para mantener la integridad contable.');
+      return;
+    }
+    const confirmReopen = window.confirm(
+      `¿Deseas reabrir la cuenta #${account.check_number} (Mesa ${account.table_code || ''})?\n\n` +
+      `Se transferirá nuevamente a cuentas activas para que puedas modificar platillos y ajustar/eliminar formas de pago.`
+    );
+    if (!confirmReopen) return;
+
+    setReopeningId(account.id);
+    try {
+      const res = await api.reopenAccount(account.id, 'Reapertura para modificación desde Cuentas');
+      toast.success(res.message || 'Cuenta reabierta correctamente');
+      if (onSelectAccount) {
+        onSelectAccount({
+          id: res.accountId || account.id,
+          table_code: res.tableCode || account.table_code,
+          table_id: res.tableId || account.table_id
+        });
+      } else {
+        loadAccounts();
+        loadClosedAccounts();
+      }
+    } catch (e) {
+      toast.error(e.message || 'Error al reabrir cuenta');
+    } finally {
+      setReopeningId(null);
     }
   };
 
@@ -43,9 +141,9 @@ export function AccountsPage({ onBack, onSelectAccount }) {
   }, []);
 
   const toggleSelect = (accountId) => {
-    setSelected(prev => 
+    setSelected((prev) => 
       prev.includes(accountId) 
-        ? prev.filter(id => id !== accountId)
+        ? prev.filter((id) => id !== accountId)
         : [...prev, accountId]
     );
   };
@@ -58,8 +156,8 @@ export function AccountsPage({ onBack, onSelectAccount }) {
     
     const confirm = window.confirm(
       `¿Unir ${selected.length} cuentas en una sola?\n\n` +
-      selected.map(id => {
-        const acc = accounts.find(a => a.id === id);
+      selected.map((id) => {
+        const acc = accounts.find((a) => a.id === id);
         return acc ? `• Mesa ${acc.table_code} (Q${Number(acc.total || 0).toFixed(2)})` : '';
       }).join('\n')
     );
@@ -89,7 +187,7 @@ export function AccountsPage({ onBack, onSelectAccount }) {
       const printWindow = window.open('', '_blank');
       if (printWindow) {
         const account = data.account;
-        const items = data.items;
+        const items = data.items || [];
         const subtotal = items.reduce((sum, i) => sum + Number(i.line_total || 0), 0);
         const tax = subtotal * 0.12;
         const total = subtotal + tax;
@@ -115,7 +213,7 @@ export function AccountsPage({ onBack, onSelectAccount }) {
             <p class="center"><strong>Check: ${account.check_number}</strong></p>
             <p class="center">Mesa: ${account.table_code}</p>
             <p class="center">Mesero: ${account.waiter_name}</p>
-            <p class="center">Comensales: ${account.guest_count}</p>
+            <p class="center">Comensales: ${account.guest_count || 1}</p>
             <hr>
             ${items.map(item => `
               <div class="item">
@@ -152,243 +250,840 @@ export function AccountsPage({ onBack, onSelectAccount }) {
   };
 
   const timeSince = (dateStr) => {
-    if (!dateStr) return '';
+    if (!dateStr) return { text: '', isLong: false };
     const now = new Date();
     const then = new Date(dateStr);
-    const diff = Math.floor((now - then) / 60000);
-    if (diff < 60) return `${diff}m`;
+    const diff = Math.max(0, Math.floor((now - then) / 60000));
     const hrs = Math.floor(diff / 60);
-    return `${hrs}h ${diff % 60}m`;
+    const mins = diff % 60;
+    const isLong = hrs >= 24;
+    if (hrs === 0) return { text: `${mins}m`, isLong: false };
+    return { text: `${hrs}h ${mins}m`, isLong };
   };
 
+  // Metrics calculations
+  const totalPending = useMemo(() => {
+    return accounts.reduce((sum, a) => sum + Number(a.total || 0), 0);
+  }, [accounts]);
+
+  const occupiedTablesCount = useMemo(() => {
+    return new Set(accounts.map((a) => a.table_id || a.table_code)).size;
+  }, [accounts]);
+
+  const totalTablesCount = tables.length > 0 ? tables.length : Math.max(accounts.length, 24);
+
+  const emptyOrdersCount = useMemo(() => {
+    return accounts.filter(
+      (a) => (!a.items || a.items.length === 0) && Number(a.total || 0) === 0
+    ).length;
+  }, [accounts]);
+
+  const avgTimeFormatted = useMemo(() => {
+    if (accounts.length === 0) return '0 min';
+    const totalMinutes = accounts.reduce((sum, a) => {
+      if (!a.opened_at) return sum;
+      const diff = Math.max(0, Math.floor((new Date() - new Date(a.opened_at)) / 60000));
+      return sum + diff;
+    }, 0);
+    const avg = totalMinutes / accounts.length;
+    if (avg < 60) return `${Math.round(avg)} min`;
+    const hrs = Math.floor(avg / 60);
+    const mins = Math.round(avg % 60);
+    return `${hrs}h ${mins}m`;
+  }, [accounts]);
+
+  // Dynamic Salones / Areas from open accounts
+  const areaGroups = useMemo(() => {
+    const map = {};
+    accounts.forEach((a) => {
+      let areaKey = a.area_name || a.center_name || 'Salón Principal';
+      const prefixMatch = (a.table_code || '').match(/^([A-Za-z]+)/);
+      const prefix = prefixMatch ? prefixMatch[1] : '';
+      let displayLabel = areaKey;
+      if (prefix && !areaKey.toLowerCase().includes(prefix.toLowerCase())) {
+        displayLabel = `${areaKey} - ${prefix}`;
+      }
+      if (!map[displayLabel]) {
+        map[displayLabel] = { key: displayLabel, label: displayLabel, count: 0 };
+      }
+      map[displayLabel].count += 1;
+    });
+    return Object.values(map);
+  }, [accounts]);
+
+  const myAccountsCount = useMemo(() => {
+    return accounts.filter((a) => a.waiter_id === user?.id).length;
+  }, [accounts, user]);
+
+  // Filtering accounts
+  const filteredAccounts = useMemo(() => {
+    return accounts.filter((account) => {
+      // 1. Search Query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesTable = (account.table_code || '').toLowerCase().includes(q);
+        const matchesCheck = (account.check_number ? String(account.check_number) : '').toLowerCase().includes(q);
+        const matchesWaiter = (account.waiter_name || '').toLowerCase().includes(q);
+        if (!matchesTable && !matchesCheck && !matchesWaiter) {
+          return false;
+        }
+      }
+
+      // 2. Salón / Area Filter
+      if (selectedArea !== 'ALL') {
+        let areaKey = account.area_name || account.center_name || 'Salón Principal';
+        const prefixMatch = (account.table_code || '').match(/^([A-Za-z]+)/);
+        const prefix = prefixMatch ? prefixMatch[1] : '';
+        let displayLabel = areaKey;
+        if (prefix && !areaKey.toLowerCase().includes(prefix.toLowerCase())) {
+          displayLabel = `${areaKey} - ${prefix}`;
+        }
+        if (displayLabel !== selectedArea) {
+          return false;
+        }
+      }
+
+      // 3. Mis Mesas / Todo el Salón
+      if (filterMyTables && user?.id) {
+        if (account.waiter_id !== user.id) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [accounts, searchQuery, selectedArea, filterMyTables, user]);
+
+  // User presentation
+  const userName = user?.full_name || user?.name || user?.username || 'Carlos Samalaj';
+  const userInitials = useMemo(() => {
+    const parts = userName.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }, [userName]);
+
+  const userRoleText = user?.role_name ? `${user.role_name} / Turno A` : 'Mesero / Turno A';
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-100 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={onBack}
-            className="p-1.5 -ml-1.5 text-gray-400 hover:text-gray-600"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex items-center gap-2 flex-1">
-            <Receipt className="w-4 h-4 text-primary-600" />
-            <h1 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Cuentas Abiertas</h1>
-            {accounts.length > 0 && (
-              <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                {accounts.length}
-              </span>
+    <div className="min-h-screen bg-[#f4f7f9] text-slate-800 pb-16">
+      {/* Top Header Bar */}
+      <header className="bg-white border-b border-slate-200/80 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-[1600px] mx-auto px-4 lg:px-6 py-3 flex items-center justify-between gap-3">
+          {/* Left: Back & Title */}
+          <div className="flex items-center gap-3">
+            <BackButton 
+              onClick={onBack}
+              label="Volver"
+              title="Volver"
+            />
+            <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-200/70 flex items-center justify-center text-[#0a4855] shadow-xs flex-shrink-0">
+              <Receipt className="w-5 h-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-tight">
+                  {activeTab === 'open' ? 'Cuentas Abiertas' : 'Cuentas Cerradas / Reabrir'}
+                </h1>
+                <span className="bg-[#e1f5f7] text-[#0c7585] text-xs font-semibold px-2.5 py-0.5 rounded-full border border-[#b2e7ed]">
+                  {activeTab === 'open' ? `${accounts.length} activas` : `${closedAccounts.length} cerradas (hoy)`}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-normal leading-tight hidden sm:block">
+                {activeTab === 'open'
+                  ? 'Control de mesas activas y facturación en curso'
+                  : 'Historial de hoy y reapertura de cuentas para modificaciones contables'}
+              </p>
+            </div>
+          </div>
+
+          {/* Center: Search Box */}
+          <div className="relative flex-1 max-w-md hidden md:block">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por mesa (ELD-2), comanda (#CHK-0062) o mesero..."
+              className="w-full pl-10 pr-8 py-2 bg-slate-50/80 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-full text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600 transition-all shadow-xs"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             )}
           </div>
-          {accounts.length >= 2 && (
+
+          {/* Right: Actions & User Chip */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {activeTab === 'open' && accounts.length >= 2 && (
+              <button
+                onClick={() => {
+                  setSelectMode(!selectMode);
+                  setSelected([]);
+                }}
+                className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-xs ${
+                  selectMode
+                    ? 'bg-[#0a4855] text-white shadow-[#0a4855]/20 shadow-md'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90'
+                }`}
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                <span>{selectMode ? 'Cancelar' : 'Unir Cuentas'}</span>
+              </button>
+            )}
+
             <button
-              onClick={() => {
-                setSelectMode(!selectMode);
-                setSelected([]);
-              }}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1 ${
-                selectMode 
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200' 
-                  : 'bg-gray-100 text-gray-600'
+              onClick={activeTab === 'open' ? loadAccounts : () => loadClosedAccounts()}
+              disabled={activeTab === 'open' ? loading : loadingClosed}
+              title="Actualizar cuentas"
+              className="w-9 h-9 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-600 transition-colors shadow-xs disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${(activeTab === 'open' ? loading : loadingClosed) ? 'animate-spin text-teal-600' : ''}`} />
+            </button>
+
+            {/* Subtle Divider */}
+            <div className="h-7 w-px bg-slate-200 hidden sm:block" />
+
+            {/* User Profile Chip */}
+            <div className="flex items-center gap-2.5 pl-1">
+              <div className="w-9 h-9 rounded-full bg-[#0a4855] text-white font-bold text-xs flex items-center justify-center shadow-xs flex-shrink-0">
+                {userInitials}
+              </div>
+              <div className="hidden lg:block text-left">
+                <p className="text-xs font-bold text-slate-800 leading-tight">
+                  {userName}
+                </p>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  {userRoleText}
+                </p>
+              </div>
+            </div>
+
+            {/* Botón Salir (PIN) */}
+            <button
+              onClick={logout}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer ml-1"
+              title="Cerrar sesión / Salir (PIN)"
+            >
+              <LogOut className="w-4 h-4 text-red-600" />
+              <span className="hidden sm:inline">Salir (PIN)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Tab switch row */}
+        <div className="px-4 lg:px-6 pb-2.5 pt-1 max-w-[1600px] mx-auto flex items-center justify-between flex-wrap gap-2 border-t border-slate-100">
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+            <button
+              onClick={() => setActiveTab('open')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                activeTab === 'open'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              <Link2 className="w-3 h-3" />
-              {selectMode ? 'Cancelar' : 'Unir'}
+              <Receipt className="w-3.5 h-3.5" />
+              <span>Abiertas ({accounts.length})</span>
             </button>
+            <button
+              onClick={() => setActiveTab('closed')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                activeTab === 'closed'
+                  ? 'bg-[#0a4855] text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Cerradas (Hoy) ({closedAccounts.length})</span>
+            </button>
+          </div>
+
+          {activeTab === 'closed' && centers.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5" /> Centro:
+              </span>
+              <select
+                value={selectedCenterId}
+                onChange={(e) => setSelectedCenterId(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-xs outline-none"
+              >
+                {centers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
-          <button
-            onClick={loadAccounts}
-            className="p-1.5 text-gray-400 hover:text-gray-600"
-            disabled={loading}
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
         </div>
-        {accounts.length > 0 && (
-          <p className="text-[11px] text-gray-400 mt-1.5 ml-8">
-            Total: <span className="font-medium text-gray-600">Q{accounts.reduce((s, a) => s + Number(a.total || 0), 0).toFixed(2)}</span>
-          </p>
-        )}
+
+        {/* Mobile Search Row */}
+        <div className="px-4 pb-3 md:hidden">
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por mesa, comanda o mesero..."
+              className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-xs text-slate-800 placeholder-slate-400"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
       </header>
 
-      {/* Join action bar */}
-      <AnimatePresence>
-        {selectMode && selected.length >= 2 && (
-          <m.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="mx-4 mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3"
-          >
-            <p className="text-xs text-blue-700 font-medium">
-              {selected.length} cuentas seleccionadas
-            </p>
-            <button
-              onClick={handleJoin}
-              disabled={joining}
-              className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-xs font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {joining ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Link2 className="w-3.5 h-3.5" />
-              )}
-              {joining ? 'Uniendo...' : `Unir ${selected.length} cuentas`}
-            </button>
-          </m.div>
-        )}
-      </AnimatePresence>
-
-      {/* Cards - Receipt style grid */}
-      <div className="px-3 pt-2">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+      {/* Main Container */}
+      <main className="max-w-[1600px] mx-auto px-4 lg:px-6 pt-5">
+        {activeTab === 'open' ? (
+          <>
+            {/* Metric Cards Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+          {/* Card 1: TOTAL PENDIENTE */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                TOTAL PENDIENTE
+              </span>
+              <p className="text-2xl font-black text-slate-900 tracking-tight mt-1">
+                Q{totalPending.toFixed(2)}
+              </p>
+            </div>
+            <div className="w-11 h-11 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shadow-xs">
+              <Coins className="w-5 h-5 stroke-[2]" />
+            </div>
           </div>
-        ) : accounts.length === 0 ? (
-          <m.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl p-6 text-center border border-gray-100 shadow-sm"
-          >
-            <Receipt className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-            <p className="text-sm font-medium text-gray-700">No hay cuentas abiertas</p>
-          </m.div>
+
+          {/* Card 2: MESAS OCUPADAS */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                MESAS OCUPADAS
+              </span>
+              <p className="text-2xl font-black text-slate-900 tracking-tight mt-1">
+                {occupiedTablesCount}{' '}
+                <span className="text-xs font-medium text-slate-500 font-sans tracking-normal">
+                  de {totalTablesCount} mesas
+                </span>
+              </p>
+            </div>
+            <div className="w-11 h-11 rounded-full bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 shadow-xs">
+              <Users className="w-5 h-5 stroke-[2.5]" />
+            </div>
+          </div>
+
+          {/* Card 3: SIN PEDIDOS */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                SIN PEDIDOS
+              </span>
+              <p className="text-2xl font-black text-amber-500 tracking-tight mt-1">
+                {emptyOrdersCount}{' '}
+                <span className="text-xs font-medium text-amber-600/90 font-sans tracking-normal">
+                  requieren comanda
+                </span>
+              </p>
+            </div>
+            <div className="w-11 h-11 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500 shadow-xs">
+              <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+            </div>
+          </div>
+
+          {/* Card 4: TIEMPO PROMEDIO */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                TIEMPO PROMEDIO
+              </span>
+              <p className="text-2xl font-black text-slate-900 tracking-tight mt-1">
+                {avgTimeFormatted}
+              </p>
+            </div>
+            <div className="w-11 h-11 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500 shadow-xs">
+              <Clock className="w-5 h-5 stroke-[2.5]" />
+            </div>
+          </div>
+        </div>
+
+        {/* Filters Row */}
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
+          {/* Left: Salón Pills */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full scrollbar-none">
+            <span className="text-xs font-bold text-slate-400 mr-1 flex-shrink-0">
+              Salón:
+            </span>
+            <button
+              onClick={() => setSelectedArea('ALL')}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-xs ${
+                selectedArea === 'ALL'
+                  ? 'bg-[#0c4e5b] text-white shadow-sm'
+                  : 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200/90'
+              }`}
+            >
+              Todas ({accounts.length})
+            </button>
+            {areaGroups.map((group) => (
+              <button
+                key={group.key}
+                onClick={() => setSelectedArea(group.key)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-xs ${
+                  selectedArea === group.key
+                    ? 'bg-[#0c4e5b] text-white shadow-sm'
+                    : 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200/90'
+                }`}
+              >
+                {group.label} ({group.count})
+              </button>
+            ))}
+          </div>
+
+          {/* Right: Filtrar por Toggle */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-xs font-bold text-slate-400 mr-1">
+              Filtrar por:
+            </span>
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200/70">
+              <button
+                onClick={() => setFilterMyTables(true)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  filterMyTables
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Mis Mesas ({myAccountsCount})
+              </button>
+              <button
+                onClick={() => setFilterMyTables(false)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  !filterMyTables
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Todo el Salón
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Join Selection Sticky Bar (when selectMode is active) */}
+        <AnimatePresence>
+          {selectMode && selected.length >= 2 && (
+            <m.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-5 bg-[#0a4855] text-white rounded-2xl p-4 shadow-lg flex items-center justify-between flex-wrap gap-3"
+            >
+              <div>
+                <p className="text-sm font-bold">
+                  {selected.length} cuentas seleccionadas para unir
+                </p>
+                <p className="text-xs text-teal-100">
+                  Los productos y órdenes se combinarán en la primera cuenta elegida.
+                </p>
+              </div>
+              <button
+                onClick={handleJoin}
+                disabled={joining}
+                className="bg-white text-[#0a4855] hover:bg-teal-50 px-5 py-2 rounded-xl text-xs font-black shadow-md flex items-center gap-2 disabled:opacity-50 transition-all"
+              >
+                {joining ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Link2 className="w-4 h-4" />
+                )}
+                {joining ? 'Uniendo cuentas...' : `Unir ${selected.length} Cuentas Ahora`}
+              </button>
+            </m.div>
+          )}
+        </AnimatePresence>
+
+        {/* Accounts Card Grid */}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+            <Loader2 className="w-8 h-8 animate-spin text-teal-600 mb-2" />
+            <p className="text-xs font-semibold">Cargando cuentas activas...</p>
+          </div>
+        ) : filteredAccounts.length === 0 ? (
+          <div className="bg-white rounded-2xl p-12 text-center border border-slate-200/80 shadow-xs max-w-md mx-auto my-8">
+            <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-slate-400 border border-slate-100">
+              <Receipt className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-800 mb-1">
+              No se encontraron cuentas abiertas
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              {searchQuery.trim() || selectedArea !== 'ALL' || filterMyTables
+                ? 'Prueba ajustando los filtros o el término de búsqueda.'
+                : 'Actualmente no hay ninguna mesa con cuenta abierta.'}
+            </p>
+            {(searchQuery.trim() || selectedArea !== 'ALL' || filterMyTables) && (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedArea('ALL');
+                  setFilterMyTables(false);
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+              >
+                Restablecer Filtros
+              </button>
+            )}
+          </div>
         ) : (
-          <div className="grid grid-cols-4 gap-2">
-            {accounts.map((account) => {
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredAccounts.map((account) => {
               const isMine = account.waiter_id === user?.id;
               const isSelected = selected.includes(account.id);
-              
+              const isEmpty = (!account.items || account.items.length === 0) && Number(account.total || 0) === 0;
+              const timeInfo = timeSince(account.opened_at);
+
               return (
-                <m.div
+                <div
                   key={account.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="cursor-pointer transition-all"
                   onClick={() => {
                     if (selectMode) toggleSelect(account.id);
-                    else onSelectAccount(account);
                   }}
+                  className={`bg-white rounded-2xl border transition-all duration-200 flex flex-col justify-between overflow-hidden shadow-xs hover:shadow-md ${
+                    selectMode ? 'cursor-pointer' : ''
+                  } ${
+                    isSelected
+                      ? 'ring-2 ring-teal-600 border-teal-600 shadow-md'
+                      : 'border-slate-200/80 hover:border-slate-300'
+                  }`}
                 >
-                  {/* Receipt card - improved */}
-                  <div className={`
-                    bg-white rounded-lg shadow-sm overflow-hidden border-2
-                    ${isMine ? 'border-cyan-500 shadow-cyan-200 shadow-md' : 'border-gray-200'}
-                    ${isSelected ? 'border-blue-500 ring-2 ring-blue-300' : ''}
-                  `}>
-                    {/* Header - Receipt style */}
-                    <div className={`${isMine ? 'bg-cyan-600' : 'bg-gray-800'} text-white px-2 py-1.5`}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold tracking-wide">MESA {account.table_code}</span>
+                  {/* Card Header (Deep Teal #0c4451) */}
+                  <div className="bg-[#0c4451] text-white px-4 py-3 relative">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-extrabold tracking-wide uppercase">
+                          MESA {account.table_code}
+                        </span>
                         {isMine && (
-                          <span className="bg-white text-cyan-600 text-[8px] font-black px-1.5 py-0.5 rounded">
+                          <span className="bg-white/20 text-white text-[9px] font-black px-1.5 py-0.5 rounded tracking-wider uppercase">
                             MÍO
                           </span>
                         )}
                       </div>
-                      <p className="text-[7px] text-gray-300 mt-0.5">{account.check_number}</p>
+                      {timeInfo.text && (
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                          timeInfo.isLong 
+                            ? 'bg-amber-400/20 text-amber-200 border border-amber-400/30'
+                            : 'bg-white/15 text-white/95'
+                        }`}>
+                          <Clock className="w-3 h-3" />
+                          {timeInfo.text}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] font-mono text-teal-200/80 mt-0.5">
+                      {account.check_number ? (String(account.check_number).startsWith('#') ? account.check_number : `CHK-${account.check_number}`) : `ID-${account.id}`}
+                    </p>
+                  </div>
+
+                  {/* Card Body */}
+                  <div className="p-4 flex-1 flex flex-col justify-between">
+                    {/* Waiter row & status badge */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <User className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        <span className="text-xs font-semibold text-slate-700 truncate">
+                          {account.waiter_name}
+                        </span>
+                      </div>
+                      {isEmpty ? (
+                        <span className="bg-amber-50 text-amber-700 border border-amber-200/70 text-[10px] font-semibold px-2 py-0.5 rounded-md flex-shrink-0">
+                          Esperando orden
+                        </span>
+                      ) : account.area_name ? (
+                        <span className="text-[10px] text-slate-400 font-medium truncate flex-shrink-0">
+                          {account.area_name}
+                        </span>
+                      ) : (
+                        <span className="bg-sky-50 text-sky-700 border border-sky-200/70 text-[10px] font-semibold px-2 py-0.5 rounded-md flex-shrink-0">
+                          Cuenta Activa
+                        </span>
+                      )}
                     </div>
 
-                    {/* Waiter */}
-                    <div className="px-2 pt-1.5 pb-1">
-                      <p className={`text-[9px] font-medium truncate ${isMine ? 'text-cyan-600' : 'text-gray-500'}`}>
-                        👤 {account.waiter_name}
-                      </p>
-                    </div>
-
-                    {/* Products preview */}
-                    <div className="px-2">
-                      {account.items && account.items.length > 0 ? (
-                        <div className="space-y-0.5 mb-1.5">
-                          {account.items.slice(0, 4).map((item, i) => (
-                            <div key={i} className="flex justify-between items-center">
-                              <span className="text-[8px] text-gray-500 truncate flex-1 mr-1">
-                                {item.qty}x {item.product_name}
-                              </span>
-                              <span className="text-[8px] text-gray-400 shrink-0">
+                    {/* Products list or empty state */}
+                    <div className="min-h-[110px] flex flex-col justify-center my-1">
+                      {isEmpty ? (
+                        <div className="text-center py-2">
+                          <div className="w-9 h-9 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center mx-auto mb-1.5 text-slate-300">
+                            <ShoppingBag className="w-4 h-4" />
+                          </div>
+                          <p className="text-xs font-medium text-slate-500 italic">
+                            Sin productos agregados
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            Toca entrar para registrar comanda
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {(account.items || []).slice(0, 4).map((item, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs">
+                              <div className="flex items-center min-w-0 mr-2">
+                                <span className="font-bold text-sky-700 mr-1.5 flex-shrink-0">
+                                  {Number(item.qty || 1).toFixed(2)}x
+                                </span>
+                                <span className="text-slate-700 font-normal truncate">
+                                  {item.product_name}
+                                </span>
+                              </div>
+                              <span className="font-semibold text-slate-700 flex-shrink-0 whitespace-nowrap">
                                 Q{Number(item.line_total || 0).toFixed(2)}
                               </span>
                             </div>
                           ))}
                           {account.item_count > 4 && (
-                            <p className="text-[7px] text-gray-400 text-center">
-                              +{account.item_count - 4} más...
-                            </p>
+                            <div 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectAccount(account);
+                              }}
+                              className="text-center text-[11px] font-semibold text-sky-600 hover:text-sky-700 py-1 bg-sky-50/60 rounded-lg cursor-pointer mt-1"
+                            >
+                              + {account.item_count - 4} productos más...
+                            </div>
                           )}
                         </div>
-                      ) : (
-                        <p className="text-[8px] text-gray-400 italic mb-1.5">Sin productos</p>
                       )}
                     </div>
 
-                    {/* Divider */}
-                    <div className="border-t-2 border-dashed border-gray-300 mx-2"></div>
+                    {/* Dashed divider */}
+                    <div className="border-t border-dashed border-slate-200 my-2" />
 
-                    {/* Footer - Total + Info */}
-                    <div className="px-2 py-1.5 bg-gray-50">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[7px] text-gray-400">{account.guest_count}👤</span>
-                          <span className="text-[7px] text-gray-400">{timeSince(account.opened_at)}</span>
-                        </div>
-                        <p className="text-sm font-black text-gray-900">
+                    {/* Subtotal & Guests */}
+                    <div className="flex items-end justify-between">
+                      <div className="flex items-center gap-1 text-slate-400">
+                        <Users className="w-3.5 h-3.5" />
+                        <span className="text-xs font-medium text-slate-400">
+                          {account.guest_count || 1} pers.
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                          SUBTOTAL
+                        </span>
+                        <span className="text-xl font-black text-slate-900 tracking-tight">
                           Q{Number(account.total || 0).toFixed(2)}
-                        </p>
+                        </span>
                       </div>
                     </div>
+                  </div>
 
-                    {/* Actions */}
-                    {!selectMode && (
-                      <div className="px-2 pb-2 pt-1 flex gap-1">
+                  {/* Card Actions Bottom */}
+                  <div className="p-3 bg-slate-50/70 border-t border-slate-100">
+                    {selectMode ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSelect(account.id);
+                        }}
+                        className={`w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                          isSelected
+                            ? 'bg-[#0a4855] text-white shadow-[#0a4855]/20 shadow-sm'
+                            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                          isSelected ? 'bg-white text-[#0a4855] border-white' : 'border-slate-300'
+                        }`}>
+                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+                        {isSelected ? 'Seleccionada' : 'Seleccionar'}
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handlePrint(account.id);
                           }}
                           disabled={printing === account.id}
-                          className="flex-1 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-[8px] font-medium flex items-center justify-center gap-0.5 transition-colors disabled:opacity-50"
+                          className="py-2 px-3 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-200/90 shadow-xs transition-colors disabled:opacity-50"
                         >
                           {printing === account.id ? (
-                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           ) : (
-                            <Printer className="w-2.5 h-2.5" />
+                            <Printer className="w-3.5 h-3.5" />
                           )}
                           Precuenta
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectAccount(account);
-                          }}
-                          className="flex-1 py-1 bg-gray-900 hover:bg-gray-800 text-white rounded text-[8px] font-bold flex items-center justify-center gap-0.5 transition-colors"
-                        >
-                          Entrar →
-                        </button>
-                      </div>
-                    )}
 
-                    {/* Selection */}
-                    {selectMode && (
-                      <div className="px-2 pb-2 pt-1 flex justify-center">
-                        <div className={`
-                          w-6 h-6 rounded-full border-2 flex items-center justify-center
-                          ${isSelected 
-                            ? 'bg-blue-500 border-blue-500' 
-                            : 'bg-white border-gray-300'}
-                        `}>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                        </div>
+                        {isEmpty ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectAccount(account);
+                            }}
+                            className="flex-1 py-2 px-3 bg-[#0e1d28] hover:bg-[#1a2d3b] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-xs transition-colors"
+                          >
+                            + Tomar Pedido
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectAccount(account);
+                            }}
+                            className="flex-1 py-2 px-3 bg-[#0a4855] hover:bg-[#083a45] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-xs transition-colors"
+                          >
+                            Entrar →
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
-                </m.div>
+                </div>
               );
             })}
           </div>
         )}
-      </div>
+          </>
+        ) : (
+          <div className="space-y-4">
+            {/* Info notice about integrity */}
+            <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3 text-xs text-amber-900 shadow-2xs">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold block text-sm mb-0.5 text-amber-950">
+                  Reapertura de Cuentas y Políticas de Auditoría
+                </span>
+                <p className="text-amber-800 leading-relaxed">
+                  Solo se permite reabrir cuentas cuyo turno de caja siga <strong>activo</strong>. Al reabrir, la cuenta volverá a estar abierta en su mesa para que puedas corregir platillos, modificar o eliminar formas de pago erróneas y cerrarla nuevamente. Si el turno en que se cobró ya fue cerrado, la cuenta permanecerá bloqueada por integridad contable.
+                </p>
+              </div>
+            </div>
+
+            {loadingClosed ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                <Loader2 className="w-8 h-8 animate-spin text-teal-600 mb-2" />
+                <p className="text-xs font-semibold">Cargando cuentas cerradas...</p>
+              </div>
+            ) : closedAccounts.length === 0 ? (
+              <div className="bg-white rounded-2xl p-12 text-center border border-slate-200/80 shadow-xs max-w-md mx-auto my-8">
+                <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-slate-400 border border-slate-100">
+                  <History className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-slate-800 mb-1">
+                  No hay cuentas cerradas hoy en este centro
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Las cuentas cobradas hoy aparecerán aquí para consulta o reapertura.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {closedAccounts.map((account) => {
+                  const isClosedShift = account.shift_status === 'closed';
+                  const isReopening = reopeningId === account.id;
+
+                  return (
+                    <div
+                      key={account.id}
+                      className="bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all overflow-hidden flex flex-col justify-between"
+                    >
+                      <div className="p-4 space-y-3">
+                        {/* Header: Table, Check and Shift Status */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold text-slate-900 text-sm">
+                                Mesa {account.table_code}
+                              </span>
+                              <span className="text-[11px] font-mono font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                #{account.check_number}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Cerrada: {account.closed_at ? new Date(account.closed_at).toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' }) : '---'}
+                            </p>
+                          </div>
+
+                          {isClosedShift ? (
+                            <span
+                              title="Turno de caja cerrado. Por integridad contable la reapertura está bloqueada."
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1"
+                            >
+                              <Lock className="w-3 h-3 text-slate-400" />
+                              Turno Cerrado
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              Turno Activo
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Waiter info */}
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <User className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Mesero: <strong>{account.waiter_name || '---'}</strong></span>
+                        </div>
+
+                        {/* Amount */}
+                        <div className="pt-2 border-t border-dashed border-slate-200 flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            TOTAL COBRADO
+                          </span>
+                          <span className="text-xl font-black text-slate-900 font-mono tracking-tight">
+                            Q{Number(account.total || 0).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card Action */}
+                      <div className="p-3 bg-slate-50/70 border-t border-slate-100">
+                        {isClosedShift ? (
+                          <div
+                            title="No se puede reabrir porque el turno de caja ya fue cerrado."
+                            className="w-full py-2 bg-slate-100 text-slate-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-not-allowed border border-slate-200"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Turno Cerrado (Bloqueado)</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleReopenAccount(account)}
+                            disabled={isReopening}
+                            className="w-full py-2 bg-amber-500 hover:bg-amber-600 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all disabled:opacity-50"
+                          >
+                            {isReopening ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            )}
+                            <span>Reabrir Cuenta</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
     </div>
   );
 }

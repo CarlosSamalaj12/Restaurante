@@ -9,6 +9,7 @@ import {
   Trash2,
   Printer
 } from 'lucide-react';
+import { CenterIconBadge } from '../../utils/productIcons';
 
 export function ProductionCentersSection({ productionCenters, centers, onReload }) {
   const [showWizard, setShowWizard] = useState(false);
@@ -67,69 +68,69 @@ export function ProductionCentersSection({ productionCenters, centers, onReload 
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-5">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
             Centros de Producción
           </h2>
-          <p className="text-sm text-gray-500">
-            Define dónde se preparan los productos (cocina, bar, etc.)
+          <p className="text-xs text-slate-500 mt-0.5">
+            Define dónde se preparan los productos (cocina, bar, despacho, etc.)
           </p>
         </div>
         <button
           onClick={() => setShowWizard(true)}
-          className="bg-primary-600 text-white px-4 py-2 rounded-xl font-medium flex items-center gap-2"
+          className="group bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-200 active:scale-[0.98]"
         >
-          <Plus className="w-4 h-4" />
-          Nuevo Centro
+          <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+          <span>Nuevo Centro</span>
         </button>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {productionCenters.map(center => (
           <m.div
             key={center.id}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl p-4 flex items-center gap-4 border border-gray-200"
+            className="group bg-white rounded-2xl p-4 flex items-center gap-3.5 border border-slate-200 hover:border-slate-300 transition-all duration-200 hover:shadow-sm"
           >
-            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getCenterColor(center.name)} flex items-center justify-center shadow-sm`}>
-              <div className="w-5 h-5 rounded-full bg-white/30" />
-            </div>
+            <CenterIconBadge centerName={center.name} size="md" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <p className="font-semibold text-gray-900">{center.name}</p>
+                <p className="font-bold text-slate-900 text-[15px]">{center.name}</p>
                 {!center.is_active && (
-                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">Inactivo</span>
+                  <span className="text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-0.5 rounded-full">
+                    Inactivo
+                  </span>
                 )}
               </div>
-              <p className="text-sm text-gray-500">
-                {center.printer_name ? `Impresora: ${center.printer_name}` : 'Sin impresora'}
+              <p className="text-xs text-slate-500 mt-0.5">
+                {center.printer_name ? `Impresora: ${center.printer_name}` : 'Sin impresora física'}
               </p>
               {center.printer_ip ? (
-                <p className="text-xs text-emerald-700 mt-0.5">
+                <p className="text-xs font-mono text-emerald-700 mt-0.5 font-medium">
                   {center.printer_ip}:{center.printer_port || 9100}
                 </p>
               ) : (
                 <p className="text-xs text-amber-600 mt-0.5">
-                  ⚠️ Sin IP — la cocina usará el KDS en pantalla
+                  Sin IP — la cocina usará el KDS en pantalla
                 </p>
               )}
               {getOperationCenterName(center.operation_center_id) && (
-                <p className="text-xs text-blue-600 mt-1">
-                  Centro: {getOperationCenterName(center.operation_center_id)}
+                <p className="text-xs text-blue-600 mt-0.5 font-medium">
+                  Centro de Operación: {getOperationCenterName(center.operation_center_id)}
                 </p>
               )}
             </div>
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
               <button
                 onClick={() => testPrint('production_center', center.id, center.printer_ip)}
                 disabled={!center.printer_ip || testing === center.id}
                 title={center.printer_ip ? 'Imprimir página de prueba' : 'Configurá la IP primero'}
-                className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                className="p-2.5 rounded-xl transition-all duration-200 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-600 hover:text-emerald-700 border border-emerald-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:hover:scale-100"
               >
                 {testing === center.id ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
                 ) : (
                   <Printer className="w-4 h-4" />
                 )}
@@ -139,13 +140,15 @@ export function ProductionCentersSection({ productionCenters, centers, onReload 
                   setEditingCenter(center);
                   setShowWizard(true);
                 }}
-                className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                title="Editar centro de producción"
+                className="p-2.5 rounded-xl transition-all duration-200 bg-blue-50/70 hover:bg-blue-100 text-blue-600 hover:text-blue-700 border border-blue-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
               >
                 <Edit className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setConfirmDelete({ id: center.id, name: center.name })}
-                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="Eliminar centro de producción"
+                className="p-2.5 rounded-xl transition-all duration-200 bg-rose-50/70 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200/60 shadow-2xs hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>

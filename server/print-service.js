@@ -200,7 +200,7 @@ function buildKitchenTicket(ticket, center, account) {
 
 function buildCustomerReceipt(receipt, restaurant) {
   return (printer) => {
-    const { account = {}, items = [], payments = [], totals = {} } = receipt || {};
+    const { account = {}, items = [], payments = [], totals = {}, felInvoice = null } = receipt || {};
     const restName = restaurant?.name || "RESTAURANTE";
     const now = new Date();
     const dateStr = now.toLocaleString("es-GT");
@@ -213,16 +213,51 @@ function buildCustomerReceipt(receipt, restaurant) {
       .style("normal")
       .size(0, 0);
 
+    if (restaurant?.commercial_name && restaurant.commercial_name !== restName) {
+      printer.text(restaurant.commercial_name);
+    }
     if (restaurant?.address) printer.text(restaurant.address);
     if (restaurant?.phone) printer.text(`Tel: ${restaurant.phone}`);
-    if (restaurant?.nit) printer.text(`NIT: ${restaurant.nit}`);
+    if (restaurant?.nit || felInvoice?.issuer_nit) {
+      printer.text(`NIT: ${restaurant.nit || felInvoice?.issuer_nit}`);
+    }
+    if (restaurant?.establishment_code) {
+      printer.text(`Establecimiento SAT: ${restaurant.establishment_code}`);
+    }
     printer.text("================================");
+
+    // Si tiene factura electrónica certificada (FEL SAT)
+    if (felInvoice && felInvoice.uuid) {
+      printer
+        .align("ct")
+        .style("b")
+        .text("FACTURA ELECTRONICA (FEL)")
+        .text("DOCUMENTO TRIBUTARIO ELECTRONICO")
+        .style("normal")
+        .text("--------------------------------")
+        .align("lt")
+        .text("AUTORIZACION (UUID):")
+        .style("b")
+        .text(felInvoice.uuid)
+        .style("normal")
+        .text(`SERIE: ${felInvoice.serie}   NUMERO: ${felInvoice.dte_number}`)
+        .text(`FECHA CERT: ${new Date(felInvoice.certified_at).toLocaleString("es-GT")}`)
+        .text(`CERTIFICADOR: ${String(felInvoice.certifier || "SAT").toUpperCase()}`)
+        .text("--------------------------------")
+        .style("b")
+        .text("DATOS DEL RECEPTOR / CLIENTE:")
+        .style("normal")
+        .text(`NIT/CUI:   ${felInvoice.recipient_nit || "CF"}`)
+        .text(`NOMBRE:    ${felInvoice.recipient_name || "CONSUMIDOR FINAL"}`)
+        .text(`DIRECCION: ${felInvoice.recipient_address || "CIUDAD"}`)
+        .text("--------------------------------");
+    }
 
     printer.align("lt");
     if (account.check_number) printer.text(`Cuenta:  ${account.check_number}`);
     if (account.table_code) printer.text(`Mesa:    ${account.table_code}`);
     if (account.waiter_name) printer.text(`Mesero:  ${account.waiter_name}`);
-    printer.text(`Fecha:   ${dateStr}`);
+    if (!felInvoice) printer.text(`Fecha:   ${dateStr}`);
     printer.text("--------------------------------");
 
     for (const item of items) {
@@ -231,27 +266,36 @@ function buildCustomerReceipt(receipt, restaurant) {
     }
 
     printer.text("--------------------------------");
-    if (totals.subtotal !== undefined) {
-      printer.text("Subtotal:");
-      printer.align("rt").text(`Q ${Number(totals.subtotal).toFixed(2)}`).align("lt");
+    const totalAmount = Number(totals.total || felInvoice?.total_amount || 0);
+    const netAmount = felInvoice?.net_amount ? Number(felInvoice.net_amount) : Math.round((totalAmount / 1.12) * 100) / 100;
+    const taxAmount = felInvoice?.tax_amount ? Number(felInvoice.tax_amount) : Math.round((totalAmount - netAmount) * 100) / 100;
+
+    if (felInvoice) {
+      printer.text("Subtotal sin IVA:");
+      printer.align("rt").text(`Q ${netAmount.toFixed(2)}`).align("lt");
+      printer.text("IVA (12% SAT):");
+      printer.align("rt").text(`Q ${taxAmount.toFixed(2)}`).align("lt");
+    } else {
+      if (totals.subtotal !== undefined) {
+        printer.text("Subtotal:");
+        printer.align("rt").text(`Q ${Number(totals.subtotal).toFixed(2)}`).align("lt");
+      }
     }
+
     if (totals.discount !== undefined && Number(totals.discount) > 0) {
       printer.text("Descuento:");
       printer.align("rt").text(`-Q ${Number(totals.discount).toFixed(2)}`).align("lt");
-    }
-    if (totals.tax !== undefined && Number(totals.tax) > 0) {
-      printer.text("IVA:");
-      printer.align("rt").text(`Q ${Number(totals.tax).toFixed(2)}`).align("lt");
     }
     if (totals.tip !== undefined && Number(totals.tip) > 0) {
       printer.text("Propina:");
       printer.align("rt").text(`Q ${Number(totals.tip).toFixed(2)}`).align("lt");
     }
+
     printer
       .style("b")
       .text("TOTAL:")
       .align("rt")
-      .text(`Q ${Number(totals.total || 0).toFixed(2)}`)
+      .text(`Q ${totalAmount.toFixed(2)}`)
       .align("lt")
       .style("normal");
     printer.text("--------------------------------");
@@ -263,10 +307,34 @@ function buildCustomerReceipt(receipt, restaurant) {
       printer.align("rt").text(`Q ${Number(p.amount).toFixed(2)}`).align("lt");
       totalPaid += Number(p.amount || 0);
     }
-    const change = totalPaid - Number(totals.total || 0);
+    const change = totalPaid - totalAmount;
     if (change > 0.005) {
       printer.text("Cambio:");
       printer.align("rt").text(`Q ${change.toFixed(2)}`).align("lt");
+    }
+
+    // Frases SAT y QR si es FEL
+    if (felInvoice) {
+      printer
+        .text("================================")
+        .align("ct")
+        .text("SUJETO A PAGOS TRIMESTRALES ISR")
+        .text("DOCUMENTO TRIBUTARIO ELECTRONICO");
+
+      if (felInvoice.qr_data) {
+        printer.text("--------------------------------");
+        try {
+          if (typeof printer.qrcode === "function") {
+            printer.qrcode(felInvoice.qr_data, 1, 6, "L");
+          } else {
+            printer.text("Verifique su factura en:");
+            printer.text(felInvoice.qr_data);
+          }
+        } catch (qrErr) {
+          printer.text("Verifique su factura en:");
+          printer.text(felInvoice.qr_data);
+        }
+      }
     }
 
     printer
@@ -315,28 +383,40 @@ function buildTestPage(target) {
 // ───────── API pública ─────────
 
 /**
- * Imprime un ticket de cocina (comanda).
+ * Imprime un ticket de cocina (comanda) con soporte de múltiples copias.
  * @param {object} ticket - {centerName, items, notes}
  * @param {object} center - {id, name, printer_name, printer_ip, printer_port}
  * @param {object} account - {id, check_number, table_code, waiter_name}
+ * @param {object} options - {copies}
  */
-async function printKitchenTicket(ticket, center, account) {
-  return printWithRetry(center, "kitchen_ticket", account?.id || null, buildKitchenTicket(ticket, center, account));
+async function printKitchenTicket(ticket, center, account, options = {}) {
+  const copies = Number(options.copies || 1);
+  let lastRes = { ok: false };
+  for (let c = 0; c < Math.max(1, copies); c++) {
+    lastRes = await printWithRetry(center, "kitchen_ticket", account?.id || null, buildKitchenTicket(ticket, center, account));
+  }
+  return lastRes;
 }
 
 /**
- * Imprime el recibo del cliente.
- * @param {object} receipt - {account, items, payments, totals}
+ * Imprime el recibo del cliente con soporte de copias y DTE SAT.
+ * @param {object} receipt - {account, items, payments, totals, felInvoice}
  * @param {object} terminal - {id, name, printer_name, printer_ip, printer_port}
  * @param {object} restaurant - {name, address, phone, nit}
+ * @param {object} options - {copies}
  */
-async function printCustomerReceipt(receipt, terminal, restaurant = {}) {
-  return printWithRetry(
-    terminal,
-    "customer_receipt",
-    receipt?.account?.id || null,
-    buildCustomerReceipt(receipt, restaurant)
-  );
+async function printCustomerReceipt(receipt, terminal, restaurant = {}, options = {}) {
+  const copies = Number(options.copies || receipt?.copies || 1);
+  let lastRes = { ok: false };
+  for (let c = 0; c < Math.max(1, copies); c++) {
+    lastRes = await printWithRetry(
+      terminal,
+      "customer_receipt",
+      receipt?.account?.id || null,
+      buildCustomerReceipt(receipt, restaurant)
+    );
+  }
+  return lastRes;
 }
 
 /**

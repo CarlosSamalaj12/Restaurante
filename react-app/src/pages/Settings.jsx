@@ -18,7 +18,11 @@ import { PaymentsSection } from '../components/settings/PaymentsSection';
 import { PrintersDiagnosticSection } from '../components/settings/PrintersDiagnosticSection';
 import { RoutingMatrixSection } from '../components/settings/RoutingMatrixSection';
 import { SystemSection } from '../components/settings/SystemSection';
+import { FelSection } from '../components/settings/FelSection';
+import { KitchenNotesSection } from '../components/settings/KitchenNotesSection';
+import { BackButton } from '../components/BackButton';
 import {
+  FileText,
   ArrowLeft,
   Loader2,
   Package,
@@ -41,7 +45,9 @@ import {
   Building2,
   Store,
   ChevronDown,
-  Network
+  Network,
+  LogOut,
+  ChefHat
 } from 'lucide-react';
 
 const GROUPS = [
@@ -55,6 +61,7 @@ const GROUPS = [
         label: 'Productos',
         shortDesc: 'Carta y precios',
         icon: Package,
+        color: 'text-emerald-600 bg-emerald-50 border-emerald-200/80',
         keywords: ['platos', 'bebidas', 'precios', 'recetas', 'carta', 'menu', 'comida'],
         getBadge: (d) => d.products?.length,
       },
@@ -63,6 +70,7 @@ const GROUPS = [
         label: 'Categorías',
         shortDesc: 'Familias del menú',
         icon: LayoutGrid,
+        color: 'text-indigo-600 bg-indigo-50 border-indigo-200/80',
         keywords: ['grupos', 'secciones', 'familias'],
         getBadge: (d) => d.categories?.length,
       },
@@ -71,8 +79,18 @@ const GROUPS = [
         label: 'Modificadores',
         shortDesc: 'Términos, salsas, extras',
         icon: List,
+        color: 'text-purple-600 bg-purple-50 border-purple-200/80',
         keywords: ['adicionales', 'extras', 'grupos', 'opciones', 'terminos', 'salsas', 'guarniciones'],
         getBadge: (d) => d.modifierGroups?.length,
+      },
+      {
+        id: 'kitchen-notes',
+        label: 'Observaciones de Cocina',
+        shortDesc: 'Atajos para comandas y KDS',
+        icon: ChefHat,
+        color: 'text-amber-600 bg-amber-50 border-amber-200/80',
+        keywords: ['cocina', 'observaciones', 'notas', 'atajos', 'sin cebolla', 'termino medio', 'para llevar'],
+        getBadge: (d) => d.kitchenNotes?.length,
       },
     ],
   },
@@ -86,6 +104,7 @@ const GROUPS = [
         label: 'Mesas y Áreas',
         shortDesc: 'Distribución y capacidad',
         icon: UtensilsCrossed,
+        color: 'text-teal-600 bg-teal-50 border-teal-200/80',
         keywords: ['salones', 'terraza', 'mesas', 'sillas', 'capacidad', 'layout'],
         getBadge: (d) => d.tables?.length,
       },
@@ -94,6 +113,7 @@ const GROUPS = [
         label: 'Centros de Operación',
         shortDesc: 'Restaurante, Bar, Delivery',
         icon: Store,
+        color: 'text-blue-600 bg-blue-50 border-blue-200/80',
         keywords: ['sucursales', 'bar', 'cocina', 'operacion', 'bodega'],
         getBadge: (d) => d.centers?.length,
       },
@@ -102,7 +122,9 @@ const GROUPS = [
         label: 'Centros de Producción',
         shortDesc: 'Cocina, Barra, Despacho',
         icon: Building2,
+        color: 'text-violet-600 bg-violet-50 border-violet-200/80',
         keywords: ['cocina', 'barra', 'kds', 'produccion', 'despacho'],
+        requiresRole: ['superadmin'],
         getBadge: (d) => d.productionCenters?.length,
       },
       {
@@ -110,7 +132,9 @@ const GROUPS = [
         label: 'Terminales POS',
         shortDesc: 'Cajas y estaciones',
         icon: Monitor,
+        color: 'text-sky-600 bg-sky-50 border-sky-200/80',
         keywords: ['dispositivos', 'cajas', 'estaciones', 'ip', 'maquinas'],
+        requiresRole: ['superadmin'],
         getBadge: (d) => d.terminals?.length,
       },
       {
@@ -118,14 +142,18 @@ const GROUPS = [
         label: 'Impresoras y Diagnóstico',
         shortDesc: 'Comandas y tickets',
         icon: Printer,
+        color: 'text-orange-600 bg-orange-50 border-orange-200/80',
         keywords: ['tickets', 'comandas', 'red', 'escpos', 'imprimir', 'papel', 'puerto'],
+        requiresRole: ['superadmin'],
       },
       {
         id: 'routing',
         label: 'Matriz de Enrutamiento',
         shortDesc: 'Comandas, KDS y rutas',
         icon: Network,
+        color: 'text-rose-600 bg-rose-50 border-rose-200/80',
         keywords: ['enrutamiento', 'kds', 'comandas', 'impresion', 'matriz', 'cocina', 'bar', 'categorias impresion'],
+        requiresRole: ['superadmin'],
         getBadge: (d) => d.routingMatrix?.length,
       },
     ],
@@ -140,17 +168,19 @@ const GROUPS = [
         label: 'Usuarios y Staff',
         shortDesc: 'Meseros, cajeros, personal',
         icon: Users,
+        color: 'text-blue-600 bg-blue-50 border-blue-200/80',
         keywords: ['empleados', 'meseros', 'cajeros', 'pin', 'personal', 'staff'],
+        requiresRole: ['superadmin'],
         getBadge: (d) => d.staffUsers?.length,
-        requiresRole: ['admin', 'manager'],
       },
       {
         id: 'roles',
         label: 'Roles y Permisos',
         shortDesc: 'Accesos y restricciones',
         icon: Shield,
+        color: 'text-purple-600 bg-purple-50 border-purple-200/80',
         keywords: ['seguridad', 'permisos', 'privilegios', 'administrador', 'cajero', 'accesos'],
-        requiresRole: ['admin'],
+        requiresRole: ['superadmin'],
         getBadge: (d) => d.roles?.length,
       },
     ],
@@ -165,31 +195,44 @@ const GROUPS = [
         label: 'Formas de Pago',
         shortDesc: 'Efectivo, tarjetas, transferencias',
         icon: CreditCard,
+        color: 'text-emerald-600 bg-emerald-50 border-emerald-200/80',
         keywords: ['metodos', 'efectivo', 'tarjeta', 'transferencia', 'cobro', 'cxc', 'yappy'],
+        requiresRole: ['superadmin'],
         getBadge: (d) => d.paymentMethods?.length,
+      },
+      {
+        id: 'fel',
+        label: 'Facturación FEL (SAT)',
+        shortDesc: 'DTEs, Infile, Digifact, copias y QR',
+        icon: FileText,
+        color: 'text-sky-600 bg-sky-50 border-sky-200/80',
+        keywords: ['factura', 'fel', 'sat', 'dte', 'infile', 'digifact', 'guatefacturas', 'nit', 'cui', 'copias', 'qr', 'certificador'],
+        requiresRole: ['superadmin'],
       },
       {
         id: 'system',
         label: 'Identidad y Sistema',
         shortDesc: 'Nombre, logo, propina',
         icon: Settings,
+        color: 'text-slate-600 bg-slate-100 border-slate-200/80',
         keywords: ['branding', 'logo', 'restaurante', 'propina', 'empresa', 'datos', 'ticket', 'pie'],
-        requiresRole: ['admin'],
+        requiresRole: ['superadmin'],
       },
       {
         id: 'licenses',
         label: 'Licencias de Terminal',
         shortDesc: 'Estado y activación',
         icon: Key,
+        color: 'text-amber-600 bg-amber-50 border-amber-200/80',
         keywords: ['licencia', 'serial', 'activacion', 'terminal', 'registro', 'tier'],
-        requiresRole: ['admin'],
+        requiresRole: ['superadmin'],
       },
     ],
   },
 ];
 
 export function SettingsPage({ onBack }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('products');
   const [searchTerm, setSearchTerm] = useState('');
   const [collapsed, setCollapsed] = useState(false);
@@ -200,12 +243,14 @@ export function SettingsPage({ onBack }) {
 
   // Filtrar apartados según rol del usuario autenticado
   const filteredGroups = useMemo(() => {
-    const userRole = user?.role || 'waiter';
+    const userRole = String(user?.role || 'waiter').toLowerCase();
+    const isSuper = userRole === 'superadmin';
 
     return GROUPS.map(group => {
       const allowedItems = group.items.filter(item => {
+        if (isSuper) return true;
         if (!item.requiresRole) return true;
-        return item.requiresRole.includes(userRole);
+        return item.requiresRole.some(r => r.toLowerCase() === userRole);
       });
 
       return {
@@ -279,16 +324,13 @@ export function SettingsPage({ onBack }) {
     <div className="flex flex-col h-full bg-white select-none">
       {/* Cabecera del sidebar */}
       <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-2">
-        <button
+        <BackButton
           onClick={onBack}
-          className="flex items-center gap-2.5 px-3 py-2 -ml-1 text-slate-700 hover:text-slate-900 hover:bg-slate-100/80 rounded-xl transition-all group"
-          title="Regresar al Dashboard"
-        >
-          <ArrowLeft className="w-5 h-5 text-slate-500 group-hover:text-slate-900 transition-colors" />
-          {(!collapsed || isMobile) && (
-            <span className="font-semibold text-sm tracking-tight">Volver al POS</span>
-          )}
-        </button>
+          label={(!collapsed || isMobile) ? 'Volver al POS' : ''}
+          iconOnly={collapsed && !isMobile}
+          title="Regresar al POS"
+          className="flex-1"
+        />
 
         {/* Botón de colapso (solo desktop) */}
         {!isMobile && (
@@ -359,22 +401,35 @@ export function SettingsPage({ onBack }) {
                   <button
                     key={item.id}
                     onClick={() => handleSelectTab(item.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all text-left ${
+                    className={`w-full group flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left border ${
                       isCurrent
-                        ? 'bg-primary-600 text-white shadow-sm font-semibold'
-                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                        ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-500/20 font-semibold border-indigo-600'
+                        : 'text-slate-700 hover:bg-white hover:text-slate-900 border-transparent hover:border-slate-200/70 hover:shadow-2xs'
                     }`}
                   >
-                    <Icon className={`w-4 h-4 shrink-0 ${isCurrent ? 'text-white' : 'text-slate-500'}`} />
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border transition-all duration-200 ${
+                      isCurrent
+                        ? 'bg-white/20 text-white border-white/30 shadow-2xs'
+                        : `${item.color || 'bg-slate-50 text-slate-600 border-slate-200/80'} group-hover:scale-110 shadow-2xs`
+                    }`}>
+                      <Icon className="w-4 h-4" />
+                    </div>
                     <div className="flex-1 truncate">
-                      <span className="block truncate">{item.label}</span>
-                      <span className={`block text-[10px] truncate ${isCurrent ? 'text-primary-100' : 'text-slate-400'}`}>
+                      <span className="block truncate font-semibold">{item.label}</span>
+                      <span className={`block text-[10px] truncate ${isCurrent ? 'text-indigo-100' : 'text-slate-400'}`}>
                         {item.shortDesc}
                       </span>
                     </div>
+                    {item.requiresRole?.includes('superadmin') && (
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 ${
+                        isCurrent ? 'bg-white/20 text-white border border-white/30' : 'bg-purple-100 text-purple-700 border border-purple-200'
+                      }`}>
+                        Super
+                      </span>
+                    )}
                     {badge !== null && badge !== undefined && (
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        isCurrent ? 'bg-primary-700 text-white' : 'bg-slate-100 text-slate-600'
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        isCurrent ? 'bg-white/20 text-white border border-white/20' : 'bg-slate-100 text-slate-600 border border-slate-200/60'
                       }`}>
                         {badge}
                       </span>
@@ -407,32 +462,46 @@ export function SettingsPage({ onBack }) {
                       key={item.id}
                       onClick={() => handleSelectTab(item.id)}
                       title={collapsed && !isMobile ? `${item.label} (${item.shortDesc})` : undefined}
-                      className={`w-full flex items-center rounded-xl text-xs transition-all text-left ${
+                      className={`w-full group flex items-center rounded-xl text-xs transition-all text-left border ${
                         collapsed && !isMobile
-                          ? 'justify-center p-3'
-                          : 'gap-3 px-3 py-2.5'
+                          ? 'justify-center p-2.5'
+                          : 'gap-3 px-3 py-2'
                       } ${
                         isCurrent
-                          ? 'bg-primary-600 text-white shadow-sm font-semibold'
-                          : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                          ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-500/20 font-semibold border-indigo-600'
+                          : 'text-slate-700 hover:bg-white hover:text-slate-900 border-transparent hover:border-slate-200/70 hover:shadow-2xs'
                       }`}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${isCurrent ? 'text-white' : 'text-slate-500'}`} />
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border transition-all duration-200 ${
+                        isCurrent
+                          ? 'bg-white/20 text-white border-white/30 shadow-2xs'
+                          : `${item.color || 'bg-slate-50 text-slate-600 border-slate-200/80'} group-hover:scale-110 shadow-2xs`
+                      }`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
                       
                       {(!collapsed || isMobile) && (
                         <>
                           <div className="flex-1 truncate">
-                            <span className="block truncate leading-tight">{item.label}</span>
+                            <span className="block truncate font-semibold leading-tight">{item.label}</span>
                             <span className={`block text-[10px] truncate mt-0.5 ${
-                              isCurrent ? 'text-primary-100' : 'text-slate-400'
+                              isCurrent ? 'text-indigo-100' : 'text-slate-400'
                             }`}>
                               {item.shortDesc}
                             </span>
                           </div>
 
+                          {item.requiresRole?.includes('superadmin') && (
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 ${
+                              isCurrent ? 'bg-white/20 text-white border border-white/30' : 'bg-purple-100 text-purple-700 border border-purple-200'
+                            }`}>
+                              Super
+                            </span>
+                          )}
+
                           {badge !== null && badge !== undefined && (
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              isCurrent ? 'bg-primary-700 text-white' : 'bg-slate-100 text-slate-600'
+                              isCurrent ? 'bg-white/20 text-white border border-white/20' : 'bg-slate-100 text-slate-600 border border-slate-200/60'
                             }`}>
                               {badge}
                             </span>
@@ -450,16 +519,35 @@ export function SettingsPage({ onBack }) {
 
       {/* Pie de barra lateral */}
       {(!collapsed || isMobile) && (
-        <div className="p-3 border-t border-slate-100 bg-slate-50/50">
-          <div className="flex items-center gap-2.5 px-2 py-1.5">
-            <div className="w-7 h-7 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs uppercase">
+        <div className="p-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 px-2 py-1.5 min-w-0">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs uppercase shadow-xs shrink-0 ${
+              user?.role === 'superadmin'
+                ? 'bg-gradient-to-br from-purple-600 to-indigo-700 text-white'
+                : 'bg-primary-100 text-primary-700'
+            }`}>
               {user?.full_name ? user.full_name[0] : 'U'}
             </div>
             <div className="flex-1 truncate">
               <p className="text-xs font-semibold text-slate-800 truncate">{user?.full_name || 'Usuario'}</p>
-              <p className="text-[10px] text-slate-400 capitalize truncate">{user?.role || 'Personal'}</p>
+              <div className="mt-0.5">
+                {user?.role === 'superadmin' ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-100/90 px-1.5 py-0.5 rounded border border-purple-200">
+                    <Shield className="w-2.5 h-2.5" /> Superadmin
+                  </span>
+                ) : (
+                  <p className="text-[10px] text-slate-400 capitalize truncate">{user?.role || 'Personal'}</p>
+                )}
+              </div>
             </div>
           </div>
+          <button
+            onClick={logout}
+            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer shrink-0"
+            title="Cerrar sesión / Salir (PIN)"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>
@@ -527,19 +615,30 @@ export function SettingsPage({ onBack }) {
             </nav>
           </div>
 
-          {/* Estado / Resumen del apartado activo */}
-          {activeMeta.item && (
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-slate-500 hidden lg:inline">
-                {activeMeta.item.shortDesc}
-              </span>
-              {activeMeta.item.getBadge && activeMeta.item.getBadge(data) !== undefined && (
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-50 text-primary-700 border border-primary-200/50">
-                  {activeMeta.item.getBadge(data)} registrados
+          {/* Acciones y Resumen del apartado activo */}
+          <div className="flex items-center gap-3">
+            {activeMeta.item && (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-slate-500 hidden lg:inline">
+                  {activeMeta.item.shortDesc}
                 </span>
-              )}
-            </div>
-          )}
+                {activeMeta.item.getBadge && activeMeta.item.getBadge(data) !== undefined && (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-50 text-primary-700 border border-primary-200/50">
+                    {activeMeta.item.getBadge(data)} registrados
+                  </span>
+                )}
+              </div>
+            )}
+            {/* Botón Salir (PIN) */}
+            <button
+              onClick={logout}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0"
+              title="Cerrar sesión / Salir (PIN)"
+            >
+              <LogOut className="w-3.5 h-3.5 text-red-600" />
+              <span className="hidden sm:inline">Salir (PIN)</span>
+            </button>
+          </div>
         </header>
 
         {/* Contenido dinámico del apartado activo */}
@@ -594,6 +693,8 @@ export function SettingsPage({ onBack }) {
               terminals={data.terminals}
               centers={data.centers}
               areas={data.areas}
+              productionCenters={data.productionCenters || []}
+              licensedTerminals={data.licensedTerminals || []}
               onReload={loadData}
             />
           )}
@@ -602,6 +703,13 @@ export function SettingsPage({ onBack }) {
             <ModifiersSection
               groups={data.modifierGroups}
               options={data.modifierOptions}
+              onReload={loadData}
+            />
+          )}
+
+          {activeTab === 'kitchen-notes' && (
+            <KitchenNotesSection
+              notes={data.kitchenNotes || []}
               onReload={loadData}
             />
           )}
@@ -631,6 +739,10 @@ export function SettingsPage({ onBack }) {
               methods={data.paymentMethods}
               onReload={loadData}
             />
+          )}
+
+          {activeTab === 'fel' && (
+            <FelSection />
           )}
 
           {activeTab === 'printers' && (

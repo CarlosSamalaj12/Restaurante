@@ -246,15 +246,57 @@ const ordersRepository = {
   },
 
   async findManagerOrAdminByPin(pin, conn = null) {
-    const [rows] = await query(
-      `SELECT id, full_name, role
-       FROM staff_users
-       WHERE pin_code = ? AND role IN ('manager', 'admin')
+    const cleanPin = String(pin || '').trim();
+    if (!cleanPin) return null;
+    const { hashPin } = require('../../common/pinHash');
+    const hashed = hashPin(cleanPin);
+
+    const [allUsers] = await query(
+      `SELECT DISTINCT su.id, su.full_name, COALESCE(r.slug, su.role) AS role
+       FROM staff_users su
+       LEFT JOIN user_roles ur ON ur.user_id = su.id
+       LEFT JOIN roles r ON r.id = ur.role_id
+       WHERE su.pin_code = ?
        LIMIT 1`,
-      [String(pin).trim()],
+      [hashed],
       conn
     );
-    return rows[0] || null;
+
+    if (!allUsers || !allUsers[0]) {
+      return {
+        ok: false,
+        error: 'PIN_NOT_FOUND',
+        message: 'El PIN ingresado no existe en el sistema'
+      };
+    }
+
+    const matchedUser = allUsers[0];
+    const roleSlug = String(matchedUser.role || '').toLowerCase();
+    const authorizedRoles = [
+      'superadmin',
+      'superadministrador',
+      'manager',
+      'admin',
+      'gerente',
+      'administrador',
+      'supervisor',
+      'cashier',
+      'cajero'
+    ];
+
+    if (!authorizedRoles.includes(roleSlug)) {
+      return {
+        ok: false,
+        error: 'ROLE_NOT_AUTHORIZED',
+        user: matchedUser,
+        message: `El PIN pertenece a '${matchedUser.full_name}' (${matchedUser.role}), pero se requiere autorización de Cajero, Gerente o Administrador.`
+      };
+    }
+
+    return {
+      ok: true,
+      user: matchedUser
+    };
   },
 
   async findUserById(userId, conn = null) {
@@ -274,6 +316,62 @@ const ordersRepository = {
       [reason || "", Number(authorizedBy), nowSql(), Number(itemId)],
       conn
     );
+  },
+
+  async updateItemNotes(itemId, notes, conn = null) {
+    await query(
+      `UPDATE order_items
+       SET notes = ?
+       WHERE id = ? AND status = 'active'`,
+      [notes ? String(notes).trim() : null, Number(itemId)],
+      conn
+    );
+  },
+
+  async reduceOrderItemQty(itemId, newQty, newLineTotal, conn = null) {
+    await query(
+      `UPDATE order_items
+       SET qty = ?, line_total = ?
+       WHERE id = ? AND status = 'active'`,
+      [Number(newQty), Number(newLineTotal), Number(itemId)],
+      conn
+    );
+  },
+
+  async insertVoidedOrderItem({
+    accountId,
+    productId,
+    seatNo,
+    qty,
+    unitPrice,
+    lineTotal,
+    notes,
+    sentAt,
+    voidReason,
+    voidAuthorizedBy,
+    voidedAt
+  }, conn = null) {
+    const [res] = await query(
+      `INSERT INTO order_items (
+        account_id, product_id, seat_no, qty, unit_price, line_total, notes,
+        status, sent_at, void_reason, void_authorized_by, voided_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'void', ?, ?, ?, ?, NOW())`,
+      [
+        Number(accountId),
+        Number(productId),
+        Number(seatNo) || 1,
+        Number(qty),
+        Number(unitPrice),
+        Number(lineTotal),
+        notes || null,
+        sentAt || null,
+        voidReason || "",
+        Number(voidAuthorizedBy),
+        voidedAt
+      ],
+      conn
+    );
+    return res.insertId;
   },
 };
 

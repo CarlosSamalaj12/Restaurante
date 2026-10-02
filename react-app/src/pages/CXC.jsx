@@ -9,6 +9,7 @@ import { GlobalPayModal } from '../components/cxc/GlobalPayModal';
 import { StatementModal } from '../components/cxc/StatementModal';
 import { PendingSummaryModal } from '../components/cxc/PendingSummaryModal';
 import { ArrowLeft, Loader2 } from 'lucide-react';
+import { BackButton } from '../components/BackButton';
 
 export function CXCPage({ onBack }) {
   const [activeTab, setActiveTab] = useState('clients');
@@ -37,9 +38,7 @@ export function CXCPage({ onBack }) {
     <div className="min-h-screen bg-gray-50 pb-20">
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="px-4 py-3 flex items-center gap-3">
-          <button onClick={onBack} className="p-2 -ml-2 rounded-xl hover:bg-gray-100">
-            <ArrowLeft className="w-6 h-6 text-gray-700" />
-          </button>
+          <BackButton onClick={onBack} label="Volver" title="Regresar" />
           <h1 className="font-bold text-gray-900 text-lg">Cuentas por Cobrar</h1>
         </div>
 

@@ -1,5 +1,11 @@
 import { tokenStorage } from './lib/tokenStorage';
 import { getOrCreateSerial } from './lib/terminalSerial';
+import { offlineDb } from './lib/offlineDb';
+import {
+  generateOfflineCheckNumber,
+  generateOfflineReceiptNumber,
+  getTerminalCode,
+} from './lib/offlineCorrelatives';
 
 const API_BASE = '/api';
 
@@ -67,35 +73,178 @@ export const api = {
   getSettings: () => request('/settings'),
 
   // Tables
-  getTables: (centerId) => request(`/tables${centerId ? `?centerId=${centerId}` : ''}`),
-  getAccounts: (tableId) => request(`/tables/${tableId}/accounts`),
-  createAccount: (tableId, data) => request(`/tables/${tableId}/accounts`, {
-    method: 'POST',
-    body: data,
-  }),
+  getTables: async (centerId) => {
+    if (!navigator.onLine) {
+      return (await offlineDb.getTables()) || [];
+    }
+    try {
+      const data = await request(`/tables${centerId ? `?centerId=${centerId}` : ''}`);
+      if (Array.isArray(data)) {
+        offlineDb.saveTables(data).catch(() => {});
+      } else if (data?.tables) {
+        offlineDb.saveTables(data.tables).catch(() => {});
+      }
+      return data;
+    } catch (err) {
+      const local = await offlineDb.getTables().catch(() => []);
+      if (local && local.length) return local;
+      throw err;
+    }
+  },
+  getAccounts: async (tableId) => {
+    if (!navigator.onLine) {
+      return (await offlineDb.getOpenAccountsByTable(tableId)) || [];
+    }
+    try {
+      return await request(`/tables/${tableId}/accounts`);
+    } catch (err) {
+      const local = await offlineDb.getOpenAccountsByTable(tableId).catch(() => []);
+      if (local) return local;
+      throw err;
+    }
+  },
+  createAccount: async (tableId, data) => {
+    if (!navigator.onLine) {
+      const checkNumber = generateOfflineCheckNumber();
+      const offlineId = crypto.randomUUID();
+      const record = await offlineDb.createAccount({
+        offline_id: offlineId,
+        table_id: tableId,
+        waiter_id: data?.waiterId || data?.waiter_id || 1,
+        guest_count: data?.guestCount || data?.guest_count || 1,
+        operation_center_id: data?.centerId || data?.center_id || null,
+        check_number: checkNumber,
+        terminal_code: getTerminalCode(),
+      });
+      return {
+        id: offlineId,
+        accountId: offlineId,
+        checkNumber,
+        check_number: checkNumber,
+        is_offline: true,
+      };
+    }
+    try {
+      return await request(`/tables/${tableId}/accounts`, {
+        method: 'POST',
+        body: data,
+      });
+    } catch (err) {
+      if (!navigator.onLine || err.message?.includes('Failed to fetch') || err.message?.includes('Sin conexión')) {
+        const checkNumber = generateOfflineCheckNumber();
+        const offlineId = crypto.randomUUID();
+        await offlineDb.createAccount({
+          offline_id: offlineId,
+          table_id: tableId,
+          waiter_id: data?.waiterId || data?.waiter_id || 1,
+          guest_count: data?.guestCount || data?.guest_count || 1,
+          operation_center_id: data?.centerId || data?.center_id || null,
+          check_number: checkNumber,
+          terminal_code: getTerminalCode(),
+        });
+        return {
+          id: offlineId,
+          accountId: offlineId,
+          checkNumber,
+          check_number: checkNumber,
+          is_offline: true,
+        };
+      }
+      throw err;
+    }
+  },
   deleteAccount: (accountId) => request(`/accounts/${accountId}`, {
     method: 'DELETE',
   }),
 
   // Account details
-  getAccount: (accountId) => request(`/accounts/${accountId}`),
+  getAccount: async (accountId) => {
+    if (!navigator.onLine || String(accountId).includes('-')) {
+      const local = await offlineDb.getAccount(accountId);
+      if (local) {
+        const items = local.items || [];
+        const payments = local.payments || [];
+        const subtotal = items.reduce((sum, i) => sum + Number(i.line_total || (i.qty * i.unit_price) || 0), 0);
+        return {
+          account: local,
+          items,
+          payments,
+          totals: {
+            subtotal,
+            total: subtotal,
+            balance: local.status === 'closed' ? 0 : subtotal,
+          },
+        };
+      }
+    }
+    try {
+      return await request(`/accounts/${accountId}`);
+    } catch (err) {
+      const local = await offlineDb.getAccount(accountId);
+      if (local) {
+        const items = local.items || [];
+        const payments = local.payments || [];
+        const subtotal = items.reduce((sum, i) => sum + Number(i.line_total || (i.qty * i.unit_price) || 0), 0);
+        return {
+          account: local,
+          items,
+          payments,
+          totals: { subtotal, total: subtotal, balance: local.status === 'closed' ? 0 : subtotal },
+        };
+      }
+      throw err;
+    }
+  },
   getAccountByCheck: (checkNumber) => request(`/accounts/by-check/${checkNumber}`),
   getOpenAccounts: (centerId) => request(`/accounts/open${centerId ? `?centerId=${centerId}` : ''}`),
-  joinAccounts: (targetAccountId, sourceAccountId) => request(`/accounts/${targetAccountId}/join-with`, {
-    method: 'POST',
-    body: { sourceAccountId },
-  }),
   printPrecheck: (accountId) => request(`/accounts/${accountId}/precheck`, { method: 'POST' }),
 
   // Products catalog
-  getProducts: (categoryId, centerId) => {
+  getProducts: async (categoryId, centerId) => {
+    if (!navigator.onLine) {
+      const { products } = await offlineDb.getCatalog();
+      if (categoryId) {
+        return products.filter((p) => String(p.category_id) === String(categoryId));
+      }
+      return products || [];
+    }
     const params = new URLSearchParams();
     if (categoryId) params.append('categoryId', categoryId);
     if (centerId) params.append('centerId', centerId);
-    return request(`/catalog/products?${params}`);
+    try {
+      const prods = await request(`/catalog/products?${params}`);
+      return prods;
+    } catch (err) {
+      const { products } = await offlineDb.getCatalog().catch(() => ({ products: [] }));
+      if (products?.length) {
+        if (categoryId) return products.filter((p) => String(p.category_id) === String(categoryId));
+        return products;
+      }
+      throw err;
+    }
   },
   getModifierTemplates: () => request('/modifier-templates'),
-  getCategories: (centerId) => request(`/catalog/categories${centerId ? `?centerId=${centerId}` : ''}`),
+  getCategories: async (centerId) => {
+    if (!navigator.onLine) {
+      const { categories } = await offlineDb.getCatalog();
+      return categories || [];
+    }
+    try {
+      const cats = await request(`/catalog/categories${centerId ? `?centerId=${centerId}` : ''}`);
+      return cats;
+    } catch (err) {
+      const { categories } = await offlineDb.getCatalog().catch(() => ({ categories: [] }));
+      if (categories?.length) return categories;
+      throw err;
+    }
+  },
+  getCatalog: async (centerId) => {
+    const [products, categories] = await Promise.all([
+      api.getProducts(null, centerId).catch(() => []),
+      api.getCategories(centerId).catch(() => []),
+    ]);
+    return { products: products || [], categories: categories || [] };
+  },
   getConfigData: () => request('/config/data'),
 
   // Production Centers
@@ -128,10 +277,24 @@ export const api = {
   deleteTerminal: (terminalId) => request(`/settings/terminals/${terminalId}`, { method: 'DELETE' }),
 
   // Items
-  addItem: (accountId, data) => request(`/accounts/${accountId}/items`, {
-    method: 'POST',
-    body: data,
-  }),
+  addItem: async (accountId, data) => {
+    if (!navigator.onLine || String(accountId).includes('-')) {
+      const items = await offlineDb.addOrderItems(accountId, [data]);
+      return { success: true, item: items[0], is_offline: true };
+    }
+    try {
+      return await request(`/accounts/${accountId}/items`, {
+        method: 'POST',
+        body: data,
+      });
+    } catch (err) {
+      if (!navigator.onLine || err.message?.includes('Failed to fetch') || err.message?.includes('Sin conexión')) {
+        const items = await offlineDb.addOrderItems(accountId, [data]);
+        return { success: true, item: items[0], is_offline: true };
+      }
+      throw err;
+    }
+  },
   voidItem: (itemId, data) => request(`/items/${itemId}/void`, {
     method: 'POST',
     body: data,
@@ -144,11 +307,27 @@ export const api = {
     method: 'POST',
     body: { qty },
   }),
+  updateItemNotes: (itemId, notes) => request(`/items/${itemId}/notes`, {
+    method: 'POST',
+    body: { notes },
+  }),
 
   // Send order
-  sendOrder: (accountId) => request(`/accounts/${accountId}/send`, {
-    method: 'POST',
-  }),
+  sendOrder: async (accountId) => {
+    if (!navigator.onLine || String(accountId).includes('-')) {
+      return { ok: true, is_offline: true };
+    }
+    try {
+      return await request(`/accounts/${accountId}/send`, {
+        method: 'POST',
+      });
+    } catch (err) {
+      if (!navigator.onLine || err.message?.includes('Failed to fetch')) {
+        return { ok: true, is_offline: true };
+      }
+      throw err;
+    }
+  },
 
   // Account actions
   removeTip: (accountId) => request(`/accounts/${accountId}/remove-tip`, {
@@ -161,8 +340,21 @@ export const api = {
     method: 'POST',
     body: data,
   }),
-  closeAccount: (accountId) => request(`/accounts/${accountId}/close`, {
+  closeAccount: (accountId, authPin = null) => request(`/accounts/${accountId}/close`, {
     method: 'POST',
+    body: authPin ? { authPin } : undefined,
+  }),
+  deleteAccount: (accountId, authPin = null) => request(`/accounts/${accountId}`, {
+    method: 'DELETE',
+    body: authPin ? { authPin } : undefined,
+  }),
+  reopenAccount: (accountId, reason = '', authPin = null) => request(`/accounts/${accountId}/reopen`, {
+    method: 'POST',
+    body: { reason, authPin },
+  }),
+  changePaymentMethod: (accountId, data) => request(`/accounts/${accountId}/change-payment-method`, {
+    method: 'POST',
+    body: data,
   }),
 
   // Move/Transfer
@@ -196,9 +388,40 @@ export const api = {
   }),
 
   // Payments
-  pay: (accountId, data) => request(`/accounts/${accountId}/payments`, {
-    method: 'POST',
-    body: data,
+  pay: async (accountId, data) => {
+    if (!navigator.onLine || String(accountId).includes('-')) {
+      const receiptNo = generateOfflineReceiptNumber();
+      const payment = await offlineDb.recordPayment(accountId, {
+        payment_method: data?.method || 'cash',
+        amount: data?.amount,
+        reference_no: data?.referenceNo || receiptNo,
+        fel_pending_nit: data?.felNit || null,
+        fel_pending_name: data?.felName || null,
+      });
+      return { success: true, payment, receiptNo, is_offline: true };
+    }
+    try {
+      return await request(`/accounts/${accountId}/payments`, {
+        method: 'POST',
+        body: data,
+      });
+    } catch (err) {
+      if (!navigator.onLine || err.message?.includes('Failed to fetch') || err.message?.includes('Sin conexión')) {
+        const receiptNo = generateOfflineReceiptNumber();
+        const payment = await offlineDb.recordPayment(accountId, {
+          payment_method: data?.method || 'cash',
+          amount: data?.amount,
+          reference_no: data?.referenceNo || receiptNo,
+          fel_pending_nit: data?.felNit || null,
+          fel_pending_name: data?.felName || null,
+        });
+        return { success: true, payment, receiptNo, is_offline: true };
+      }
+      throw err;
+    }
+  },
+  deleteAccountPayment: (accountId, paymentId) => request(`/accounts/${accountId}/payments/${paymentId}`, {
+    method: 'DELETE',
   }),
 
   // Reprint / Search
@@ -211,7 +434,21 @@ export const api = {
   getAccountReceipt: (accountId) => request(`/accounts/${accountId}/receipt`),
 
   // Shifts
-  checkActiveShift: (centerId) => request(`/shifts/active?centerId=${centerId}`),
+  checkActiveShift: async (centerId) => {
+    if (!navigator.onLine) {
+      const cached = await offlineDb.getActiveShift();
+      return cached || { active: false, shift: null };
+    }
+    try {
+      const shift = await request(`/shifts/active?centerId=${centerId}`);
+      if (shift) offlineDb.saveActiveShift(shift).catch(() => {});
+      return shift;
+    } catch (err) {
+      const cached = await offlineDb.getActiveShift().catch(() => null);
+      if (cached) return cached;
+      throw err;
+    }
+  },
   previewShift: (centerId, closingCash) => request(`/shifts/preview?centerId=${centerId}${closingCash !== undefined ? '&closingCash=' + closingCash : ''}`),
   openShift: (data) => request('/shifts/open', {
     method: 'POST',
@@ -223,6 +460,14 @@ export const api = {
   }),
   getClosedShifts: (centerId, limit = 20) => request(`/shifts/closed?centerId=${centerId}&limit=${limit}`),
   getShiftReport: (shiftId) => request(`/shifts/${shiftId}/report`),
+  addShiftExpense: (data) => request('/shifts/expenses', {
+    method: 'POST',
+    body: data,
+  }),
+  deleteShiftExpense: (expenseId, data) => request(`/shifts/expenses/${expenseId}`, {
+    method: 'DELETE',
+    body: data,
+  }),
 
   // Reports
   getVoidedItems: () => request('/reports/voided-items'),
@@ -347,6 +592,7 @@ export const api = {
     updateArea: (areaId, data) => request(`/settings/areas/${areaId}`, { method: 'POST', body: data }),
     createOperationCenter: (data) => request('/settings/operation-centers', { method: 'POST', body: data }),
     updateOperationCenter: (centerId, data) => request(`/settings/operation-centers/${centerId}`, { method: 'POST', body: data }),
+    getCenterUsage: (centerId) => request(`/settings/operation-centers/${centerId}/usage`),
     setCenterProducts: (centerId, productId, isEnabled) => request(`/settings/operation-centers/${centerId}/products`, {
       method: 'POST',
       body: { productId, isEnabled },
@@ -400,13 +646,18 @@ export const api = {
     createPrintCategory: (data) => request('/settings/print-categories', { method: 'POST', body: data }),
     updatePrintCategory: (id, data) => request(`/settings/print-categories/${id}`, { method: 'PUT', body: data }),
     deletePrintCategory: (id) => request(`/settings/print-categories/${id}`, { method: 'DELETE' }),
+    getKitchenNotes: (activeOnly = false) => request(`/settings/kitchen-notes${activeOnly ? '?activeOnly=1' : ''}`),
+    createKitchenNote: (data) => request('/settings/kitchen-notes', { method: 'POST', body: data }),
+    updateKitchenNote: (id, data) => request(`/settings/kitchen-notes/${id}`, { method: 'PUT', body: data }),
+    deleteKitchenNote: (id) => request(`/settings/kitchen-notes/${id}`, { method: 'DELETE' }),
   },
   roles: {
     list: () => request('/settings/roles'),
     create: (data) => request('/settings/roles', { method: 'POST', body: data }),
     update: (roleId, data) => request(`/settings/roles/${roleId}`, { method: 'PUT', body: data }),
     delete: (roleId) => request(`/settings/roles/${roleId}`, { method: 'DELETE' }),
-    setPermissions: (roleId, permissionIds) => request(`/settings/roles/${roleId}/permissions`, { method: 'POST', body: { permissionIds } }),
+    setPermissions: (roleId, permissionIds, defaultView = null) =>
+      request(`/settings/roles/${roleId}/permissions`, { method: 'POST', body: { permissionIds, defaultView } }),
   },
   users: {
     setRoles: (userId, roleIds) => request(`/settings/users/${userId}/roles`, { method: 'POST', body: { roleIds } }),
@@ -426,27 +677,61 @@ export const api = {
   
   // KDS - Kitchen Display System
   kds: {
-    getOrders: (centerId) => {
+    getMyStation: (params = {}) => {
+      const qs = new URLSearchParams();
+      if (params.terminalId) qs.append('terminalId', params.terminalId);
+      if (params.serial) qs.append('serial', params.serial);
+      const queryStr = qs.toString();
+      return request(`/kds/my-station${queryStr ? `?${queryStr}` : ''}`);
+    },
+    getOrders: (centerIdOrFilters) => {
       const params = new URLSearchParams();
-      if (centerId) params.append('centerId', centerId);
+      if (typeof centerIdOrFilters === 'object' && centerIdOrFilters !== null) {
+        if (centerIdOrFilters.centerId) params.append('centerId', centerIdOrFilters.centerId);
+        if (centerIdOrFilters.productionCenterId) params.append('productionCenterId', centerIdOrFilters.productionCenterId);
+        if (centerIdOrFilters.operationCenterId) params.append('operationCenterId', centerIdOrFilters.operationCenterId);
+      } else if (centerIdOrFilters) {
+        params.append('centerId', centerIdOrFilters);
+      }
       return request(`/kds/orders?${params}`);
     },
-    getOrdersWithVoided: (centerId) => {
+    getOrdersWithVoided: (centerIdOrFilters) => {
       const params = new URLSearchParams();
-      if (centerId) params.append('centerId', centerId);
+      if (typeof centerIdOrFilters === 'object' && centerIdOrFilters !== null) {
+        if (centerIdOrFilters.centerId) params.append('centerId', centerIdOrFilters.centerId);
+        if (centerIdOrFilters.productionCenterId) params.append('productionCenterId', centerIdOrFilters.productionCenterId);
+        if (centerIdOrFilters.operationCenterId) params.append('operationCenterId', centerIdOrFilters.operationCenterId);
+      } else if (centerIdOrFilters) {
+        params.append('centerId', centerIdOrFilters);
+      }
       return request(`/kds/orders-with-voided?${params}`);
     },
     getProductionCenters: () => request('/kds/production-centers'),
     markItemDone: (itemId) => request(`/kds/items/${itemId}/done`, { method: 'POST' }),
-    markAccountDone: (accountId) => request(`/kds/accounts/${accountId}/done-all`, { method: 'POST' }),
-    getCompleted: (centerId, limit = 50) => {
+    markAccountDone: (accountId, productionCenterId) => request(`/kds/accounts/${accountId}/done-all`, {
+      method: 'POST',
+      body: productionCenterId ? { productionCenterId } : undefined,
+    }),
+    getCompleted: (centerIdOrFilters, limit = 50) => {
       const params = new URLSearchParams({ limit });
-      if (centerId) params.append('centerId', centerId);
+      if (typeof centerIdOrFilters === 'object' && centerIdOrFilters !== null) {
+        if (centerIdOrFilters.centerId) params.append('centerId', centerIdOrFilters.centerId);
+        if (centerIdOrFilters.productionCenterId) params.append('productionCenterId', centerIdOrFilters.productionCenterId);
+        if (centerIdOrFilters.operationCenterId) params.append('operationCenterId', centerIdOrFilters.operationCenterId);
+      } else if (centerIdOrFilters) {
+        params.append('centerId', centerIdOrFilters);
+      }
       return request(`/kds/completed?${params}`);
     },
-    getVoided: (centerId, limit = 20) => {
+    getVoided: (centerIdOrFilters, limit = 20) => {
       const params = new URLSearchParams({ limit });
-      if (centerId) params.append('centerId', centerId);
+      if (typeof centerIdOrFilters === 'object' && centerIdOrFilters !== null) {
+        if (centerIdOrFilters.centerId) params.append('centerId', centerIdOrFilters.centerId);
+        if (centerIdOrFilters.productionCenterId) params.append('productionCenterId', centerIdOrFilters.productionCenterId);
+        if (centerIdOrFilters.operationCenterId) params.append('operationCenterId', centerIdOrFilters.operationCenterId);
+      } else if (centerIdOrFilters) {
+        params.append('centerId', centerIdOrFilters);
+      }
       return request(`/kds/voided?${params}`);
     },
     getKdsReport: (date, centerId, limit = 100) => {
@@ -483,6 +768,38 @@ export const api = {
     approveSelf: ({ pin, serial }) =>
       request('/license/admin-self-approve', { method: 'POST', body: { pin, serial } }),
   },
+
+  // ───────── Facturación Electrónica FEL (SAT Guatemala) ─────────
+  fel: {
+    getConfig: () => request('/fel/config'),
+    updateConfig: (data) => request('/fel/config', { method: 'PUT', body: data }),
+    testConnection: (data) => request('/fel/test-connection', { method: 'POST', body: data }),
+    consultarNit: (nit) => request(`/fel/consultar-nit/${encodeURIComponent(nit)}`),
+    emitir: (data) => request('/fel/emitir', { method: 'POST', body: data }),
+    getAccountInvoice: (accountId) => request(`/fel/account/${accountId}`),
+  },
+
+  // ───────── Dashboard Ejecutivo / Analítica en Tiempo Real ─────────
+  analytics: {
+    getDashboard: (params = {}) => {
+      const searchParams = new URLSearchParams();
+      if (params.startDate) searchParams.append('startDate', params.startDate);
+      if (params.endDate) searchParams.append('endDate', params.endDate);
+      if (params.centerId) searchParams.append('centerId', params.centerId);
+      if (params.areaId) searchParams.append('areaId', params.areaId);
+      if (params.waiterId) searchParams.append('waiterId', params.waiterId);
+      if (params.method) searchParams.append('method', params.method);
+      if (params.shiftId) searchParams.append('shiftId', params.shiftId);
+      const qs = searchParams.toString();
+      return request(`/analytics/dashboard${qs ? `?${qs}` : ''}`);
+    },
+  },
+
+  // ───────── Sincronización Offline en Lote ─────────
+  syncBatch: (items, terminalCode = getTerminalCode()) => request('/sync/batch', {
+    method: 'POST',
+    body: { items, terminalCode },
+  }),
 };
 
 export default api;

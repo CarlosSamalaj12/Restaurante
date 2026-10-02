@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { MotionConfig, LazyMotion, domAnimation } from 'framer-motion';
+import { MotionConfig, LazyMotion, domMax } from 'framer-motion';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ToastProvider } from './hooks/useToast';
 import { Toast } from './components/Toast';
 import { OfflineBanner } from './components/OfflineBanner';
 import { LicenseBlock } from './components/LicenseBlock';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useLicense } from './hooks/useLicense';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -16,16 +17,37 @@ import { ReportsPage } from './pages/Reports';
 import { AccountsPage } from './pages/AccountsPage';
 import { ReprintPage } from './pages/ReprintPage';
 import { KitchenDisplay } from './pages/KitchenDisplay';
+import { ExecutiveDashboard } from './pages/ExecutiveDashboard';
 import api from './api';
+import { syncService } from './lib/syncService';
 
 function AppContent() {
-  const { user, loading } = useAuth();
-  const [view, setView] = useState('dashboard');
+  const { user, loading, canView } = useAuth();
+  const [view, setView] = useState(() => {
+    const cachedUser = api ? null : null; // lazy fallback
+    return 'dashboard';
+  });
   const [centers, setCenters] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [selectedTableCode, setSelectedTableCode] = useState(null);
   const [selectedTableId, setSelectedTableId] = useState(null);
   const [autoOpenTable, setAutoOpenTable] = useState(null);
+
+  // Inicializar motor de sincronización offline / online
+  useEffect(() => {
+    const cleanup = syncService.init(api);
+    return cleanup;
+  }, []);
+
+  // Al iniciar sesión o cambiar usuario, dirigir automáticamente a su vista predeterminada
+  useEffect(() => {
+    if (!user) {
+      setView('dashboard');
+      return;
+    }
+    const initialView = user.default_view || (canView?.('dashboard') ? 'dashboard' : 'tables');
+    setView(initialView);
+  }, [user?.id, user?.default_view]);
 
   useEffect(() => {
     if (!user) return;
@@ -45,6 +67,12 @@ function AppContent() {
   }, [user]);
 
   const handleNavigate = (page, params = {}) => {
+    if (page !== 'order' && canView && !canView(page)) {
+      console.warn(`[Nav] Permiso denegado para vista: ${page}`);
+      const fallback = user?.default_view || (canView?.('dashboard') ? 'dashboard' : 'tables');
+      setView(fallback);
+      return;
+    }
     setView(page);
     setSelectedAccount(null);
     if (page === 'tables' && params.openTableId) {
@@ -66,6 +94,16 @@ function AppContent() {
     setSelectedTableCode(null);
     setSelectedTableId(null);
     setView('tables');
+  };
+
+  const handleBackFromView = (currentView) => {
+    if (canView?.('dashboard')) {
+      setView('dashboard');
+    } else if (currentView !== 'tables' && canView?.('tables')) {
+      setView('tables');
+    } else {
+      logout();
+    }
   };
 
   if (loading) {
@@ -91,6 +129,7 @@ function AppContent() {
           tableCode={selectedTableCode}
           tableId={selectedTableId}
           onBack={handleBackFromOrder}
+          onNavigate={handleNavigate}
         />
       );
     case 'tables':
@@ -98,7 +137,11 @@ function AppContent() {
         <Tables
           onBack={() => {
             setAutoOpenTable(null);
-            setView('dashboard');
+            if (canView('dashboard')) {
+              setView('dashboard');
+            } else {
+              logout();
+            }
           }}
           onSelectTable={handleSelectTable}
           centers={centers}
@@ -108,24 +151,32 @@ function AppContent() {
       );
     case 'shifts':
       return (
-        <ShiftsPage onBack={() => setView('dashboard')} />
+        <ShiftsPage onBack={() => handleBackFromView('shifts')} />
       );
     case 'reprints':
       return (
-        <ReprintPage onBack={() => setView('dashboard')} />
+        <ReprintPage 
+          onBack={() => handleBackFromView('reprints')} 
+          onSelectAccount={(account) => {
+            setSelectedAccount(account.id);
+            setSelectedTableCode(account.table_code);
+            setSelectedTableId(account.table_id);
+            setView('order');
+          }}
+        />
       );
     case 'reports':
       return (
-        <ReportsPage onBack={() => setView('dashboard')} />
+        <ReportsPage onBack={() => handleBackFromView('reports')} />
       );
     case 'settings':
       return (
-        <SettingsPage onBack={() => setView('dashboard')} />
+        <SettingsPage onBack={() => handleBackFromView('settings')} />
       );
     case 'accounts':
       return (
         <AccountsPage 
-          onBack={() => setView('dashboard')} 
+          onBack={() => handleBackFromView('accounts')} 
           onSelectAccount={(account) => {
             setSelectedAccount(account.id);
             setSelectedTableCode(account.table_code);
@@ -136,10 +187,30 @@ function AppContent() {
       );
     case 'kds':
       return (
-        <KitchenDisplay onBack={() => setView('dashboard')} />
+        <KitchenDisplay onBack={() => handleBackFromView('kds')} />
+      );
+    case 'executive-dashboard':
+      return (
+        <ExecutiveDashboard onBack={() => handleBackFromView('executive-dashboard')} />
       );
     default:
-      return <Dashboard onNavigate={handleNavigate} />;
+      if (canView && !canView('dashboard')) {
+        return (
+          <Tables
+            onBack={() => {}}
+            onSelectTable={handleSelectTable}
+            centers={centers}
+            autoOpenTable={autoOpenTable}
+            onNavigate={handleNavigate}
+          />
+        );
+      }
+      return (
+        <Dashboard
+          onNavigate={handleNavigate}
+          onSelectTable={handleSelectTable}
+        />
+      );
   }
 }
 
@@ -174,13 +245,15 @@ function LicenseGate({ children }) {
 
 export default function App() {
   return (
-    <LazyMotion features={domAnimation}>
+    <LazyMotion features={domMax}>
       <MotionConfig reducedMotion={false}>
         <AuthProvider>
           <LicenseGate>
             <ToastProvider>
               <OfflineBanner />
-              <AppContent />
+              <ErrorBoundary>
+                <AppContent />
+              </ErrorBoundary>
               <Toast />
             </ToastProvider>
           </LicenseGate>

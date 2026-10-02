@@ -170,4 +170,90 @@ test("settingsService validation tests", async (t) => {
       }
     );
   });
+
+  await t.test("createKitchenNote throws BadRequestError if label missing", async () => {
+    await assert.rejects(
+      async () => {
+        await settingsService.createKitchenNote({ label: "" });
+      },
+      (err) => {
+        assert(err instanceof BadRequestError);
+        assert.match(err.message, /label es requerido/);
+        return true;
+      }
+    );
+  });
+
+  await t.test("updateKitchenNote throws BadRequestError if id invalid or label empty", async () => {
+    await assert.rejects(
+      async () => {
+        await settingsService.updateKitchenNote(0, { label: "Test" });
+      },
+      (err) => {
+        assert(err instanceof BadRequestError);
+        assert.match(err.message, /id es requerido/);
+        return true;
+      }
+    );
+    await assert.rejects(
+      async () => {
+        await settingsService.updateKitchenNote(1, { label: "  " });
+      },
+      (err) => {
+        assert(err instanceof BadRequestError);
+        assert.match(err.message, /label no puede estar vacío/);
+        return true;
+      }
+    );
+  });
+
+  await t.test("deleteKitchenNote throws BadRequestError if id invalid", async () => {
+    await assert.rejects(
+      async () => {
+        await settingsService.deleteKitchenNote(0);
+      },
+      (err) => {
+        assert(err instanceof BadRequestError);
+        assert.match(err.message, /id es requerido/);
+        return true;
+      }
+    );
+  });
+
+  await t.test("updateOperationCenter throws BadRequestError if centerId or name missing", async () => {
+    await assert.rejects(
+      async () => {
+        await settingsService.updateOperationCenter(0, { name: "Piscina" });
+      },
+      (err) => {
+        assert(err instanceof BadRequestError);
+        assert.match(err.message, /centerId y name son requeridos/);
+        return true;
+      }
+    );
+    await assert.rejects(
+      async () => {
+        await settingsService.updateOperationCenter(1, { name: "   " });
+      },
+      (err) => {
+        assert(err instanceof BadRequestError);
+        assert.match(err.message, /centerId y name son requeridos/);
+        return true;
+      }
+    );
+  });
+
+  await t.test("deleteOperationCenter throws BadRequestError if centerId invalid", async () => {
+    await assert.rejects(
+      async () => {
+        await settingsService.deleteOperationCenter(0);
+      },
+      (err) => {
+        assert(err instanceof BadRequestError);
+        assert.match(err.message, /centerId es requerido/);
+        return true;
+      }
+    );
+  });
 });
+

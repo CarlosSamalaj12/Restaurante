@@ -20,4 +20,16 @@ test("kdsService validation tests", async (t) => {
       (err) => err instanceof BadRequestError && err.message.includes("accountId")
     );
   });
+
+  await t.test("markAccountDone throws BadRequestError if productionCenterId is invalid string", async () => {
+    await assert.rejects(
+      () => kdsService.markAccountDone(1, null, "invalid"),
+      (err) => err instanceof BadRequestError && err.message.includes("productionCenterId")
+    );
+  });
+
+  await t.test("getMyStation returns not configured if no identifier provided", async () => {
+    const station = await kdsService.getMyStation({});
+    assert.equal(station?.configured, false);
+  });
 });

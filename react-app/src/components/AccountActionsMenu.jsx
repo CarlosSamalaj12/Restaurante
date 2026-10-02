@@ -1,4 +1,5 @@
-﻿import { useState, useEffect } from 'react';
+// AccountActionsMenu - Menú modal de acciones para cuentas y división de consumos
+import { useState, useEffect } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { 
   Percent, 
@@ -13,21 +14,30 @@ import {
   ArrowLeftRight,
   Check,
   Users,
+  Plus,
+  Minus,
+  Edit2,
+  AlertCircle,
+  ArrowLeft,
 } from 'lucide-react';
 import api from '../api';
+import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { ProductIconBadge } from '../utils/productIcons';
 
 export function AccountActionsMenu({ accountId, account, tableId, totals, onClose, onRefresh }) {
   const [activeAction, setActiveAction] = useState(null);
   const toast = useToast();
+  const { hasPermission = () => true } = useAuth() || {};
 
-  const menuItems = [
+  const allMenuItems = [
     {
       id: 'split',
       icon: SplitSquareVertical,
       label: 'Dividir Cuenta',
       description: 'Dividir entre varias cuentas',
       color: 'bg-blue-500',
+      allowed: hasPermission('orders.transfer') || hasPermission('orders.shared'),
     },
     {
       id: 'shared',
@@ -35,6 +45,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       label: 'Cuenta Compartida',
       description: 'Dividir igual entre personas',
       color: 'bg-indigo-500',
+      allowed: hasPermission('orders.shared'),
     },
     {
       id: 'transfer',
@@ -42,6 +53,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       label: 'Transferir Cuenta',
       description: 'Mover a otra cuenta (otro centro)',
       color: 'bg-cyan-500',
+      allowed: hasPermission('orders.transfer'),
     },
     {
       id: 'join',
@@ -49,6 +61,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       label: 'Unir Cuentas',
       description: 'Combinar con otra cuenta',
       color: 'bg-teal-500',
+      allowed: hasPermission('orders.transfer'),
     },
     {
       id: 'moveSeat',
@@ -56,6 +69,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       label: 'Mover Silla',
       description: 'Transferir productos entre sillas',
       color: 'bg-purple-500',
+      allowed: hasPermission('orders.transfer'),
     },
     {
       id: 'discount',
@@ -63,6 +77,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       label: 'Aplicar Descuento',
       description: 'Agregar descuento a la cuenta',
       color: 'bg-green-500',
+      allowed: true, // Visible para meseros pero requiere PIN de supervisor
     },
     {
       id: 'precheck',
@@ -70,6 +85,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       label: 'Pre-Cuenta',
       description: 'Imprimir cuenta parcial',
       color: 'bg-amber-500',
+      allowed: true,
     },
     {
       id: 'tip',
@@ -77,6 +93,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       label: totals?.tipIsOverridden ? 'Restaurar Propina' : 'Quitar Propina',
       description: totals?.tipPercent > 0 ? `Propina actual: ${totals.tipPercent}%` : 'Sin propina configurada',
       color: 'bg-pink-500',
+      allowed: hasPermission('payments.create') || hasPermission('orders.edit'),
     },
     {
       id: 'close',
@@ -84,8 +101,11 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       label: 'Cerrar/Anular Cuenta',
       description: 'Cierra o anula la cuenta actual',
       color: 'bg-red-500',
+      allowed: true, // Visible para meseros pero requiere PIN de supervisor
     },
   ];
+
+  const menuItems = allMenuItems.filter(item => item.allowed);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
@@ -211,357 +231,626 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
 }
 
 function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh }) {
-  const [step, setStep] = useState(1);
-  const [splitCount, setSplitCount] = useState(2);
-  const [assignments, setAssignments] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [selectedItemId, setSelectedItemId] = useState(null);
   const toast = useToast();
+  const [loading, setLoading] = useState(false);
 
-  const items = account?.items || [];
-
-  const handleAssign = (itemId, accountIndex) => {
-    setAssignments(prev => ({
-      ...prev,
-      [itemId]: prev[itemId] === accountIndex ? undefined : accountIndex
+  // Ítems iniciales activos con desglose de cantidades
+  const activeItems = (account?.items || [])
+    .filter(it => it.status !== 'void')
+    .map(it => ({
+      id: it.id,
+      productId: it.product_id,
+      productName: it.product_name,
+      qty: Number(it.qty || 1),
+      maxQty: Number(it.qty || 1),
+      unitPrice: Number(it.unit_price || 0),
+      seatNo: it.seat_no || 1,
+      notes: it.notes || '',
+      modifiers: it.modifiers || [],
     }));
-    setSelectedItemId(null);
+
+  // Estado de cuentas divididas
+  // accounts[0] = Cuenta 1 (Principal) que conserva su cuenta y check_number
+  // accounts[1] = Cuenta 2 (vacía al inicio)
+  const [accounts, setAccounts] = useState(() => [
+    {
+      id: 'source',
+      name: account?.check_number ? `${account.check_number} (Principal)` : 'Cuenta 1',
+      isSource: true,
+      items: activeItems,
+    },
+    {
+      id: 'acc_2',
+      name: 'Cuenta 2',
+      isSource: false,
+      items: [],
+    },
+  ]);
+
+  // Modal para seleccionar cuántas unidades mover cuando qty > 1
+  const [moveModal, setMoveModal] = useState(null);
+
+  // Edición de nombre de cuenta inline
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editingName, setEditingName] = useState('');
+
+  // Cálculos de totales
+  const getAccountTotal = (acc) => {
+    return acc.items.reduce((sum, it) => sum + (Number(it.unitPrice || 0) * Number(it.qty || 0)), 0);
   };
 
-  const getAssignedCount = (accountIndex) => {
-    return Object.values(assignments).filter(a => a === accountIndex).length;
+  const getAccountItemCount = (acc) => {
+    return acc.items.reduce((sum, it) => sum + Number(it.qty || 0), 0);
   };
 
-  const getAccountTotal = (accountIndex) => {
-    return items
-      .filter(item => assignments[item.id] === accountIndex)
-      .reduce((sum, item) => sum + Number(item.line_total || 0), 0);
-  };
+  const totalOriginal = activeItems.reduce((sum, it) => sum + (Number(it.unitPrice || 0) * Number(it.qty || 0)), 0);
+  const totalDistributed = accounts.reduce((sum, acc) => sum + getAccountTotal(acc), 0);
 
-  const getUnassignedItems = () => {
-    return items.filter(item => assignments[item.id] === undefined);
-  };
-
-  const handleSplit = async () => {
-    const assignedCount = items.filter(item => assignments[item.id] !== undefined).length;
-    if (assignedCount === 0) {
-      toast.error('Asigna al menos un producto a una cuenta');
+  // Agregar una nueva cuenta vacía
+  const handleAddAccount = () => {
+    if (accounts.length >= 8) {
+      toast.info('Límite máximo de 8 cuentas alcanzado');
       return;
     }
+    const newIdx = accounts.length + 1;
+    setAccounts(prev => [
+      ...prev,
+      {
+        id: `acc_${Date.now()}`,
+        name: `Cuenta ${newIdx}`,
+        isSource: false,
+        items: []
+      }
+    ]);
+  };
 
-    setLoading(true);
-    try {
-      const splits = [];
-      for (let i = 0; i < splitCount; i++) {
-        const itemIds = items
-          .filter(item => assignments[item.id] === i)
-          .map(item => item.id);
-        if (itemIds.length > 0) {
-          splits.push({ name: `Cuenta ${i + 1}`, itemIds });
+  // Eliminar una cuenta creada (Cuenta 2+) devolviendo sus productos a Cuenta 1
+  const handleRemoveAccount = (removeIndex) => {
+    if (removeIndex === 0) return;
+    const accToRemove = accounts[removeIndex];
+    const itemsToReturn = accToRemove.items || [];
+
+    setAccounts(prev => {
+      const nextAccounts = [...prev];
+      if (itemsToReturn.length > 0) {
+        const sourceItems = [...nextAccounts[0].items];
+        for (const retItem of itemsToReturn) {
+          const existing = sourceItems.find(it => it.id === retItem.id);
+          if (existing) {
+            existing.qty = Number((existing.qty + retItem.qty).toFixed(2));
+          } else {
+            sourceItems.push(retItem);
+          }
         }
+        nextAccounts[0] = { ...nextAccounts[0], items: sourceItems };
+      }
+      nextAccounts.splice(removeIndex, 1);
+      return nextAccounts;
+    });
+
+    toast.info(`'${accToRemove.name}' eliminada. Sus productos volvieron a Cuenta 1.`);
+  };
+
+  // Iniciar el movimiento de un ítem hacia targetIndex
+  const handleInitiateMove = (sourceIndex, targetIndex, item) => {
+    if (sourceIndex === targetIndex) return;
+    const currentQty = Number(item.qty || 1);
+
+    if (currentQty > 1) {
+      // Abre el selector de cantidad para especificar cuántas unidades mover
+      setMoveModal({
+        item,
+        sourceIndex,
+        targetIndex,
+        maxAvailable: currentQty,
+        qtyToMove: 1
+      });
+    } else {
+      // 1 sola unidad: transferir de inmediato
+      executeMove(sourceIndex, targetIndex, item.id, 1, item);
+    }
+  };
+
+  // Ejecutar el movimiento de ítems
+  const executeMove = (sourceIndex, targetIndex, itemId, qtyToMove, itemRef) => {
+    const parsedQty = Math.max(1, Math.min(Number(qtyToMove), Number(itemRef.qty || 1)));
+
+    setAccounts(prev => {
+      const next = prev.map(a => ({ ...a, items: a.items.map(it => ({ ...it })) }));
+      const sourceAcc = next[sourceIndex];
+      const targetAcc = next[targetIndex];
+
+      const srcItemIndex = sourceAcc.items.findIndex(it => it.id === itemId);
+      if (srcItemIndex === -1) return prev;
+      const srcItem = sourceAcc.items[srcItemIndex];
+      const baseItem = { ...srcItem };
+
+      // Reducir o remover de la cuenta origen
+      if (parsedQty >= srcItem.qty) {
+        sourceAcc.items.splice(srcItemIndex, 1);
+      } else {
+        srcItem.qty = Number((srcItem.qty - parsedQty).toFixed(2));
       }
 
-      await api.splitCustom(accountId, { splits });
-      toast.success('Cuenta dividida exitosamente');
-      onRefresh();
-      onClose();
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setLoading(false);
-    }
+      // Agregar a la cuenta destino
+      const existingInTarget = targetAcc.items.find(it => it.id === itemId);
+      if (existingInTarget) {
+        existingInTarget.qty = Number((existingInTarget.qty + parsedQty).toFixed(2));
+      } else {
+        targetAcc.items.push({
+          ...baseItem,
+          qty: parsedQty
+        });
+      }
+
+      return next;
+    });
+
+    setMoveModal(null);
   };
 
-  const handleSplitBySeat = async () => {
-    const seats = [...new Set(items.map(i => i.seat_no || 1))].sort((a, b) => a - b);
+  // Dividir automáticamente por número de silla (seat_no)
+  const handleSplitBySeat = () => {
+    const seats = [...new Set(activeItems.map(i => i.seatNo || 1))].sort((a, b) => a - b);
     if (seats.length < 2) {
-      toast.error('Los productos deben estar en al menos 2 sillas diferentes');
+      toast.error('Los productos deben estar en al menos 2 sillas diferentes para dividir por silla');
+      return;
+    }
+
+    const newAccounts = seats.map((seat, idx) => ({
+      id: idx === 0 ? 'source' : `acc_seat_${seat}`,
+      name: idx === 0 
+        ? `${account?.check_number || 'Cuenta 1'} (Silla ${seat})`
+        : `Cuenta Silla ${seat}`,
+      isSource: idx === 0,
+      items: activeItems.filter(it => (it.seatNo || 1) === seat)
+    }));
+
+    setAccounts(newAccounts);
+    toast.success(`Productos distribuidos automáticamente en ${seats.length} sillas`);
+  };
+
+  // Confirmar y guardar la división en base de datos
+  const handleConfirmSplit = async () => {
+    const secondaryWithItems = accounts.slice(1).filter(a => a.items.length > 0);
+    if (secondaryWithItems.length === 0) {
+      toast.error('Mueve al menos un producto a Cuenta 2 antes de confirmar la división');
+      return;
+    }
+
+    if (accounts[0].items.length === 0) {
+      toast.error('La Cuenta 1 principal no puede quedar vacía');
       return;
     }
 
     setLoading(true);
     try {
-      const splits = seats.map(seat => ({
-        name: `Silla ${seat}`,
-        itemIds: items.filter(i => (i.seat_no || 1) === seat).map(i => i.id)
+      const splitsPayload = accounts.map((acc, idx) => ({
+        name: acc.name,
+        isSource: idx === 0,
+        items: acc.items.map(it => ({ id: it.id, qty: it.qty }))
       }));
 
-      await api.splitCustom(accountId, { splits });
-      toast.success(`Cuentas divididas por silla (${seats.length} cuentas)`);
+      await api.splitCustom(accountId, { splits: splitsPayload });
+      toast.success(`Cuenta dividida exitosamente en ${accounts.length} cuentas`);
       onRefresh();
       onClose();
     } catch (error) {
-      toast.error(error.message);
+      toast.error(error.message || 'Error al dividir la cuenta');
     } finally {
       setLoading(false);
     }
   };
 
-  if (step === 1) {
-    return (
-      <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-        <m.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl w-full max-w-2xl p-5"
-        >
-          <h3 className="font-semibold text-gray-900 mb-1">Dividir Cuenta</h3>
-          <p className="text-xs text-gray-500 mb-4">¿Entre cuántas cuentas deseas dividir?</p>
-          
-          <div className="grid grid-cols-5 gap-2 mb-4">
-            {[2, 3, 4, 5, 6].map(n => (
-              <m.button
-                key={n}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => { setSplitCount(n); setStep(2); }}
-                className={`py-3 rounded-xl font-semibold text-lg transition-all ${
-                  splitCount === n && splitCount <= 6
-                    ? 'bg-blue-500 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {n}
-              </m.button>
-            ))}
-          </div>
-
-          <div className="border-t border-gray-100 pt-4 mb-4">
-            <p className="text-sm text-gray-500 mb-3">Personalizado</p>
-            <div className="flex items-center gap-3">
-              <m.button
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setSplitCount(Math.max(2, splitCount - 1))}
-                className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center text-xl font-semibold text-gray-600 hover:bg-gray-200"
-              >
-                −
-              </m.button>
-              <div className="flex-1 text-center">
-                <span className="text-4xl font-bold text-gray-900">{splitCount}</span>
-                <span className="text-sm text-gray-500 ml-1">cuentas</span>
-              </div>
-              <m.button
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setSplitCount(Math.min(30, splitCount + 1))}
-                className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center text-xl font-semibold text-gray-600 hover:bg-gray-200"
-              >
-                +
-              </m.button>
-            </div>
-          </div>
-
-          <div className="relative py-3">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200" />
-            </div>
-            <div className="relative flex justify-center">
-              <span className="bg-white px-3 text-xs text-gray-400">ó</span>
-            </div>
-          </div>
-
-          <m.button
-            whileTap={{ scale: 0.98 }}
-            onClick={handleSplitBySeat}
-            disabled={loading}
-            className="w-full py-3.5 bg-purple-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-purple-700 transition-colors mb-4"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-            {loading ? 'Dividiendo...' : 'Dividir por Silla'}
-          </m.button>
-
-          <div className="flex gap-3">
-            <button onClick={onClose} className="flex-1 py-3 border border-gray-200 rounded-xl text-sm font-medium">
-              Cancelar
-            </button>
-            <m.button
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setStep(2)}
-              className="flex-1 py-3 bg-blue-500 text-white rounded-xl text-sm font-medium"
-            >
-              Manual
-            </m.button>
-          </div>
-        </m.div>
-      </div>
-    );
-  }
-
-  const baseColors = [
-    'bg-blue-500', 'bg-emerald-500', 'bg-purple-500',
-    'bg-amber-500', 'bg-pink-500', 'bg-cyan-500'
+  const accPalettes = [
+    { header: 'bg-slate-900 text-white', accent: 'text-slate-900', border: 'border-slate-200', tag: 'bg-slate-100 text-slate-700' },
+    { header: 'bg-emerald-700 text-white', accent: 'text-emerald-700', border: 'border-emerald-200', tag: 'bg-emerald-50 text-emerald-800' },
+    { header: 'bg-blue-600 text-white', accent: 'text-blue-600', border: 'border-blue-200', tag: 'bg-blue-50 text-blue-800' },
+    { header: 'bg-purple-600 text-white', accent: 'text-purple-600', border: 'border-purple-200', tag: 'bg-purple-50 text-purple-800' },
+    { header: 'bg-amber-600 text-white', accent: 'text-amber-600', border: 'border-amber-200', tag: 'bg-amber-50 text-amber-800' },
+    { header: 'bg-rose-600 text-white', accent: 'text-rose-600', border: 'border-rose-200', tag: 'bg-rose-50 text-rose-800' },
   ];
-  const baseLightColors = [
-    'bg-blue-50 border-blue-200', 'bg-emerald-50 border-emerald-200', 'bg-purple-50 border-purple-200',
-    'bg-amber-50 border-amber-200', 'bg-pink-50 border-pink-200', 'bg-cyan-50 border-cyan-200'
-  ];
-  const baseTextColors = [
-    'text-blue-700', 'text-emerald-700', 'text-purple-700',
-    'text-amber-700', 'text-pink-700', 'text-cyan-700'
-  ];
-  const baseHeaderColors = [
-    'bg-blue-600', 'bg-emerald-600', 'bg-purple-600',
-    'bg-amber-600', 'bg-pink-600', 'bg-cyan-600'
-  ];
-  const accountColors = Array.from({ length: splitCount }, (_, i) => baseColors[i % baseColors.length]);
-  const accountLightColors = Array.from({ length: splitCount }, (_, i) => baseLightColors[i % baseLightColors.length]);
-  const accountTextColors = Array.from({ length: splitCount }, (_, i) => baseTextColors[i % baseTextColors.length]);
-  const accountHeaderColors = Array.from({ length: splitCount }, (_, i) => baseHeaderColors[i % baseHeaderColors.length]);
-
-  const unassigned = getUnassignedItems();
-  const assignedCount = items.filter(item => assignments[item.id] !== undefined).length;
-
-  const assignedItems = items.filter(item => assignments[item.id] !== undefined);
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-center justify-center p-3 sm:p-5">
       <m.div
-        initial={{ opacity: 0, scale: 0.95 }}
+        initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-6xl max-h-[94vh] flex flex-col"
+        exit={{ opacity: 0, scale: 0.96 }}
+        className="bg-white rounded-3xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl border border-gray-100 overflow-hidden"
       >
-        {/* Header */}
-        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        {/* Header Superior */}
+        <div className="px-6 py-4 border-b border-gray-100 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
           <div>
-            <h3 className="font-semibold text-gray-900">Dividir en {splitCount} cuentas</h3>
-            <p className="text-xs text-gray-500">Toca un producto y luego la cuenta donde va</p>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                <SplitSquareVertical className="w-4 h-4" />
+              </div>
+              <h2 className="text-lg font-black text-gray-900 tracking-tight">Dividir Cuenta</h2>
+              <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-0.5 rounded-full">
+                Mesa {account?.table_code || '-'}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Transfiere productos o unidades entre cuentas. Cuenta 1 conserva el número de cuenta original.
+            </p>
           </div>
-          <button onClick={() => setStep(1)} className="text-sm text-blue-600 font-medium hover:underline">
-            Cambiar cantidad
-          </button>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleSplitBySeat}
+              className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-purple-200 shadow-2xs cursor-pointer"
+              title="Distribuir productos automáticamente por silla"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Por Silla</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleAddAccount}
+              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-blue-200 shadow-2xs cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Agregar otra cuenta</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 flex flex-col min-h-0">
-          {/* Unassigned items tray */}
-          <div className="bg-gray-50 border-b px-5 py-2.5 flex-shrink-0">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Productos sin asignar
-              </p>
-              <span className="text-xs text-gray-400">{unassigned.length} items</span>
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" style={{ maxHeight: '120px' }}>
-              {unassigned.length === 0 ? (
-                <div className="flex items-center gap-2 text-xs text-emerald-600 py-2">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  Todos asignados
-                </div>
-              ) : (
-                unassigned.map(item => (
-                  <m.button
-                    key={item.id}
-                    layout
-                    onClick={() => setSelectedItemId(selectedItemId === item.id ? null : item.id)}
-                    className={`flex-shrink-0 w-40 p-2.5 rounded-lg border-2 text-left transition-all ${
-                      selectedItemId === item.id
-                        ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-200'
-                        : 'border-gray-200 bg-white hover:border-gray-300'
-                    }`}
-                  >
-                    <p className="text-xs font-medium text-gray-900 truncate">{item.product_name}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Q{Number(item.line_total || 0).toFixed(2)}</p>
-                  </m.button>
-                ))
-              )}
-            </div>
-          </div>
+        {/* Columnas de Cuentas */}
+        <div className="flex-1 overflow-x-auto overflow-y-auto p-4 sm:p-6 bg-slate-50/60">
+          <div className="flex gap-4 items-stretch min-h-full pb-2" style={{ minWidth: `${Math.max(accounts.length * 280, 100)}px` }}>
+            {accounts.map((acc, accIdx) => {
+              const palette = accPalettes[accIdx % accPalettes.length];
+              const accTotal = getAccountTotal(acc);
+              const itemCount = getAccountItemCount(acc);
+              const isEditing = editingIndex === accIdx;
 
-          {/* Account columns */}
-          <div className="flex-1 overflow-x-auto overflow-y-auto p-5">
-            <div className="flex gap-3 h-full" style={{ minWidth: `${Math.max(splitCount * 180, 100)}px` }}>
-              {Array.from({ length: splitCount }, (_, i) => {
-                const accountItems = items.filter(item => assignments[item.id] === i);
-                const isTarget = selectedItemId !== null;
-                return (
-                  <m.div
-                    key={i}
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    onClick={() => {
-                      if (selectedItemId !== null) {
-                        handleAssign(selectedItemId, i);
-                      }
-                    }}
-                    className={`flex-1 min-w-[160px] rounded-xl border-2 flex flex-col transition-all ${
-                      isTarget
-                        ? `${accountLightColors[i]} cursor-pointer hover:shadow-lg border-dashed`
-                        : 'border-gray-200 bg-gray-50/50'
-                    }`}
-                  >
-                    {/* Account header */}
-                    <div className={`${accountHeaderColors[i]} rounded-t-lg px-3 py-2 text-center`}>
-                      <p className="text-white font-bold text-xs">Cuenta {i + 1}</p>
-                      <p className="text-white/90 text-base font-bold">Q{getAccountTotal(i).toFixed(2)}</p>
-                      <p className="text-white/70 text-[10px]">{getAssignedCount(i)} items</p>
-                    </div>
-
-                    {/* Assigned items */}
-                    <div className="flex-1 p-2 space-y-1.5 min-h-[60px]">
-                      {accountItems.length === 0 ? (
-                        <div className="flex items-center justify-center h-full py-4">
-                          <p className="text-xs text-gray-400">
-                            {isTarget ? 'Toca para asignar' : 'Vacía'}
-                          </p>
+              return (
+                <div
+                  key={acc.id}
+                  className={`flex-1 min-w-[270px] max-w-[340px] bg-white rounded-2xl border-2 ${palette.border} shadow-sm flex flex-col overflow-hidden transition-all`}
+                >
+                  {/* Encabezado de la Cuenta */}
+                  <div className={`${palette.header} px-4 py-3 flex-shrink-0`}>
+                    <div className="flex items-center justify-between mb-1">
+                      {isEditing ? (
+                        <div className="flex items-center gap-1 w-full mr-2">
+                          <input
+                            type="text"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                if (editingName.trim()) {
+                                  setAccounts(prev => prev.map((a, i) => i === accIdx ? { ...a, name: editingName.trim() } : a));
+                                }
+                                setEditingIndex(null);
+                              }
+                            }}
+                            autoFocus
+                            className="bg-white/20 text-white placeholder-white/60 text-xs px-2 py-1 rounded font-bold w-full focus:outline-none focus:ring-1 focus:ring-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (editingName.trim()) {
+                                setAccounts(prev => prev.map((a, i) => i === accIdx ? { ...a, name: editingName.trim() } : a));
+                              }
+                              setEditingIndex(null);
+                            }}
+                            className="p-1 hover:bg-white/20 rounded cursor-pointer"
+                          >
+                            <Check className="w-3.5 h-3.5 text-white" />
+                          </button>
                         </div>
                       ) : (
-                        accountItems.map(item => (
-                          <m.div
-                            key={item.id}
-                            layout
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAssignments(prev => {
-                                const next = { ...prev };
-                                delete next[item.id];
-                                return next;
-                              });
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0 mr-1">
+                          <span className="font-extrabold text-sm truncate tracking-tight">
+                            {acc.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingIndex(accIdx);
+                              setEditingName(acc.name);
                             }}
-                            className="group relative bg-white rounded-lg border border-gray-100 p-2 cursor-pointer hover:border-red-200 hover:bg-red-50/30 transition-all"
+                            className="p-1 text-white/60 hover:text-white rounded hover:bg-white/10 transition-colors cursor-pointer"
+                            title="Editar nombre"
                           >
-                            <div className="flex items-start justify-between gap-1">
-                              <p className="text-xs font-medium text-gray-800 truncate flex-1">{item.product_name}</p>
-                              <span className="text-[10px] text-gray-300 group-hover:text-red-400 transition-colors">✕</span>
-                            </div>
-                            <p className="text-[10px] text-gray-500 mt-0.5">Q{Number(item.line_total || 0).toFixed(2)}</p>
-                          </m.div>
-                        ))
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+
+                      {accIdx > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAccount(accIdx)}
+                          className="p-1 text-white/60 hover:text-white hover:bg-white/20 rounded-lg transition-colors cursor-pointer ml-1"
+                          title="Eliminar cuenta y regresar productos a Cuenta 1"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
-                  </m.div>
-                );
-              })}
-            </div>
+
+                    <div className="flex items-baseline justify-between mt-1 pt-1 border-t border-white/15">
+                      <span className="text-xl font-black tracking-tight">
+                        Q{accTotal.toFixed(2)}
+                      </span>
+                      <span className="text-[11px] font-semibold text-white/80">
+                        {itemCount} {itemCount === 1 ? 'unidad' : 'unidades'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Lista de productos de la cuenta */}
+                  <div className="flex-1 p-3 space-y-2.5 overflow-y-auto max-h-[50vh] min-h-[160px]">
+                    {acc.items.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center py-8 text-gray-400 px-4">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-2">
+                          <ArrowRightLeft className="w-4 h-4 text-gray-400" />
+                        </div>
+                        <p className="text-xs font-semibold text-gray-500">Cuenta Vacía</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          Toca &quot;Mover&quot; en cualquier platillo para asignarlo aquí.
+                        </p>
+                      </div>
+                    ) : (
+                      acc.items.map((item) => {
+                        const lineTotal = Number(item.unitPrice || 0) * Number(item.qty || 1);
+                        return (
+                          <div
+                            key={item.id}
+                            className="bg-white border border-gray-200/90 hover:border-gray-300 rounded-xl p-2.5 shadow-2xs transition-all space-y-2 group"
+                          >
+                            <div className="flex items-start justify-between gap-1.5">
+                              <div className="flex items-start gap-2 flex-1 min-w-0">
+                                <ProductIconBadge productName={item.productName} size="sm" className="mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${palette.tag}`}>
+                                      S{item.seatNo}
+                                    </span>
+                                    <span className="text-xs font-bold text-gray-900 truncate">
+                                      {item.productName}
+                                    </span>
+                                  </div>
+                                  {item.qty > 1 && (
+                                    <p className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded w-fit mt-1">
+                                      {item.qty} unidades disponibles
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="text-xs font-black text-gray-900">
+                                  Q{lineTotal.toFixed(2)}
+                                </p>
+                                <p className="text-[10px] text-gray-400">
+                                  {item.qty} × Q{Number(item.unitPrice || 0).toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Botones de transferencia hacia las otras cuentas */}
+                            <div className="pt-1.5 border-t border-gray-100 flex gap-1 flex-wrap">
+                              {accounts.length === 2 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleInitiateMove(accIdx, accIdx === 0 ? 1 : 0, item)}
+                                  className={`w-full py-1 px-2 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 shadow-2xs cursor-pointer ${
+                                    accIdx === 0
+                                      ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                                  }`}
+                                >
+                                  {accIdx === 0 ? (
+                                    <>
+                                      <span>Mover a {accounts[1].name}</span>
+                                      <ArrowRight className="w-3 h-3" />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ArrowLeft className="w-3 h-3" />
+                                      <span>Devolver a Cuenta 1</span>
+                                    </>
+                                  )}
+                                </button>
+                              ) : (
+                                accounts.map((otherAcc, otherIdx) => {
+                                  if (otherIdx === accIdx) return null;
+                                  return (
+                                    <button
+                                      key={otherAcc.id}
+                                      type="button"
+                                      onClick={() => handleInitiateMove(accIdx, otherIdx, item)}
+                                      className="flex-1 py-1 px-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer truncate"
+                                      title={`Mover a ${otherAcc.name}`}
+                                    >
+                                      <span>→ C{otherIdx + 1}</span>
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-gray-100 bg-white flex items-center gap-3 flex-shrink-0">
-          <div className="flex-1">
-            {selectedItemId !== null ? (
-              <span className="text-xs text-blue-600 font-medium flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                Producto seleccionado — toca una cuenta para asignarlo
-              </span>
-            ) : unassigned.length > 0 ? (
-              <span className="text-xs text-amber-600 font-medium">
-                {unassigned.length} producto{unassigned.length !== 1 ? 's' : ''} sin asignar
-              </span>
-            ) : (
-              <span className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                Todos los productos asignados
-              </span>
-            )}
+        {/* Modal / Selector de Cantidad cuando un producto tiene qty > 1 */}
+        {moveModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-2xs z-[70] flex items-center justify-center p-4">
+            <m.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl border border-gray-100 space-y-4"
+            >
+              <div className="text-center">
+                <span className="text-[10px] font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  División de Cantidades
+                </span>
+                <h3 className="text-base font-black text-gray-900 mt-1.5">
+                  {moveModal.item.productName}
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  De <strong>{accounts[moveModal.sourceIndex].name}</strong> hacia <strong>{accounts[moveModal.targetIndex].name}</strong>
+                </p>
+              </div>
+
+              {/* Selector de Unidades */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-gray-700">Cantidad a transferir:</span>
+                  <span className="text-[11px] text-gray-500 font-semibold">
+                    (de {moveModal.maxAvailable} disp.)
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-center gap-3 py-1">
+                  <button
+                    type="button"
+                    onClick={() => setMoveModal(prev => ({
+                      ...prev,
+                      qtyToMove: Math.max(1, prev.qtyToMove - 1)
+                    }))}
+                    disabled={moveModal.qtyToMove <= 1}
+                    className="w-10 h-10 rounded-xl bg-white border border-gray-200 hover:border-blue-400 text-gray-700 font-bold flex items-center justify-center shadow-2xs transition-all cursor-pointer disabled:opacity-40"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+
+                  <div className="w-16 text-center">
+                    <span className="text-2xl font-black text-gray-900">{moveModal.qtyToMove}</span>
+                    <p className="text-[10px] text-gray-400 font-medium">unidad(es)</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setMoveModal(prev => ({
+                      ...prev,
+                      qtyToMove: Math.min(prev.maxAvailable, prev.qtyToMove + 1)
+                    }))}
+                    disabled={moveModal.qtyToMove >= moveModal.maxAvailable}
+                    className="w-10 h-10 rounded-xl bg-white border border-gray-200 hover:border-blue-400 text-gray-700 font-bold flex items-center justify-center shadow-2xs transition-all cursor-pointer disabled:opacity-40"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Accesos rápidos */}
+                <div className="flex gap-2 mt-2 pt-2 border-t border-slate-200/60">
+                  <button
+                    type="button"
+                    onClick={() => setMoveModal(prev => ({ ...prev, qtyToMove: 1 }))}
+                    className={`flex-1 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      moveModal.qtyToMove === 1
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    Solo 1 unidad
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMoveModal(prev => ({ ...prev, qtyToMove: prev.maxAvailable }))}
+                    className={`flex-1 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      moveModal.qtyToMove === moveModal.maxAvailable
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    Todas ({moveModal.maxAvailable})
+                  </button>
+                </div>
+
+                {moveModal.qtyToMove < moveModal.maxAvailable && (
+                  <p className="text-[11px] text-slate-500 font-medium text-center mt-2">
+                    ℹ️ Quedarán <strong>{moveModal.maxAvailable - moveModal.qtyToMove}</strong> en {accounts[moveModal.sourceIndex].name}.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setMoveModal(null)}
+                  className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => executeMove(
+                    moveModal.sourceIndex,
+                    moveModal.targetIndex,
+                    moveModal.item.id,
+                    moveModal.qtyToMove,
+                    moveModal.item
+                  )}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md shadow-blue-500/25 transition-all cursor-pointer"
+                >
+                  Mover {moveModal.qtyToMove} {moveModal.qtyToMove === 1 ? 'unidad' : 'unidades'}
+                </button>
+              </div>
+            </m.div>
           </div>
-          <button
-            onClick={handleSplit}
-            disabled={loading || assignedCount === 0}
-            className="px-6 py-2.5 bg-blue-500 text-white rounded-xl text-xs font-semibold disabled:opacity-50 hover:bg-blue-600 transition-colors"
-          >
-            {loading ? 'Dividiendo...' : 'Dividir Cuenta'}
-          </button>
+        )}
+
+        {/* Footer Inferior */}
+        <div className="px-6 py-4 border-t border-gray-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-gray-500 font-medium">Total Mesa:</span>
+              <span className="font-extrabold text-gray-900">Q{totalOriginal.toFixed(2)}</span>
+            </div>
+            <span className="text-gray-300">|</span>
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-gray-500 font-medium">Distribución:</span>
+              <span className="font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-lg">
+                Q{totalDistributed.toFixed(2)} ✓
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 sm:flex-initial px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmSplit}
+              disabled={loading || accounts.slice(1).every(a => a.items.length === 0)}
+              className="flex-1 sm:flex-initial px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed disabled:shadow-none"
+            >
+              {loading ? (
+                <span>Dividiendo cuentas...</span>
+              ) : (
+                <span>Confirmar División ({accounts.length} Cuentas)</span>
+              )}
+            </button>
+          </div>
         </div>
       </m.div>
     </div>
@@ -1031,6 +1320,9 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
 }
 
 function DiscountModal({ accountId, onClose, onRefresh }) {
+  const { hasPermission = () => true } = useAuth() || {};
+  const requiresSupervisorPin = !hasPermission('orders.discount');
+  const [supervisorPin, setSupervisorPin] = useState('');
   const [type, setType] = useState('percent');
   const [value, setValue] = useState('');
   const [reason, setReason] = useState('');
@@ -1039,6 +1331,10 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
 
   const handleApply = async () => {
     if (!value) return;
+    if (requiresSupervisorPin && !supervisorPin.trim()) {
+      toast.error('Se requiere PIN de supervisor para autorizar el descuento');
+      return;
+    }
     setLoading(true);
     try {
       await api.addDiscount(accountId, {
@@ -1046,6 +1342,7 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
         value: parseFloat(value),
         reason,
         createdBy: 1,
+        authPin: requiresSupervisorPin ? supervisorPin.trim() : undefined,
       });
       toast.success('Descuento aplicado');
       onRefresh();
@@ -1066,6 +1363,24 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
       >
         <h3 className="font-semibold text-gray-900 mb-4">Aplicar Descuento</h3>
         
+        {requiresSupervisorPin && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <div className="flex items-center gap-2 text-amber-900 text-xs font-semibold mb-1.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              Requiere Autorización de Supervisor
+            </div>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              value={supervisorPin}
+              onChange={(e) => setSupervisorPin(e.target.value.replace(/\D/g, ''))}
+              placeholder="Ingresa PIN de Gerente / Admin"
+              className="w-full p-2.5 bg-white border border-amber-300 rounded-lg text-sm text-center font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+        )}
+
         <div className="mb-4">
           <label className="text-sm text-gray-600 mb-2 block">Tipo de Descuento</label>
           <div className="flex gap-2">
@@ -1104,7 +1419,7 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             className="w-full border border-gray-200 rounded-xl p-3"
-            placeholder="Promoción, etc."
+            placeholder="Promoción, cortesía, etc."
           />
         </div>
 
@@ -1114,7 +1429,7 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
           </button>
           <button 
             onClick={handleApply} 
-            disabled={!value || loading}
+            disabled={!value || loading || (requiresSupervisorPin && !supervisorPin.trim())}
             className="flex-1 py-3 bg-green-500 text-white rounded-xl disabled:opacity-50"
           >
             {loading ? 'Aplicando...' : 'Aplicar'}
@@ -1306,13 +1621,20 @@ function TipModal({ accountId, totals, onClose, onRefresh }) {
 }
 
 function CloseAccountModal({ accountId, account, onClose, onRefresh, onCloseMenu }) {
+  const { hasPermission = () => true } = useAuth() || {};
+  const requiresSupervisorPin = !hasPermission('accounts.close') && !hasPermission('accounts.void');
+  const [supervisorPin, setSupervisorPin] = useState('');
   const [loading, setLoading] = useState(false);
   const toast = useToast();
 
   const handleClose = async () => {
+    if (requiresSupervisorPin && !supervisorPin.trim()) {
+      toast.error('Se requiere PIN de supervisor para anular/cerrar la cuenta');
+      return;
+    }
     setLoading(true);
     try {
-      await api.closeAccount(accountId);
+      await api.closeAccount(accountId, requiresSupervisorPin ? supervisorPin.trim() : null);
       toast.success('Cuenta cerrada');
       onRefresh();
       onCloseMenu();
@@ -1328,20 +1650,39 @@ function CloseAccountModal({ accountId, account, onClose, onRefresh, onCloseMenu
       <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-sm p-5"
+        className="bg-white rounded-2xl w-full max-w-sm p-5 text-center"
       >
         <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <Trash2 className="w-8 h-8 text-red-600" />
         </div>
-        <h3 className="font-semibold text-gray-900 text-center mb-2">
-          ¿Cerrar Cuenta?
+        <h3 className="font-semibold text-gray-900 mb-2">
+          ¿Cerrar / Anular Cuenta?
         </h3>
-        <p className="text-sm text-gray-500 text-center mb-6">
+        <p className="text-sm text-gray-500 mb-4">
           Estás por cerrar la cuenta <strong>{account?.check_number}</strong>.
           {account?.items?.length > 0
-            ? ' Los productos serán anulados.'
+            ? ' Los productos activos serán anulados.'
             : ' La cuenta está vacía.'}
         </p>
+
+        {requiresSupervisorPin && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-left">
+            <div className="flex items-center gap-2 text-amber-900 text-xs font-semibold mb-1.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              Requiere Autorización de Supervisor
+            </div>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              value={supervisorPin}
+              onChange={(e) => setSupervisorPin(e.target.value.replace(/\D/g, ''))}
+              placeholder="Ingresa PIN de Gerente / Admin"
+              className="w-full p-2.5 bg-white border border-amber-300 rounded-lg text-sm text-center font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+        )}
+
         <div className="flex gap-3">
           <button
             onClick={onClose}
@@ -1351,7 +1692,7 @@ function CloseAccountModal({ accountId, account, onClose, onRefresh, onCloseMenu
           </button>
           <button
             onClick={handleClose}
-            disabled={loading}
+            disabled={loading || (requiresSupervisorPin && !supervisorPin.trim())}
             className="flex-1 py-3 bg-red-600 text-white rounded-xl font-medium disabled:opacity-50"
           >
             {loading ? 'Cerrando...' : 'Cerrar Cuenta'}

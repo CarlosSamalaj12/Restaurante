@@ -2,10 +2,12 @@
 // Lógica de negocio para pagos, descuentos, auto-cierre y deducción de inventario
 
 const paymentsRepository = require("./payments.repository");
+const accountsRepository = require("../accounts/accounts.repository");
 const accountsService = require("../accounts/accounts.service");
 const printService = require("../../../server/print-service");
 const { normalizePaymentMethodCode } = require("../../common/utils");
 const { BadRequestError, NotFoundError } = require("../../common/errors");
+const { emitEvent } = require("../../common/sockets");
 
 const paymentsService = {
   /**
@@ -112,6 +114,15 @@ const paymentsService = {
     const totals = await accountsService.getAccountTotals(parsedAccountId);
     let accountJustClosed = false;
 
+    // Emitir evento de nuevo pago en tiempo real
+    emitEvent("sales:payment", {
+      accountId: parsedAccountId,
+      method: normalizedMethod,
+      amount: amountNum,
+      referenceNo,
+      totals,
+    });
+
     if (Number(totals.pending || 0) <= 0) {
       const account = await paymentsRepository.findAccountStatus(parsedAccountId);
       if (account && String(account.status) === "open") {
@@ -126,8 +137,13 @@ const paymentsService = {
       }
     }
 
-    // Si la cuenta se cerró, disparar impresión de recibo si hay impresora configurada
+    // Si la cuenta se cerró, emitir sales:closed y disparar impresión si aplica
     if (accountJustClosed) {
+      emitEvent("sales:closed", {
+        accountId: parsedAccountId,
+        totals,
+      });
+
       this.printCustomerReceipt(parsedAccountId, userId, totals).catch((printErr) => {
         console.error(`[PRINT] Error preparando recibo: ${printErr.message}`);
       });
@@ -151,7 +167,68 @@ const paymentsService = {
     await paymentsRepository.markAccountAsPaid(parsedAccountId);
     await accountsService.addAccountEvent(parsedAccountId, "account_closed", totals, userId);
 
+    emitEvent("sales:closed", {
+      accountId: parsedAccountId,
+      totals,
+    });
+
     return { ok: true };
+  },
+
+  /**
+   * Elimina un pago registrado incorrectamente (solo permitido en cuentas abiertas y turnos activos).
+   */
+  async deletePayment({ paymentId, accountId, userId = null }) {
+    const parsedPaymentId = Number(paymentId);
+    const parsedAccountId = Number(accountId);
+
+    if (!parsedPaymentId || !parsedAccountId) {
+      throw new BadRequestError("paymentId y accountId son requeridos");
+    }
+
+    const payment = await paymentsRepository.findPaymentById(parsedPaymentId);
+    if (!payment || Number(payment.account_id) !== parsedAccountId) {
+      throw new NotFoundError("Pago no encontrado para esta cuenta");
+    }
+
+    const account = await accountsRepository.findById(parsedAccountId);
+    if (!account) throw new NotFoundError("Cuenta no encontrada");
+
+    if (String(account.status) !== "open") {
+      throw new BadRequestError("Solo puedes modificar pagos de cuentas abiertas. Reabre la cuenta primero.");
+    }
+
+    if (account.shift_id) {
+      const shift = await accountsRepository.findAccountShift(parsedAccountId);
+      if (shift && String(shift.status) === "closed") {
+        throw new BadRequestError(
+          `No se puede modificar el pago: el turno #${shift.id} ya fue cerrado.`
+        );
+      }
+    }
+
+    await paymentsRepository.deletePayment(parsedPaymentId, parsedAccountId);
+
+    await accountsService.addAccountEvent(
+      parsedAccountId,
+      "payment_deleted",
+      {
+        paymentId: parsedPaymentId,
+        method: payment.method,
+        amount: Number(payment.amount),
+        deletedBy: userId,
+      },
+      userId
+    );
+
+    const totals = await accountsService.getAccountTotals(parsedAccountId);
+
+    emitEvent("sales:update", {
+      accountId: parsedAccountId,
+      totals,
+    });
+
+    return totals;
   },
 
   /**
@@ -169,17 +246,35 @@ const paymentsService = {
       const payments = await paymentsRepository.findAccountReceiptPayments(accountId);
       const restaurantName = await paymentsRepository.findRestaurantName();
 
+      let felInvoice = null;
+      let felConfig = null;
+      try {
+        const felRepository = require("../fel/fel.repository");
+        felInvoice = await felRepository.findInvoiceByAccountId(accountId);
+        felConfig = await felRepository.getConfig();
+      } catch (felErr) {}
+
       const receipt = {
         account,
         items,
         payments,
         totals,
+        felInvoice,
       };
 
       const result = await printService.printCustomerReceipt(
         receipt,
         terminal,
-        { name: restaurantName }
+        {
+          name: restaurantName,
+          commercial_name: felConfig?.commercial_name,
+          address: felConfig?.issuer_name,
+          nit: felConfig?.issuer_nit,
+          establishment_code: felConfig?.establishment_code,
+        },
+        {
+          copies: felConfig?.receipt_copies || 1,
+        }
       );
 
       if (!result.ok && !result.skipped) {
@@ -190,6 +285,94 @@ const paymentsService = {
     } catch (e) {
       console.error(`[PRINT] Excepción imprimiendo recibo: ${e.message}`);
     }
+  },
+
+  /**
+   * Modifica el método de pago de una transacción registrada (rectificación de cobros),
+   * requiriendo PIN de supervisor y verificando que el turno no esté cerrado.
+   */
+  async changePaymentMethod({ accountId, paymentId, newMethod, reason = "", authPin = null, session = null }) {
+    const parsedAccountId = Number(accountId);
+    const parsedPaymentId = Number(paymentId);
+    if (!parsedAccountId || !parsedPaymentId) {
+      throw new BadRequestError("accountId y paymentId son requeridos");
+    }
+
+    const account = await accountsRepository.findById(parsedAccountId);
+    if (!account) {
+      throw new NotFoundError("Cuenta no encontrada");
+    }
+
+    if (account.shift_id) {
+      const shift = await accountsRepository.findAccountShift(parsedAccountId);
+      if (shift && String(shift.status) === "closed") {
+        throw new BadRequestError(
+          `No se puede rectificar el pago: el turno #${shift.id} ya fue cerrado. Por integridad contable, los turnos cerrados no admiten cambios.`
+        );
+      }
+    }
+
+    let authorizer = null;
+    if (authPin) {
+      const ordersRepository = require("../orders/orders.repository");
+      const authResult = await ordersRepository.findManagerOrAdminByPin(authPin);
+      if (!authResult || !authResult.ok) {
+        throw new ForbiddenError(authResult?.message || "PIN inválido o sin permisos de supervisor para rectificar pagos");
+      }
+      authorizer = authResult.user;
+    } else if (session) {
+      const role = String(session.role || "").toLowerCase();
+      if (role === "admin" || role === "manager" || (session.permissions && session.permissions.includes("accounts.reopen"))) {
+        authorizer = { id: session.userId || session.id, full_name: session.userName || "Supervisor" };
+      } else {
+        throw new ForbiddenError("Se requiere PIN de supervisor para rectificar formas de pago");
+      }
+    } else {
+      throw new ForbiddenError("Se requiere PIN de supervisor para rectificar formas de pago");
+    }
+
+    const payment = await paymentsRepository.findPaymentById(parsedPaymentId);
+    if (!payment || Number(payment.account_id) !== parsedAccountId) {
+      throw new NotFoundError("Pago no encontrado para esta cuenta");
+    }
+
+    const normalizedNewMethod = normalizePaymentMethodCode(newMethod);
+    if (!normalizedNewMethod) {
+      throw new BadRequestError("Nueva forma de pago inválida");
+    }
+
+    const paymentMethodRow = await paymentsRepository.findActivePaymentMethod(normalizedNewMethod);
+    if (!paymentMethodRow) {
+      throw new BadRequestError("Forma de pago inactiva o no admitida");
+    }
+
+    const oldMethod = payment.method;
+    await paymentsRepository.updatePaymentMethod(parsedPaymentId, normalizedNewMethod);
+
+    await accountsRepository.addEvent(
+      parsedAccountId,
+      "payment_method_changed",
+      {
+        paymentId: parsedPaymentId,
+        oldMethod,
+        newMethod: normalizedNewMethod,
+        amount: payment.amount,
+        reason: reason || "Rectificación de forma de pago en pre-cierre",
+        authorizedBy: authorizer.id,
+        authorizerName: authorizer.full_name,
+      },
+      authorizer.id
+    );
+
+    emitEvent("account:updated", { accountId: parsedAccountId });
+
+    return {
+      ok: true,
+      message: `Forma de pago actualizada a ${paymentMethodRow.label || normalizedNewMethod}`,
+      paymentId: parsedPaymentId,
+      oldMethod,
+      newMethod: normalizedNewMethod,
+    };
   },
 };
 

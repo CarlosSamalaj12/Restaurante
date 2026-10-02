@@ -134,7 +134,7 @@ const settingsRepository = {
 
   // Roles & Permissions
   async getRolesData() {
-    const [roles] = await query(`SELECT id, name, slug, description, is_system FROM roles ORDER BY id`);
+    const [roles] = await query(`SELECT id, name, slug, description, is_system, default_view FROM roles ORDER BY id`);
     const [permissions] = await query(`SELECT id, name, slug, module_code, description FROM permissions ORDER BY module_code, id`);
     const [rolePerms] = await query(`SELECT role_id, permission_id FROM role_permissions`);
     const [userRoles] = await query(`SELECT user_id, role_id FROM user_roles`);
@@ -156,24 +156,36 @@ const settingsRepository = {
     return { roles, permissions, permByRole, rolesByUser };
   },
 
-  async createRole({ name, slug, description }) {
+  async createRole({ name, slug, description, defaultView = 'dashboard' }) {
     const [r] = await query(
-      `INSERT INTO roles (name, slug, description) VALUES (?, ?, ?)`,
-      [name, slug, description]
+      `INSERT INTO roles (name, slug, description, default_view) VALUES (?, ?, ?, ?)`,
+      [name, slug, description, defaultView]
     );
     return r.insertId;
   },
 
   async getRoleById(roleId) {
-    const [rows] = await query(`SELECT id, name, slug, description, is_system FROM roles WHERE id = ? LIMIT 1`, [roleId]);
+    const [rows] = await query(`SELECT id, name, slug, description, is_system, default_view FROM roles WHERE id = ? LIMIT 1`, [roleId]);
     return rows[0] || null;
   },
 
-  async updateRole(roleId, { name, description }) {
-    await query(
-      `UPDATE roles SET name = ?, description = ? WHERE id = ?`,
-      [name, description, roleId]
-    );
+  async updateRole(roleId, { name, description, defaultView }) {
+    if (defaultView) {
+      await query(
+        `UPDATE roles SET name = ?, description = ?, default_view = ? WHERE id = ?`,
+        [name, description, defaultView, roleId]
+      );
+    } else {
+      await query(
+        `UPDATE roles SET name = ?, description = ? WHERE id = ?`,
+        [name, description, roleId]
+      );
+    }
+  },
+
+  async updateRoleDefaultView(roleId, defaultView) {
+    if (!defaultView) return;
+    await query(`UPDATE roles SET default_view = ? WHERE id = ?`, [defaultView, roleId]);
   },
 
   async deleteRole(roleId) {
@@ -224,12 +236,21 @@ const settingsRepository = {
   },
 
   async updateOperationCenter(centerId, { name, isActive }) {
-    await query(
-      `UPDATE operation_centers
-       SET name = ?, is_active = ?
-       WHERE id = ?`,
-      [name, Number(isActive) ? 1 : 0, centerId]
-    );
+    if (isActive !== undefined) {
+      await query(
+        `UPDATE operation_centers
+         SET name = ?, is_active = ?
+         WHERE id = ?`,
+        [name, Number(isActive) ? 1 : 0, centerId]
+      );
+    } else {
+      await query(
+        `UPDATE operation_centers
+         SET name = ?
+         WHERE id = ?`,
+        [name, centerId]
+      );
+    }
   },
 
   async hasAccountsInCenter(centerId) {
@@ -242,7 +263,67 @@ const settingsRepository = {
     return tables.length > 0;
   },
 
+  async getCenterUsageDetails(centerId) {
+    const [accounts] = await query(`SELECT COUNT(*) AS total FROM accounts WHERE operation_center_id = ?`, [centerId]);
+    const [tables] = await query(`SELECT COUNT(*) AS total FROM restaurant_tables WHERE operation_center_id = ?`, [centerId]);
+    const [shifts] = await query(`SELECT COUNT(*) AS total FROM shifts WHERE operation_center_id = ?`, [centerId]);
+    const [users] = await query(`SELECT COUNT(*) AS total FROM staff_users WHERE operation_center_id = ?`, [centerId]);
+    const [terminals] = await query(
+      `SELECT COUNT(*) AS total FROM terminals WHERE operation_center_id = ? OR kds_operation_center_id = ?`,
+      [centerId, centerId]
+    );
+
+    let categoriesCount = 0;
+    try {
+      const [cats] = await query(`SELECT COUNT(*) AS total FROM product_categories WHERE operation_center_id = ?`, [centerId]);
+      categoriesCount = Number(cats?.[0]?.total || 0);
+    } catch (_) {}
+
+    let prodCentersCount = 0;
+    try {
+      const [pcs] = await query(`SELECT COUNT(*) AS total FROM production_centers WHERE operation_center_id = ?`, [centerId]);
+      prodCentersCount = Number(pcs?.[0]?.total || 0);
+    } catch (_) {}
+
+    const [openShifts] = await query(
+      `SELECT COUNT(*) AS total FROM shifts WHERE operation_center_id = ? AND status = 'open'`,
+      [centerId]
+    );
+    const [openAccounts] = await query(
+      `SELECT COUNT(*) AS total FROM accounts WHERE operation_center_id = ? AND status = 'open'`,
+      [centerId]
+    );
+
+    const accountsCount = Number(accounts?.[0]?.total || 0);
+    const tablesCount = Number(tables?.[0]?.total || 0);
+    const shiftsCount = Number(shifts?.[0]?.total || 0);
+    const usersCount = Number(users?.[0]?.total || 0);
+    const terminalsCount = Number(terminals?.[0]?.total || 0);
+    const openShiftsCount = Number(openShifts?.[0]?.total || 0);
+    const openAccountsCount = Number(openAccounts?.[0]?.total || 0);
+
+    const hasLinkedData = (accountsCount + tablesCount + shiftsCount + usersCount + terminalsCount + categoriesCount + prodCentersCount) > 0;
+    const hasActiveOperations = (openShiftsCount + openAccountsCount) > 0;
+
+    return {
+      accountsCount,
+      tablesCount,
+      shiftsCount,
+      usersCount,
+      terminalsCount,
+      categoriesCount,
+      prodCentersCount,
+      openShiftsCount,
+      openAccountsCount,
+      hasLinkedData,
+      hasActiveOperations,
+    };
+  },
+
   async deleteOperationCenter(centerId) {
+    try {
+      await query(`DELETE FROM terminal_center_bindings WHERE center_id = ?`, [centerId]);
+    } catch (_) {}
     await query(`DELETE FROM operation_center_products WHERE center_id = ?`, [centerId]);
     await query(`DELETE FROM operation_centers WHERE id = ?`, [centerId]);
   },
@@ -425,18 +506,75 @@ const settingsRepository = {
     return rows[0] || null;
   },
 
-  async createTerminal({ operationCenterId, name, printerName = null, printerIp = null, printerPort = 9100, areaTrabajoId = null }) {
+  async createTerminal({
+    operationCenterId,
+    name,
+    printerName = null,
+    printerIp = null,
+    printerPort = 9100,
+    areaTrabajoId = null,
+    isKds = 0,
+    kdsProductionCenterId = null,
+    kdsOperationCenterId = null,
+    deviceSerial = null,
+  }) {
     const [result] = await query(
-      `INSERT INTO terminals (operation_center_id, name, printer_name, printer_ip, printer_port, area_trabajo_id) VALUES (?, ?, ?, ?, ?, ?)`,
-      [Number(operationCenterId), name, printerName || null, printerIp || null, Number(printerPort) || 9100, areaTrabajoId ? Number(areaTrabajoId) : null]
+      `INSERT INTO terminals (
+        operation_center_id, name, printer_name, printer_ip, printer_port,
+        area_trabajo_id, is_kds, kds_production_center_id, kds_operation_center_id, device_serial
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        Number(operationCenterId),
+        name,
+        printerName || null,
+        printerIp || null,
+        Number(printerPort) || 9100,
+        areaTrabajoId ? Number(areaTrabajoId) : null,
+        isKds ? 1 : 0,
+        kdsProductionCenterId ? Number(kdsProductionCenterId) : null,
+        kdsOperationCenterId ? Number(kdsOperationCenterId) : null,
+        deviceSerial ? String(deviceSerial).trim() : null,
+      ]
     );
     return result.insertId;
   },
 
-  async updateTerminal(terminalId, { operationCenterId, name, printerName = null, printerIp = null, printerPort = 9100, isActive = 1, areaTrabajoId = null }) {
+  async updateTerminal(
+    terminalId,
+    {
+      operationCenterId,
+      name,
+      printerName = null,
+      printerIp = null,
+      printerPort = 9100,
+      isActive = 1,
+      areaTrabajoId = null,
+      isKds = 0,
+      kdsProductionCenterId = null,
+      kdsOperationCenterId = null,
+      deviceSerial = null,
+    }
+  ) {
     await query(
-      `UPDATE terminals SET operation_center_id = ?, name = ?, printer_name = ?, printer_ip = ?, printer_port = ?, is_active = ?, area_trabajo_id = ? WHERE id = ?`,
-      [Number(operationCenterId), name, printerName || null, printerIp || null, Number(printerPort) || 9100, Number(isActive) ? 1 : 0, areaTrabajoId ? Number(areaTrabajoId) : null, terminalId]
+      `UPDATE terminals SET 
+        operation_center_id = ?, name = ?, printer_name = ?, printer_ip = ?, printer_port = ?, 
+        is_active = ?, area_trabajo_id = ?, is_kds = ?, kds_production_center_id = ?, 
+        kds_operation_center_id = ?, device_serial = ? 
+       WHERE id = ?`,
+      [
+        Number(operationCenterId),
+        name,
+        printerName || null,
+        printerIp || null,
+        Number(printerPort) || 9100,
+        Number(isActive) ? 1 : 0,
+        areaTrabajoId ? Number(areaTrabajoId) : null,
+        isKds ? 1 : 0,
+        kdsProductionCenterId ? Number(kdsProductionCenterId) : null,
+        kdsOperationCenterId ? Number(kdsOperationCenterId) : null,
+        deviceSerial ? String(deviceSerial).trim() : null,
+        terminalId,
+      ]
     );
   },
 
@@ -553,12 +691,20 @@ const settingsRepository = {
        ORDER BY sort_order ASC, label ASC`
     );
 
+    const [kitchenNotes] = await query(
+      `SELECT id, label, category, sort_order
+       FROM kitchen_quick_notes
+       WHERE is_active = 1
+       ORDER BY sort_order ASC, id ASC`
+    );
+
     return {
       centers,
       defaultCenterId,
       autoCenterId,
       tables,
       paymentMethods,
+      kitchenNotes,
       userModules,
       deviceModules,
       permissions,
@@ -597,7 +743,9 @@ const settingsRepository = {
     const [discountPresets] = await query(`SELECT id, name, type, value, is_active, sort_order FROM discount_presets ORDER BY sort_order, name`);
     const [modules] = await query(`SELECT code, label, is_active, sort_order FROM app_modules ORDER BY sort_order, code`);
     const [staffUsers] = await query(
-      `SELECT su.id, su.full_name, su.role, su.pin_code, su.operation_center_id,
+      `SELECT su.id, su.full_name, su.role,
+              CASE WHEN su.pin_code IS NOT NULL AND su.pin_code != '' THEN '••••••' ELSE '' END AS pin_code,
+              su.operation_center_id,
               GROUP_CONCAT(DISTINCT r.name SEPARATOR ', ') AS role_names
        FROM staff_users su
        LEFT JOIN user_roles ur ON ur.user_id = su.id
@@ -619,7 +767,7 @@ const settingsRepository = {
        WHERE t.is_active = 1
        ORDER BY c.name, t.name`
     );
-    const [roles] = await query(`SELECT id, name, slug, description, is_system FROM roles ORDER BY id`);
+    const [roles] = await query(`SELECT id, name, slug, description, is_system, default_view FROM roles ORDER BY id`);
     const [permissions] = await query(`SELECT id, name, slug, module_code, description FROM permissions ORDER BY module_code, id`);
     const [rolePerms] = await query(`SELECT role_id, permission_id FROM role_permissions`);
     const [userRoles] = await query(`SELECT user_id, role_id FROM user_roles`);
@@ -726,7 +874,9 @@ const settingsRepository = {
       `SELECT product_id, group_id, sort_order FROM product_modifier_groups`
     );
     const [staffUsers] = await query(
-      `SELECT su.id, su.full_name, su.role, su.pin_code, su.operation_center_id,
+      `SELECT su.id, su.full_name, su.role,
+              CASE WHEN su.pin_code IS NOT NULL AND su.pin_code != '' THEN '••••••' ELSE '' END AS pin_code,
+              su.operation_center_id,
               GROUP_CONCAT(DISTINCT r.name SEPARATOR ', ') AS role_names
        FROM staff_users su
        LEFT JOIN user_roles ur ON ur.user_id = su.id
@@ -734,7 +884,7 @@ const settingsRepository = {
        GROUP BY su.id
        ORDER BY su.full_name`
     );
-    const [roles] = await query(`SELECT id, name, slug, description, is_system FROM roles ORDER BY id`);
+    const [roles] = await query(`SELECT id, name, slug, description, is_system, default_view FROM roles ORDER BY id`);
     const [permissions] = await query(`SELECT id, name, slug, module_code, description FROM permissions ORDER BY module_code, id`);
     const [rolePerms] = await query(`SELECT role_id, permission_id FROM role_permissions`);
     const [userRoles] = await query(`SELECT user_id, role_id FROM user_roles`);
@@ -760,11 +910,23 @@ const settingsRepository = {
 
     const [terminals] = await query(
       `SELECT t.id, t.operation_center_id, t.name, t.printer_name, t.printer_ip, t.printer_port, t.is_active,
-              t.area_trabajo_id, da.name AS area_name, c.name AS center_name
+              t.area_trabajo_id, t.is_kds, t.kds_production_center_id, t.kds_operation_center_id, t.device_serial,
+              da.name AS area_name, c.name AS center_name,
+              pc_kds.name AS kds_production_center_name,
+              oc_kds.name AS kds_operation_center_name
        FROM terminals t
        INNER JOIN operation_centers c ON c.id = t.operation_center_id
        LEFT JOIN dining_areas da ON da.id = t.area_trabajo_id
+       LEFT JOIN production_centers pc_kds ON pc_kds.id = t.kds_production_center_id
+       LEFT JOIN operation_centers oc_kds ON oc_kds.id = t.kds_operation_center_id
        ORDER BY c.name, t.name`
+    );
+
+    const [licensedTerminals] = await query(
+      `SELECT id, serial, label, ip_address, terminal_type, status, last_seen_at
+       FROM licensed_terminals
+       WHERE status = 'active'
+       ORDER BY label ASC, first_seen_at DESC`
     );
 
     const [routingMatrix] = await query(
@@ -781,6 +943,12 @@ const settingsRepository = {
       `SELECT id, nombre, descripcion FROM categorias_impresion ORDER BY nombre`
     );
 
+    const [kitchenNotes] = await query(
+      `SELECT id, label, category, sort_order, is_active
+       FROM kitchen_quick_notes
+       ORDER BY sort_order ASC, id ASC`
+    );
+
     return {
       products,
       categories,
@@ -788,12 +956,14 @@ const settingsRepository = {
       centers,
       tables,
       terminals,
+      licensedTerminals,
       productionCenters,
       productProductionCenters,
       groups,
       options,
       productModifierGroups,
       paymentMethods,
+      kitchenNotes,
       routingMatrix,
       printCategories,
       staffUsers,
@@ -858,6 +1028,57 @@ const settingsRepository = {
     await query(`DELETE FROM matriz_enrutamiento WHERE categoria_impresion_id = ?`, [Number(id)]);
     await query(`UPDATE products SET categoria_impresion_id = NULL WHERE categoria_impresion_id = ?`, [Number(id)]);
     await query(`DELETE FROM categorias_impresion WHERE id = ?`, [Number(id)]);
+  },
+
+  // ───────── Observaciones y Atajos Rápidos de Cocina ─────────
+  async getKitchenNotes({ activeOnly = false } = {}) {
+    const sql = activeOnly
+      ? `SELECT id, label, category, sort_order, is_active, created_at, updated_at FROM kitchen_quick_notes WHERE is_active = 1 ORDER BY sort_order ASC, id ASC`
+      : `SELECT id, label, category, sort_order, is_active, created_at, updated_at FROM kitchen_quick_notes ORDER BY sort_order ASC, id ASC`;
+    const [rows] = await query(sql);
+    return rows;
+  },
+
+  async createKitchenNote({ label, category = 'General', sortOrder = 0, isActive = 1 }) {
+    const [res] = await query(
+      `INSERT INTO kitchen_quick_notes (label, category, sort_order, is_active) VALUES (?, ?, ?, ?)`,
+      [String(label).trim(), category ? String(category).trim() : 'General', Number(sortOrder) || 0, isActive ? 1 : 0]
+    );
+    return {
+      id: res.insertId,
+      label: String(label).trim(),
+      category: category ? String(category).trim() : 'General',
+      sort_order: Number(sortOrder) || 0,
+      is_active: isActive ? 1 : 0,
+    };
+  },
+
+  async updateKitchenNote(id, { label, category, sortOrder, isActive }) {
+    const updates = [];
+    const params = [];
+    if (label !== undefined) {
+      updates.push(`label = ?`);
+      params.push(String(label).trim());
+    }
+    if (category !== undefined) {
+      updates.push(`category = ?`);
+      params.push(String(category).trim());
+    }
+    if (sortOrder !== undefined) {
+      updates.push(`sort_order = ?`);
+      params.push(Number(sortOrder) || 0);
+    }
+    if (isActive !== undefined) {
+      updates.push(`is_active = ?`);
+      params.push(isActive ? 1 : 0);
+    }
+    if (!updates.length) return;
+    params.push(Number(id));
+    await query(`UPDATE kitchen_quick_notes SET ${updates.join(', ')} WHERE id = ?`, params);
+  },
+
+  async deleteKitchenNote(id) {
+    await query(`DELETE FROM kitchen_quick_notes WHERE id = ?`, [Number(id)]);
   },
 };
 

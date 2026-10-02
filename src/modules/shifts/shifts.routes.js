@@ -12,10 +12,12 @@ const requireAuth = authService.requireAuth();
 shiftsRouter.use(requireAuth);
 
 shiftsRouter.get("/active", shiftsController.getActiveShift);
-shiftsRouter.post("/open", shiftsController.openShift);
+shiftsRouter.post("/open", authService.requirePermission("shifts.open"), shiftsController.openShift);
 shiftsRouter.get("/preview", shiftsController.getPreview);
-shiftsRouter.post("/close", shiftsController.closeShift);
+shiftsRouter.post("/close", authService.requirePermission("shifts.close"), shiftsController.closeShift);
 shiftsRouter.get("/closed", shiftsController.getClosedShifts);
+shiftsRouter.post("/expenses", shiftsController.addExpense);
+shiftsRouter.delete("/expenses/:expenseId", shiftsController.deleteExpense);
 shiftsRouter.get("/:shiftId/report", shiftsController.getShiftReport);
 
 module.exports = shiftsRouter;

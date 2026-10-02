@@ -1,44 +1,29 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { syncService } from '../lib/syncService';
+import { api } from '../api';
 
 const WAS_OFFLINE_DURATION_MS = 5000;
 
 export function useOffline() {
+  const [syncState, setSyncState] = useState(() => syncService.getState());
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
   const [wasOffline, setWasOffline] = useState(false);
-  // Ref para saber si veníamos offline y disparar el "was offline" sólo
-  // en la transición offline → online (no en cada "online").
   const wasOnlineRef = useRef(isOnline);
 
-  // Effect 1 — Suscripción a los eventos del browser. Cleanup con AbortController.
+  // Suscripción a syncService
   useEffect(() => {
-    const controller = new AbortController();
-    const { signal } = controller;
-
-    const handleOnline = () => {
-      wasOnlineRef.current = true;
-      setIsOnline(true);
-    };
-
-    const handleOffline = () => {
-      wasOnlineRef.current = false;
-      setIsOnline(false);
-    };
-
-    window.addEventListener('online', handleOnline, { signal });
-    window.addEventListener('offline', handleOffline, { signal });
-
-    return () => controller.abort();
+    const unsubscribe = syncService.subscribe((state) => {
+      setSyncState(state);
+      setIsOnline(state.isOnline);
+    });
+    return unsubscribe;
   }, []);
 
-  // Effect 2 — Cuando pasamos de offline a online, marca wasOffline y
-  // agenda el reset a los 5s. Cleanup directo del setTimeout.
+  // Transición offline -> online para bandera visual wasOffline
   useEffect(() => {
-    // Sólo nos importa la transición offline → online, que detectamos
-    // comparando el ref (estado previo) con el estado nuevo.
     const transitionedFromOffline = isOnline && wasOnlineRef.current === false;
-    // Actualizamos el ref para la próxima comparación.
     wasOnlineRef.current = isOnline;
 
     if (!transitionedFromOffline) return;
@@ -50,5 +35,17 @@ export function useOffline() {
     return () => clearTimeout(timerId);
   }, [isOnline]);
 
-  return { isOnline, wasOffline };
+  const triggerSync = useCallback(() => {
+    return syncService.syncPendingQueue(api);
+  }, []);
+
+  return {
+    isOnline,
+    wasOffline,
+    isSyncing: syncState.isSyncing,
+    pendingCount: syncState.pendingCount,
+    lastSyncTime: syncState.lastSyncTime,
+    lastError: syncState.lastError,
+    triggerSync,
+  };
 }

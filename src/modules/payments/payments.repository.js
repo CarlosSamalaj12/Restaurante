@@ -46,6 +46,45 @@ const paymentsRepository = {
   },
 
   /**
+   * Busca un pago individual por su ID.
+   */
+  async findPaymentById(paymentId, conn) {
+    const q = conn ? conn.query.bind(conn) : query;
+    const [rows] = await q(
+      `SELECT id, account_id, method, amount, reference_no, created_at FROM account_payments WHERE id = ? LIMIT 1`,
+      [Number(paymentId)]
+    );
+    return rows[0] || null;
+  },
+
+  /**
+   * Elimina un pago específico de una cuenta.
+   */
+  async deletePayment(paymentId, accountId, conn) {
+    const q = conn ? conn.query.bind(conn) : query;
+    await q(
+      `DELETE FROM account_payments WHERE id = ? AND account_id = ?`,
+      [Number(paymentId), Number(accountId)]
+    );
+  },
+
+  /**
+   * Actualiza el método de pago de una transacción registrada.
+   */
+  async updatePaymentMethod(paymentId, newMethod, referenceNo = null, conn) {
+    const q = conn ? conn.query.bind(conn) : query;
+    let sql = `UPDATE account_payments SET method = ?`;
+    const params = [newMethod];
+    if (referenceNo !== null && referenceNo !== undefined) {
+      sql += `, reference_no = ?`;
+      params.push(referenceNo);
+    }
+    sql += ` WHERE id = ?`;
+    params.push(Number(paymentId));
+    await q(sql, params);
+  },
+
+  /**
    * Obtiene el estado actual de una cuenta.
    */
   async findAccountStatus(accountId) {

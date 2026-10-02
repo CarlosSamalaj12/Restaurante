@@ -95,7 +95,11 @@ const settingsController = {
   }),
 
   setRolePermissions: asyncHandler(async (req, res) => {
-    const result = await settingsService.setRolePermissions(req.params.roleId, req.body?.permissionIds);
+    const result = await settingsService.setRolePermissions(
+      req.params.roleId,
+      req.body?.permissionIds,
+      req.body?.defaultView
+    );
     res.json(result);
   }),
 
@@ -113,6 +117,11 @@ const settingsController = {
       } catch (_) {}
     }
     res.json({ ok: true, permissions });
+  }),
+
+  getOperationCenterUsage: asyncHandler(async (req, res) => {
+    const result = await settingsService.getOperationCenterUsage(req.params.centerId);
+    res.json(result);
   }),
 
   createOperationCenter: asyncHandler(async (req, res) => {
@@ -273,6 +282,28 @@ const settingsController = {
 
   deletePrintCategory: asyncHandler(async (req, res) => {
     const result = await settingsService.deletePrintCategory(req.params.id);
+    res.json(result);
+  }),
+
+  // ───────── Observaciones y Atajos Rápidos de Cocina ─────────
+  getKitchenNotes: asyncHandler(async (req, res) => {
+    const activeOnly = req.query?.activeOnly === "true" || req.query?.activeOnly === "1";
+    const notes = await settingsService.getKitchenNotes({ activeOnly });
+    res.json({ notes });
+  }),
+
+  createKitchenNote: asyncHandler(async (req, res) => {
+    const result = await settingsService.createKitchenNote(req.body || {});
+    res.status(201).json(result);
+  }),
+
+  updateKitchenNote: asyncHandler(async (req, res) => {
+    const result = await settingsService.updateKitchenNote(req.params.id, req.body || {});
+    res.json(result);
+  }),
+
+  deleteKitchenNote: asyncHandler(async (req, res) => {
+    const result = await settingsService.deleteKitchenNote(req.params.id);
     res.json(result);
   }),
 };

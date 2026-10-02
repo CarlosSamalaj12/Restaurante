@@ -122,6 +122,19 @@ test('accountsService validation tests', async (t) => {
     );
   });
 
+  await t.test('splitCustom throws BadRequestError if no items assigned in any split', async () => {
+    await assert.rejects(
+      async () => accountsService.splitCustom({
+        accountId: 1,
+        splits: [
+          { name: 'Cuenta 1', isSource: true, items: [] },
+          { name: 'Cuenta 2', isSource: false, items: [] }
+        ]
+      }),
+      BadRequestError
+    );
+  });
+
   await t.test('splitShared throws BadRequestError if peopleCount < 2', async () => {
     await assert.rejects(
       async () => accountsService.splitShared({ accountId: 1, peopleCount: 1 }),
@@ -139,6 +152,13 @@ test('accountsService validation tests', async (t) => {
   await t.test('joinAccounts throws BadRequestError if joining to same account', async () => {
     await assert.rejects(
       async () => accountsService.joinAccounts({ targetAccountId: 8, sourceAccountId: 8 }),
+      BadRequestError
+    );
+  });
+
+  await t.test('reopenAccount throws BadRequestError if accountId invalid', async () => {
+    await assert.rejects(
+      async () => accountsService.reopenAccount({ accountId: 0 }),
       BadRequestError
     );
   });

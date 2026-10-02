@@ -3,12 +3,15 @@
 
 require("dotenv").config();
 const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 const path = require("path");
 const { pool, query } = require("./src/db");
 const license = require("./src/license");
 const apiRoutes = require("./src/routes");
 const { traceMiddleware, errorHandler } = require("./src/common/middlewares");
 const { ensureConfigTables } = require("./src/modules/settings/settings.migration");
+const { initSocket } = require("./src/common/sockets");
 
 // Migraciones de esquema — se ejecutan una vez al iniciar
 (async () => {
@@ -23,6 +26,29 @@ const { ensureConfigTables } = require("./src/modules/settings/settings.migratio
     } else {
       console.warn("[MIGRATION] Error al agregar columna:", e.message);
     }
+  }
+
+  // Superadmin: soporte de rol superadmin en staff_users y asignación
+  try {
+    await query(`ALTER TABLE staff_users MODIFY COLUMN role VARCHAR(40) NOT NULL DEFAULT 'waiter'`);
+    await query(`
+      INSERT INTO roles (name, slug, description, is_system)
+      VALUES ('Super Administrador', 'superadmin', 'Acceso total y configuración técnica sensible', 1)
+      ON DUPLICATE KEY UPDATE name = VALUES(name), is_system = 1
+    `);
+    await query(`
+      INSERT IGNORE INTO role_permissions (role_id, permission_id)
+      SELECT r.id, p.id FROM roles r, permissions p WHERE r.slug = 'superadmin'
+    `);
+    // Promover usuario principal (Carlos Samalaj) a superadmin
+    await query(`UPDATE staff_users SET role = 'superadmin' WHERE id = 3 OR full_name LIKE '%Carlos Samalaj%' OR pin_code = '1203'`);
+    await query(`
+      INSERT IGNORE INTO user_roles (user_id, role_id)
+      SELECT u.id, r.id FROM staff_users u, roles r WHERE (u.id = 3 OR u.full_name LIKE '%Carlos Samalaj%' OR u.pin_code = '1203') AND r.slug = 'superadmin'
+    `);
+    console.log("[MIGRATION] Rol superadmin configurado y asignado a Carlos Samalaj");
+  } catch (e) {
+    console.warn("[MIGRATION] Error al configurar rol superadmin:", e.message);
   }
 
   // Tablas del sistema de licencias
@@ -77,6 +103,24 @@ const { ensureConfigTables } = require("./src/modules/settings/settings.migratio
     console.warn("[MIGRATION] Error al crear tabla print_jobs:", e.message);
   }
 
+  // Shifts: tabla shift_expenses (retiros y gastos de caja chica)
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS shift_expenses (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        shift_id INT NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        reason VARCHAR(255) NOT NULL,
+        authorized_by INT NULL,
+        created_at DATETIME NOT NULL,
+        INDEX idx_shift_expense (shift_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    console.log("[MIGRATION] Tabla shift_expenses OK");
+  } catch (e) {
+    console.warn("[MIGRATION] Error al crear tabla shift_expenses:", e.message);
+  }
+
   // auth_sessions
   try {
     await query(`
@@ -115,9 +159,22 @@ const { ensureConfigTables } = require("./src/modules/settings/settings.migratio
 })();
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
+initSocket(io);
 
 app.use(traceMiddleware);
 app.use(express.json({ limit: "10mb" }));
+
+const reactDistPath = path.join(__dirname, "react-app", "dist");
+if (require("fs").existsSync(reactDistPath)) {
+  app.use(express.static(reactDistPath));
+}
 app.use(express.static(path.join(__dirname, "public")));
 
 // Middleware global de licenciamiento
@@ -149,8 +206,21 @@ setInterval(() => {
 // Manejador centralizado de errores
 app.use(errorHandler);
 
+// Fallback SPA para rutas cliente (sirve index.html de React)
+app.use((req, res, next) => {
+  if (req.method !== "GET") return next();
+  if (req.path.startsWith("/api") || req.path.startsWith("/socket.io")) {
+    return next();
+  }
+  const indexPath = path.join(reactDistPath, "index.html");
+  if (require("fs").existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  next();
+});
+
 const port = Number(process.env.PORT || 3000);
-app.listen(port, async () => {
+server.listen(port, async () => {
   try {
     await ensureConfigTables();
     await pool.query("SELECT 1");
@@ -160,4 +230,5 @@ app.listen(port, async () => {
   }
 });
 
-module.exports = app;
+module.exports = server;
+module.exports.app = app;

@@ -8,6 +8,7 @@ const kdsRouter = express.Router();
 
 kdsRouter.get("/orders", kdsController.getActiveOrders);
 kdsRouter.get("/orders-with-voided", kdsController.getOrdersWithVoided);
+kdsRouter.get("/my-station", kdsController.getMyStation);
 kdsRouter.post("/items/:itemId/done", kdsController.markItemDone);
 kdsRouter.post("/accounts/:accountId/done-all", kdsController.markAccountDone);
 kdsRouter.get("/completed", kdsController.getCompleted);

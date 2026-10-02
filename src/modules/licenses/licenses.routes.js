@@ -13,7 +13,7 @@ licenseRouter.get("/status", licensesController.status);
 licenseRouter.post("/admin-self-approve", asyncHandler(licensesController.adminSelfApprove));
 
 const adminLicenseRouter = express.Router();
-adminLicenseRouter.use(authService.requireAdmin());
+adminLicenseRouter.use(authService.requireSuperadmin());
 adminLicenseRouter.get("/licenses", licensesController.listLicenses);
 adminLicenseRouter.post("/licenses", licensesController.createLicense);
 adminLicenseRouter.post("/licenses/:id/revoke", licensesController.revokeLicense);

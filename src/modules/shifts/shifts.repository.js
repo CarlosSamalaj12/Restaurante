@@ -83,7 +83,7 @@ const shiftsRepository = {
   async getShiftPaymentTotals(shiftId) {
     const [rows] = await query(
       `SELECT
-        COUNT(a.id) AS total_checks,
+        COUNT(DISTINCT a.id) AS total_checks,
         COALESCE(SUM(CASE WHEN p.method = 'cash' THEN p.amount ELSE 0 END), 0) AS cash_total,
         COALESCE(SUM(CASE WHEN p.method = 'card' THEN p.amount ELSE 0 END), 0) AS card_total,
         COALESCE(SUM(CASE WHEN p.method = 'transfer' THEN p.amount ELSE 0 END), 0) AS transfer_total,
@@ -96,6 +96,20 @@ const shiftsRepository = {
       [Number(shiftId)]
     );
     return rows[0] || {};
+  },
+
+  /**
+   * Obtiene la cantidad total de artículos/platillos vendidos en el turno.
+   */
+  async getShiftItemsSold(shiftId) {
+    const [rows] = await query(
+      `SELECT COALESCE(SUM(oi.qty), 0) AS items_sold
+       FROM order_items oi
+       INNER JOIN accounts a ON a.id = oi.account_id
+       WHERE a.shift_id = ? AND oi.status = 'active'`,
+      [Number(shiftId)]
+    );
+    return Number(rows[0]?.items_sold || 0);
   },
 
   /**
@@ -113,9 +127,11 @@ const shiftsRepository = {
    */
   async getShiftPaymentsDetail(shiftId) {
     const [rows] = await query(
-      `SELECT p.method, p.amount, p.reference_no, a.check_number, a.id AS account_id
+      `SELECT p.id AS payment_id, p.method, p.amount, p.reference_no, a.check_number, a.id AS account_id,
+              u.full_name AS waiter_name, a.closed_at
        FROM account_payments p
        INNER JOIN accounts a ON a.id = p.account_id
+       LEFT JOIN staff_users u ON u.id = a.waiter_id
        WHERE a.shift_id = ?
        ORDER BY p.method, a.check_number`,
       [Number(shiftId)]
@@ -174,6 +190,44 @@ const shiftsRepository = {
       [Number(shiftId)]
     );
     return rows;
+  },
+
+  /**
+   * Registra un retiro de efectivo o gasto operativo de caja chica en el turno.
+   */
+  async insertShiftExpense({ shiftId, amount, reason, authorizedBy = null, createdAt = nowSql() }) {
+    const [result] = await query(
+      `INSERT INTO shift_expenses (shift_id, amount, reason, authorized_by, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [Number(shiftId), money(Number(amount)), String(reason).trim(), authorizedBy ? Number(authorizedBy) : null, createdAt]
+    );
+    return result.insertId;
+  },
+
+  /**
+   * Obtiene todos los retiros y gastos de caja chica registrados para un turno.
+   */
+  async getShiftExpenses(shiftId) {
+    const [rows] = await query(
+      `SELECT se.id, se.shift_id, se.amount, se.reason, se.created_at, se.authorized_by,
+              u.full_name AS authorizer_name
+       FROM shift_expenses se
+       LEFT JOIN staff_users u ON u.id = se.authorized_by
+       WHERE se.shift_id = ?
+       ORDER BY se.created_at ASC`,
+      [Number(shiftId)]
+    );
+    return rows;
+  },
+
+  /**
+   * Elimina un gasto de caja chica si aún no se cierra el turno.
+   */
+  async deleteShiftExpense(expenseId, shiftId) {
+    await query(
+      `DELETE FROM shift_expenses WHERE id = ? AND shift_id = ?`,
+      [Number(expenseId), Number(shiftId)]
+    );
   },
 };
 

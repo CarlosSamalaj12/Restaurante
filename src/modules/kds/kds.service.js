@@ -9,8 +9,8 @@ const kdsService = {
   /**
    * Obtiene las órdenes activas en preparación para el KDS agrupadas por ticket.
    */
-  async getActiveOrders(centerId = null) {
-    const items = await kdsRepository.findActiveOrders(centerId);
+  async getActiveOrders(filters = null) {
+    const items = await kdsRepository.findActiveOrders(filters);
     const activeItems = items.filter((i) => !i.completed_at);
 
     if (!activeItems.length) {
@@ -44,6 +44,8 @@ const kdsService = {
           waiterName: item.waiter_name,
           guestCount: item.guest_count,
           centerName,
+          operationCenterId: Number(item.operation_center_id) || null,
+          operationCenterName: item.operation_center_name || "Salón",
           sentAt: item.sent_at,
           items: [],
         });
@@ -72,8 +74,8 @@ const kdsService = {
   /**
    * Obtiene órdenes incluyendo los ítems anulados para mostrar alertas en cocina.
    */
-  async getOrdersWithVoided(centerId = null) {
-    const items = await kdsRepository.findOrdersWithVoided(centerId);
+  async getOrdersWithVoided(filters = null) {
+    const items = await kdsRepository.findOrdersWithVoided(filters);
     if (!items.length) {
       return { orders: [], categories: [] };
     }
@@ -107,6 +109,8 @@ const kdsService = {
           waiterName: item.waiter_name,
           guestCount: item.guest_count,
           centerName,
+          operationCenterId: Number(item.operation_center_id) || null,
+          operationCenterName: item.operation_center_name || "Salón",
           sentAt: item.sent_at,
           items: [],
         });
@@ -142,6 +146,36 @@ const kdsService = {
   },
 
   /**
+   * Resuelve la estación KDS configurada para la terminal o dispositivo actual.
+   */
+  async getMyStation({ serial = null, ip = null, terminalId = null } = {}) {
+    const station = await kdsRepository.findTerminalStation({ serial, ip, terminalId });
+    if (!station) {
+      return {
+        configured: false,
+        terminalId: null,
+        terminalName: null,
+        isKds: false,
+        productionCenterId: null,
+        productionCenterName: null,
+        operationCenterId: null,
+        operationCenterName: null,
+      };
+    }
+
+    return {
+      configured: true,
+      terminalId: station.id,
+      terminalName: station.terminal_name,
+      isKds: Boolean(station.is_kds),
+      productionCenterId: station.kds_production_center_id ? Number(station.kds_production_center_id) : null,
+      productionCenterName: station.production_center_name || null,
+      operationCenterId: station.kds_operation_center_id ? Number(station.kds_operation_center_id) : null,
+      operationCenterName: station.operation_center_name || null,
+    };
+  },
+
+  /**
    * Marca un ítem individual como completado en cocina.
    */
   async markItemDone(itemId, userId = null) {
@@ -166,17 +200,29 @@ const kdsService = {
   },
 
   /**
-   * Marca todos los platillos activos de una comanda como listos.
+   * Marca todos los platillos activos de una comanda como listos (o solo los de la estación si se indica).
    */
-  async markAccountDone(accountId, userId = null) {
+  async markAccountDone(accountId, userId = null, productionCenterId = null) {
     const parsedAccountId = Number(accountId);
-    if (!parsedAccountId) throw new BadRequestError("accountId inválido");
+    if (!parsedAccountId || parsedAccountId <= 0) throw new BadRequestError("accountId inválido");
 
-    const affectedRows = await kdsRepository.markAccountItemsDone(parsedAccountId);
+    let parsedPcId = null;
+    if (productionCenterId !== null && productionCenterId !== undefined) {
+      parsedPcId = Number(productionCenterId);
+      if (!parsedPcId || parsedPcId <= 0) {
+        throw new BadRequestError("productionCenterId inválido");
+      }
+    }
+
+    const affectedRows = await kdsRepository.markAccountItemsDone(
+      parsedAccountId,
+      undefined,
+      parsedPcId
+    );
     await accountsService.addAccountEvent(
       parsedAccountId,
       "kds_all_done",
-      { affectedRows },
+      { affectedRows, productionCenterId },
       userId
     );
 
@@ -200,11 +246,12 @@ const kdsService = {
   },
 
   /**
-   * Lista de centros de producción activos.
+   * Lista de centros de producción y consumo activos.
    */
   async getProductionCenters() {
     const centers = await kdsRepository.findProductionCenters();
-    return { centers };
+    const operationCenters = await kdsRepository.findOperationCenters();
+    return { centers, operationCenters };
   },
 
   /**

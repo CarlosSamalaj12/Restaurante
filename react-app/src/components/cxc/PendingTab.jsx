@@ -2,7 +2,7 @@ import React from 'react';
 import { useToast } from '../../hooks/useToast';
 import {
   Users,
-  DollarSign
+  Coins
 } from 'lucide-react';
 
 export function PendingTab({ pending, onRefresh }) {
@@ -12,7 +12,7 @@ export function PendingTab({ pending, onRefresh }) {
     <div className="space-y-3">
       {pending.length === 0 ? (
         <div className="text-center py-12">
-          <DollarSign className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <Coins className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500">No hay cuentas por cobrar</p>
         </div>
       ) : (

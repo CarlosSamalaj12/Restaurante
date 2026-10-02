@@ -54,6 +54,31 @@ const shiftsController = {
     const result = await shiftsService.getShiftReport(req.params.shiftId);
     res.json(result);
   }),
+
+  addExpense: asyncHandler(async (req, res) => {
+    const { centerId, shiftId, amount, reason, authPin } = req.body || {};
+    const result = await shiftsService.addShiftExpense({
+      centerId,
+      shiftId,
+      amount,
+      reason,
+      authPin,
+      session: req.session,
+    });
+    res.status(201).json(result);
+  }),
+
+  deleteExpense: asyncHandler(async (req, res) => {
+    const { expenseId } = req.params;
+    const { centerId, authPin } = req.body || {};
+    const result = await shiftsService.deleteShiftExpense({
+      expenseId,
+      centerId,
+      authPin,
+      session: req.session,
+    });
+    res.json(result);
+  }),
 };
 
 module.exports = shiftsController;

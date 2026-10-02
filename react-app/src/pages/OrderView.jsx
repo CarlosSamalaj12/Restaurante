@@ -7,16 +7,20 @@ import {
   Check,
   Loader2
 } from 'lucide-react';
+import api from '../api';
+import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { useOrderData } from '../hooks/useOrderData';
 import { PaymentModal } from '../components/PaymentModal';
 import { AccountActionsMenu } from '../components/AccountActionsMenu';
+import { BackButton } from '../components/BackButton';
 import { OrderItemsList } from '../components/orders/OrderItemsList';
 import { CatalogGrid } from '../components/orders/CatalogGrid';
 import { ModifierSelectModal } from '../components/orders/ModifierSelectModal';
 import { VoidItemModal } from '../components/orders/VoidItemModal';
 
-export function OrderView({ accountId, tableCode, tableId, onBack }) {
+export function OrderView({ accountId, tableCode, tableId, onBack, onNavigate }) {
+  const { user, logout, currencySymbol = 'Q', hasPermission } = useAuth() || {};
   const [showPayment, setShowPayment] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [showModifierModal, setShowModifierModal] = useState(false);
@@ -26,6 +30,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
   const [itemToVoid, setItemToVoid] = useState(null);
   const [voidPin, setVoidPin] = useState('');
   const [voidReason, setVoidReason] = useState('');
+  const [voidError, setVoidError] = useState('');
   const [currentSeat, setCurrentSeat] = useState(1);
   const [itemNotes, setItemNotes] = useState('');
   const toast = useToast();
@@ -37,21 +42,49 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
     categories,
     filteredProducts,
     centers,
+    kitchenNotes,
     selectedCenter,
     setSelectedCenter,
     selectedCategory,
     setSelectedCategory,
     loading,
-    addingItem,
+    addingProductId,
     loadData,
     addItemToAccount,
-    handleSendOrder,
+    updateItemQuantity,
+    updateItemNotes,
     confirmVoidItem
   } = useOrderData(accountId);
 
+  const handleSendOrder = async () => {
+    try {
+      await api.sendOrder(accountId);
+      toast.success('Pedido enviado ✓');
+      await loadData();
+
+      const role = String(user?.role || '').toLowerCase();
+      const roleNames = String(user?.role_names || '').toLowerCase();
+      const isWaiter = role === 'waiter' || roleNames.includes('mesero');
+
+      if (isWaiter) {
+        // Para mesero: cierra sesión y queda en el login listo para el siguiente mesero
+        await logout();
+      } else {
+        // Para cajero / admin / gerente: vuelve al dashboard principal
+        if (onNavigate) {
+          onNavigate('dashboard');
+        } else if (onBack) {
+          onBack();
+        }
+      }
+    } catch (error) {
+      toast.error(error.message || 'Error al enviar');
+    }
+  };
+
   const handleAddItem = async (product) => {
-    const requiredModifiers = product.modifiers?.filter(m => m.minSelect > 0) || [];
-    if (requiredModifiers.length > 0) {
+    const hasModifiers = Array.isArray(product.modifiers) && product.modifiers.length > 0;
+    if (hasModifiers) {
       setSelectedProduct(product);
       setSelectedModifiers({});
       setItemNotes('');
@@ -65,16 +98,25 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
   };
 
   const handleModifierToggle = (groupId, optionId) => {
-    const modifier = selectedProduct.modifiers?.find(m => m.groupId === groupId);
-    const maxSelect = modifier?.maxSelect || 0;
+    const modifier = selectedProduct?.modifiers?.find(m => m.groupId === groupId);
+    const minSelect = Number(modifier?.minSelect || 0);
+    const maxSelect = Number(modifier?.maxSelect || 0);
 
     setSelectedModifiers(prev => {
       const current = prev[groupId] || [];
       if (current.includes(optionId)) {
+        // En modificadores obligatorios de opción única, no permitir desmarcar a vacío
+        if (minSelect === 1 && maxSelect === 1) {
+          return prev;
+        }
         return { ...prev, [groupId]: current.filter(id => id !== optionId) };
       }
-      if (maxSelect > 0 && current.length >= maxSelect) {
-        toast.info(`Máximo ${maxSelect} opción${maxSelect > 1 ? 'es' : ''} para "${modifier.name}"`);
+      // Selección única tipo radio button: cambiar directamente sin alert invasivo
+      if (maxSelect === 1) {
+        return { ...prev, [groupId]: [optionId] };
+      }
+      // Selección múltiple con tope: evitar agregar si superó el límite, sin alerts invasivos
+      if (maxSelect > 1 && current.length >= maxSelect) {
         return prev;
       }
       return { ...prev, [groupId]: [...current, optionId] };
@@ -83,6 +125,19 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
 
   const handleConfirmModifiers = async () => {
     if (!selectedProduct) return;
+
+    // Validación inline antes de enviar al backend
+    const missingGroup = selectedProduct.modifiers?.find(m => {
+      const min = Number(m.minSelect || 0);
+      const selected = selectedModifiers[m.groupId] || [];
+      return min > 0 && selected.length < min;
+    });
+
+    if (missingGroup) {
+      toast.info(`Selecciona las opciones obligatorias en "${missingGroup.name}"`);
+      return;
+    }
+
     const allOptionIds = Object.values(selectedModifiers).flat();
     const success = await addItemToAccount(selectedProduct.id, 1, currentSeat, allOptionIds, itemNotes);
     if (success) {
@@ -95,16 +150,23 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
     setItemToVoid(item);
     setVoidPin('');
     setVoidReason('');
+    setVoidError('');
     setShowVoidModal(true);
   };
 
-  const onConfirmVoid = async () => {
-    const success = await confirmVoidItem(itemToVoid, voidPin, voidReason);
-    if (success) {
-      setShowVoidModal(false);
-      setItemToVoid(null);
-      setVoidPin('');
-      setVoidReason('');
+  const onConfirmVoid = async (qtyToVoid) => {
+    setVoidError('');
+    try {
+      const success = await confirmVoidItem(itemToVoid, voidPin, voidReason, qtyToVoid);
+      if (success) {
+        setShowVoidModal(false);
+        setItemToVoid(null);
+        setVoidPin('');
+        setVoidReason('');
+        setVoidError('');
+      }
+    } catch (err) {
+      setVoidError(err.message || 'Error al autorizar anulación');
     }
   };
 
@@ -113,15 +175,17 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
     onBack();
   };
 
+  // Solo se muestra spinner en la primera carga inicial del componente
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-3">
         <m.div
           animate={{ rotate: 360 }}
           transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
         >
-          <Loader2 className="w-8 h-8 text-gray-400" />
+          <Loader2 className="w-8 h-8 text-primary-600" />
         </m.div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Cargando comanda...</p>
       </div>
     );
   }
@@ -132,20 +196,25 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
       <m.header 
         initial={{ y: -10, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="bg-white border-b border-gray-100 sticky top-0 z-30"
+        className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-2xs"
       >
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <m.button
-              whileTap={{ scale: 0.95 }}
+            <BackButton
               onClick={onBack}
-              className="p-2 -ml-2 rounded-xl hover:bg-gray-100 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </m.button>
+              label="Mesas"
+              title="Volver a mesas"
+            />
             <div>
-              <h1 className="font-semibold text-gray-900">Mesa {tableCode}</h1>
-              <p className="text-xs text-gray-500">{account?.check_number}</p>
+              <div className="flex items-center gap-2">
+                <h1 className="font-bold text-gray-900 text-base">Mesa {tableCode}</h1>
+                <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                  #{account?.check_number}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {account?.operation_center_name || 'Salón'} · Silla activa: {currentSeat}
+              </p>
             </div>
           </div>
           
@@ -153,15 +222,16 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
             <m.button
               whileTap={{ scale: 0.95 }}
               onClick={handleSendOrder}
-              className="px-3 py-2 bg-gray-900 text-white rounded-xl text-sm font-medium flex items-center gap-1.5"
+              className="px-3.5 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-sm font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
             >
               <Send className="w-4 h-4" />
-              <span className="hidden sm:inline">Enviar</span>
+              <span>Enviar</span>
             </m.button>
             <m.button
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowActions(true)}
-              className="p-2 bg-gray-100 text-gray-700 rounded-xl"
+              className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl cursor-pointer transition-colors"
+              title="Opciones de cuenta"
             >
               <MoreVertical className="w-5 h-5" />
             </m.button>
@@ -170,12 +240,15 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
       </m.header>
 
       <div className="flex flex-col lg:flex-row">
-        {/* Order Summary */}
+        {/* Order Summary (Items & Totals) */}
         <OrderItemsList
           items={items}
           account={account}
           totals={totals}
+          updateItemQuantity={updateItemQuantity}
+          updateItemNotes={updateItemNotes}
           handleVoidItem={handleVoidItem}
+          quickNotes={kitchenNotes}
         />
 
         {/* Products Panel */}
@@ -191,52 +264,57 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
           guestCount={account?.guest_count}
           filteredProducts={filteredProducts}
           handleAddItem={handleAddItem}
-          addingItem={addingItem}
+          addingProductId={addingProductId}
+          items={items}
         />
       </div>
 
-      {/* Bottom Pay Button (Mobile) */}
-      <m.div 
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-gray-100 lg:hidden"
-      >
-        <m.button
-          whileTap={{ scale: 0.98 }}
-          onClick={() => setShowPayment(true)}
-          disabled={!totals.pending || totals.pending <= 0}
-          className={`
-            w-full py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all
-            ${totals.pending > 0
-              ? 'bg-emerald-600 text-white active:bg-emerald-700'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }
-          `}
+      {/* Bottom Pay Button (Mobile) - Solo visible con permiso payments.create */}
+      {hasPermission?.('payments.create') && (
+        <m.div 
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-gray-100 lg:hidden shadow-lg z-20"
         >
-          <Check className="w-4 h-4" />
-          Cobrar Q {Number(totals.pending || 0).toFixed(2)}
-        </m.button>
-      </m.div>
+          <m.button
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowPayment(true)}
+            disabled={!totals.pending || totals.pending <= 0}
+            className={`
+              w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md
+              ${totals.pending > 0
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+              }
+            `}
+          >
+            <Check className="w-4 h-4" />
+            Cobrar {currencySymbol} {Number(totals.pending || totals.total || 0).toFixed(2)}
+          </m.button>
+        </m.div>
+      )}
 
-      {/* Desktop Pay Button */}
-      <div className="hidden lg:block fixed bottom-4 right-4">
-        <m.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => setShowPayment(true)}
-          disabled={!totals.pending || totals.pending <= 0}
-          className={`
-            px-6 py-4 rounded-2xl font-semibold text-sm flex items-center gap-2 shadow-lg transition-all
-            ${totals.pending > 0
-              ? 'bg-emerald-600 text-white shadow-emerald-500/25 active:bg-emerald-700'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }
-          `}
-        >
-          <Check className="w-5 h-5" />
-          Cobrar Q {Number(totals.pending || 0).toFixed(2)}
-        </m.button>
-      </div>
+      {/* Desktop Pay Button - Solo visible con permiso payments.create */}
+      {hasPermission?.('payments.create') && (
+        <div className="hidden lg:block fixed bottom-4 right-4 z-20">
+          <m.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowPayment(true)}
+            disabled={!totals.pending || totals.pending <= 0}
+            className={`
+              px-6 py-4 rounded-2xl font-bold text-sm flex items-center gap-2 shadow-xl transition-all cursor-pointer
+              ${totals.pending > 0
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/30'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+              }
+            `}
+          >
+            <Check className="w-5 h-5" />
+            Cobrar {currencySymbol} {Number(totals.pending || totals.total || 0).toFixed(2)}
+          </m.button>
+        </div>
+      )}
 
       {/* Payment Modal */}
       <AnimatePresence>
@@ -273,7 +351,9 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
         itemNotes={itemNotes}
         setItemNotes={setItemNotes}
         handleConfirmModifiers={handleConfirmModifiers}
-        addingItem={addingItem}
+        addingItem={Boolean(addingProductId)}
+        currencySymbol={currencySymbol}
+        quickNotes={kitchenNotes}
         onClose={() => setShowModifierModal(false)}
       />
 
@@ -282,14 +362,20 @@ export function OrderView({ accountId, tableCode, tableId, onBack }) {
         isOpen={showVoidModal}
         itemToVoid={itemToVoid}
         voidPin={voidPin}
-        setVoidPin={setVoidPin}
+        setVoidPin={(pin) => {
+          setVoidPin(pin);
+          if (voidError) setVoidError('');
+        }}
         voidReason={voidReason}
         setVoidReason={setVoidReason}
+        error={voidError}
         onConfirm={onConfirmVoid}
         onClose={() => {
           setShowVoidModal(false);
+          setItemToVoid(null);
           setVoidPin('');
           setVoidReason('');
+          setVoidError('');
         }}
       />
     </div>

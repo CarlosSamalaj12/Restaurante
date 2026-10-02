@@ -2,24 +2,35 @@
 // Consultas SQL puras a MariaDB para autenticación, roles y sesiones
 
 const { query } = require("../../common/db");
+const { hashPin } = require("../../common/pinHash");
 
 const authRepository = {
   async findUserByPin(pin) {
+    const hashed = hashPin(pin);
+    if (!hashed) return null;
     const [rows] = await query(
-      `SELECT id, full_name, role, operation_center_id
-       FROM staff_users
-       WHERE pin_code = ?
+      `SELECT su.id, su.full_name, su.role, su.operation_center_id,
+              COALESCE(r.default_view, 'dashboard') AS default_view
+       FROM staff_users su
+       LEFT JOIN user_roles ur ON ur.user_id = su.id
+       LEFT JOIN roles r ON r.id = ur.role_id OR r.slug = su.role
+       WHERE su.pin_code = ?
+       ORDER BY r.id DESC
        LIMIT 1`,
-      [pin]
+      [hashed]
     );
     return rows[0] || null;
   },
 
   async findUserById(id) {
     const [rows] = await query(
-      `SELECT id, full_name, role, operation_center_id
-       FROM staff_users
-       WHERE id = ?
+      `SELECT su.id, su.full_name, su.role, su.operation_center_id,
+              COALESCE(r.default_view, 'dashboard') AS default_view
+       FROM staff_users su
+       LEFT JOIN user_roles ur ON ur.user_id = su.id
+       LEFT JOIN roles r ON r.id = ur.role_id OR r.slug = su.role
+       WHERE su.id = ?
+       ORDER BY r.id DESC
        LIMIT 1`,
       [Number(id)]
     );

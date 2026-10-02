@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS restaurant_tables (
 CREATE TABLE IF NOT EXISTS staff_users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   full_name VARCHAR(120) NOT NULL,
-  role ENUM('waiter', 'cashier', 'manager', 'admin') NOT NULL DEFAULT 'waiter',
+  role ENUM('waiter', 'cashier', 'manager', 'admin', 'superadmin') NOT NULL DEFAULT 'waiter',
   pin_code VARCHAR(12) NULL,
   operation_center_id INT NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
@@ -213,6 +213,18 @@ CREATE TABLE IF NOT EXISTS shifts (
   status ENUM('open', 'closed') NOT NULL DEFAULT 'open',
   CONSTRAINT fk_shift_cashier FOREIGN KEY (cashier_id) REFERENCES staff_users(id),
   CONSTRAINT fk_shift_center FOREIGN KEY (operation_center_id) REFERENCES operation_centers(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS shift_expenses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  shift_id INT NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  reason VARCHAR(255) NOT NULL,
+  authorized_by INT NULL,
+  created_at DATETIME NOT NULL,
+  CONSTRAINT fk_expense_shift FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
+  CONSTRAINT fk_expense_authorizer FOREIGN KEY (authorized_by) REFERENCES staff_users(id) ON DELETE SET NULL,
+  INDEX idx_shift_expense (shift_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ----------------------------------------------------------------------------
