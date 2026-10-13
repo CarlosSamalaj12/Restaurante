@@ -24,6 +24,7 @@ import api from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { ProductIconBadge } from '../utils/productIcons';
+import { printPrecheckThermal } from '../utils/printReceipts';
 
 export function AccountActionsMenu({ accountId, account, tableId, totals, onClose, onRefresh }) {
   const [activeAction, setActiveAction] = useState(null);
@@ -1443,6 +1444,7 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
 function PrecheckModal({ accountId, account, totals, onClose }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { businessProfile } = useAuth();
 
   useEffect(() => {
     const load = async () => {
@@ -1460,50 +1462,12 @@ function PrecheckModal({ accountId, account, totals, onClose }) {
   }, [accountId]);
 
   const handlePrint = () => {
-    const content = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>Pre-Cuenta</title>
-          <style>
-            @page { size: 80mm auto; margin: 3mm; }
-            * { box-sizing: border-box; }
-            body { font-family: 'Consolas', 'Courier New', monospace; width: 72mm; margin: 0 auto; font-size: 12px; }
-            .center { text-align: center; }
-            .row { display: flex; justify-content: space-between; }
-            .bold { font-weight: bold; }
-            .sep { border-top: 1px dashed #000; margin: 5px 0; }
-          </style>
-        </head>
-        <body>
-          <div class="center">
-            <h2>PRE-CUENTA</h2>
-            <p>Mesa: ${account?.table_code || '-'}</p>
-            <p>Cuenta #: ${account?.check_number || '-'}</p>
-          </div>
-          <div class="sep"></div>
-          ${items.map(item => `
-            <p class="row"><span>${item.qty || 1}x ${item.product_name || '-'}</span><span>Q ${Number(item.line_total || 0).toFixed(2)}</span></p>
-          `).join('')}
-          <div class="sep"></div>
-          <p><strong>Subtotal:</strong> Q ${totals?.subtotal?.toFixed(2) || '0.00'}</p>
-          ${totals?.discountTotal > 0 ? `<p><strong>Descuento:</strong> -Q ${totals.discountTotal.toFixed(2)}</p>` : ''}
-          ${totals?.tipAmount > 0 ? `<p><strong>Propina:</strong> Q ${totals.tipAmount.toFixed(2)}</p>` : ''}
-          <div class="sep"></div>
-          <p class="row bold"><span>TOTAL:</span><span>Q ${totals?.total?.toFixed(2) || '0.00'}</span></p>
-          <div class="sep"></div>
-          <p class="center">Gracias por su visita</p>
-        </body>
-      </html>
-    `;
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(content);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 250);
-    }
+    printPrecheckThermal({
+      account,
+      items,
+      totals,
+      businessProfile
+    });
   };
 
   return (

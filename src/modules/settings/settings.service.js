@@ -47,12 +47,12 @@ const settingsService = {
     const raw = String(logoData || "").trim();
     if (!raw) throw new BadRequestError("logoData es requerido");
 
-    const base64Match = raw.match(/^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,(.+)$/);
+    const base64Match = raw.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/);
     if (!base64Match) {
-      throw new BadRequestError("Formato de imagen inválido. Usa PNG, JPG, GIF, WebP o SVG.");
+      throw new BadRequestError("Formato de imagen inválido. Usa PNG, JPG, GIF o WebP.");
     }
 
-    const ext = base64Match[1].replace("svg+xml", "svg");
+    const ext = base64Match[1].replace("jpeg", "jpg");
     const fileName = `logo_${Date.now()}.${ext}`;
     const uploadsDir = path.join(baseDir || process.cwd(), "public", "uploads");
 
@@ -99,6 +99,36 @@ const settingsService = {
     return { ok: true, loginBgUrl };
   },
 
+  async saveReceiptLogo(logoData, baseDir) {
+    const raw = String(logoData || "").trim();
+    if (!raw) {
+      await settingsRepository.updateBusinessProfile({ receipt_logo_url: null });
+      return { ok: true, receiptLogoUrl: null };
+    }
+
+    const base64Match = raw.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/);
+    if (!base64Match) {
+      throw new BadRequestError("Formato de imagen inválido. Usa PNG, JPG, GIF o WebP.");
+    }
+
+    const ext = base64Match[1].replace("jpeg", "jpg");
+    const fileName = `receipt_logo_${Date.now()}.${ext}`;
+    const uploadsDir = path.join(baseDir || process.cwd(), "public", "uploads");
+
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const filePath = path.join(uploadsDir, fileName);
+    const buffer = Buffer.from(base64Match[2], "base64");
+    fs.writeFileSync(filePath, buffer);
+
+    const receiptLogoUrl = `/uploads/${fileName}`;
+    await settingsRepository.updateBusinessProfile({ receipt_logo_url: receiptLogoUrl });
+
+    return { ok: true, receiptLogoUrl };
+  },
+
   async updateTipConfig(tipPercent) {
     const pct = Number(tipPercent);
     if (Number.isNaN(pct) || pct < 0 || pct > 100) {
@@ -120,15 +150,32 @@ const settingsService = {
   },
 
   async updateBusinessProfile(data) {
-    const { restaurant_name, phone, address, tax_id, currency_symbol, receipt_footer } = data || {};
-    await settingsRepository.updateBusinessProfile({
+    const {
       restaurant_name,
+      business_subtitle,
       phone,
       address,
       tax_id,
       currency_symbol,
       receipt_footer,
+      shift_receipt_footer,
+      receipt_logo_url,
+      tip_percent,
+    } = data || {};
+
+    await settingsRepository.updateBusinessProfile({
+      restaurant_name,
+      business_subtitle,
+      phone,
+      address,
+      tax_id,
+      currency_symbol,
+      receipt_footer,
+      shift_receipt_footer,
+      receipt_logo_url,
+      tip_percent,
     });
+
     if (restaurant_name) {
       await settingsRepository.setAppSetting("restaurant_name", String(restaurant_name).trim().slice(0, 150));
     }
@@ -544,6 +591,90 @@ const settingsService = {
     const lim = Math.min(Number(limit || 50), 200);
     const jobs = await settingsRepository.getRecentPrintJobs(lim);
     return { jobs };
+  },
+
+  // ───────── Gestión Centralizada de Impresoras ─────────
+  async getPrinters() {
+    const printers = await settingsRepository.getPrinters();
+    return { printers };
+  },
+
+  async createPrinter(data) {
+    const { name, ip, port = 9100, type = "production", paperWidth = "80mm", isActive = 1, description = "" } = data || {};
+    if (!name || !String(name).trim()) throw new BadRequestError("El nombre de la impresora es requerido");
+    if (!ip || !String(ip).trim()) throw new BadRequestError("La dirección IP es requerida");
+
+    const printerId = await settingsRepository.createPrinter({
+      name: String(name).trim(),
+      ip: String(ip).trim(),
+      port: Number(port) || 9100,
+      type,
+      paperWidth,
+      isActive: Number(isActive) ? 1 : 0,
+      description: description ? String(description).trim() : null,
+    });
+    return { printerId, ok: true };
+  },
+
+  async updatePrinter(printerId, data) {
+    const pid = Number(printerId);
+    if (!pid) throw new BadRequestError("ID de impresora inválido");
+    const { name, ip, port = 9100, type = "production", paperWidth = "80mm", isActive = 1, description = "" } = data || {};
+    if (!name || !String(name).trim()) throw new BadRequestError("El nombre de la impresora es requerido");
+    if (!ip || !String(ip).trim()) throw new BadRequestError("La dirección IP es requerida");
+
+    await settingsRepository.updatePrinter(pid, {
+      name: String(name).trim(),
+      ip: String(ip).trim(),
+      port: Number(port) || 9100,
+      type,
+      paperWidth,
+      isActive: Number(isActive) ? 1 : 0,
+      description: description ? String(description).trim() : null,
+    });
+    return { ok: true };
+  },
+
+  async deletePrinter(printerId) {
+    const pid = Number(printerId);
+    if (!pid) throw new BadRequestError("ID de impresora inválido");
+    await settingsRepository.deletePrinter(pid);
+    return { ok: true };
+  },
+
+  async testPrinterDirect(printerId) {
+    const pid = Number(printerId);
+    if (!pid) throw new BadRequestError("ID de impresora inválido");
+
+    const printer = await settingsRepository.getPrinterById(pid);
+    if (!printer) throw new NotFoundError("Impresora no encontrada");
+    if (!printer.ip) throw new BadRequestError("La impresora no tiene IP configurada");
+
+    if (!printService) {
+      throw new BadRequestError("Servicio de impresión no disponible en este entorno");
+    }
+
+    const target = {
+      name: printer.name,
+      printer_name: printer.name,
+      printer_ip: printer.ip,
+      printer_port: printer.port || 9100,
+    };
+
+    const result = await printService.printTestPage(target);
+    if (result.ok) {
+      return { ok: true, message: "Página de prueba enviada con éxito", attempts: result.attempts };
+    }
+    throw new BadRequestError(result.error || "No se pudo comunicar con la impresora");
+  },
+
+  async auditPrinters() {
+    const auditData = await settingsRepository.auditPrintersConfiguration();
+    const serviceStatus = this.getPrintersStatus();
+    return {
+      ...auditData,
+      serviceStatus,
+    };
   },
 
   // Staff Users

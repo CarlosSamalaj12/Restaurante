@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { 
   Receipt, 
@@ -14,33 +14,52 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { printPrecheckThermal } from '../utils/printReceipts';
 import api from '../api';
 
 export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }) {
-  const { user } = useAuth();
+  const { user, businessProfile } = useAuth();
   const toast = useToast();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState([]);
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
   const [joining, setJoining] = useState(false);
   const [printing, setPrinting] = useState(null);
 
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.getOpenAccounts(selectedCenter || null);
-      setAccounts(data);
+      setAccounts(data || []);
     } catch (err) {
       toast.error('Error al cargar cuentas');
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedCenter, toast]);
 
   useEffect(() => {
-    loadAccounts();
-  }, [selectedCenter]);
+    let isCancelled = false;
+    setLoading(true);
+    api.getOpenAccounts(selectedCenter || null)
+      .then((data) => {
+        if (!isCancelled) {
+          setAccounts(data || []);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          toast.error('Error al cargar cuentas');
+          setLoading(false);
+        }
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedCenter, toast]);
 
   const toggleSelect = (accountId) => {
     setSelected(prev => 
@@ -69,9 +88,7 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
     try {
       // Join all accounts into the first one (the target)
       const [targetId, ...sourceIds] = selected;
-      for (const sourceId of sourceIds) {
-        await api.joinAccounts(targetId, sourceId);
-      }
+      await Promise.all(sourceIds.map(sourceId => api.joinAccounts(targetId, sourceId)));
       toast.success(`${selected.length} cuentas unidas exitosamente`);
       setSelected([]);
       setSelectMode(false);
@@ -88,65 +105,12 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
     setPrinting(accountId);
     try {
       const data = await api.printPrecheck(accountId);
-      // Show a simple print preview
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        const account = data.account;
-        const items = data.items;
-        const subtotal = items.reduce((sum, i) => sum + Number(i.line_total || 0), 0);
-        const tax = subtotal * 0.12;
-        const total = subtotal + tax;
-        
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Precuenta - ${account.check_number}</title>
-            <style>
-              body { font-family: 'Consolas', 'Courier New', monospace; padding: 20px; max-width: 300px; margin: auto; }
-              h2 { text-align: center; margin-bottom: 5px; }
-              p { margin: 3px 0; text-align: center; }
-              hr { border: 1px dashed #000; }
-              .item { display: flex; justify-content: space-between; margin: 5px 0; }
-              .total { font-weight: bold; font-size: 1.2em; }
-              .center { text-align: center; }
-            </style>
-          </head>
-          <body>
-            <h2>${account.center_name || 'Restaurante'}</h2>
-            <p class="center">${new Date().toLocaleString()}</p>
-            <p class="center"><strong>Check: ${account.check_number}</strong></p>
-            <p class="center">Mesa: ${account.table_code}</p>
-            <p class="center">Mesero: ${account.waiter_name}</p>
-            <p class="center">Comensales: ${account.guest_count}</p>
-            <hr>
-            ${items.map(item => `
-              <div class="item">
-                <span>${item.qty}x ${item.product_name}</span>
-                <span>Q${Number(item.line_total || 0).toFixed(2)}</span>
-              </div>
-            `).join('')}
-            <hr>
-            <div class="item">
-              <span>Subtotal</span>
-              <span>Q${subtotal.toFixed(2)}</span>
-            </div>
-            <div class="item">
-              <span>Impuesto (12%)</span>
-              <span>Q${tax.toFixed(2)}</span>
-            </div>
-            <div class="item total">
-              <span>TOTAL</span>
-              <span>Q${total.toFixed(2)}</span>
-            </div>
-            <hr>
-            <p class="center" style="font-size: 0.8em; margin-top: 20px;">¡Gracias por su visita!</p>
-            <script>window.print();</script>
-          </body>
-          </html>
-        `);
-        printWindow.document.close();
-      }
+      printPrecheckThermal({
+        account: data.account,
+        items: data.items,
+        businessProfile
+      });
+      toast.success('Precuenta enviada a imprimir');
     } catch (err) {
       toast.error('Error al imprimir precuenta');
     } finally {
@@ -187,7 +151,9 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={loadAccounts}
+            aria-label="Actualizar cuentas abiertas"
             className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors"
             disabled={loading}
           >
@@ -254,7 +220,7 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
         <div className="grid grid-cols-2 gap-2">
           {accounts.map((account) => {
             const isMine = account.waiter_id === user?.id;
-            const isSelected = selected.includes(account.id);
+            const isSelected = selectedSet.has(account.id);
             
             return (
               <m.div
@@ -340,10 +306,12 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
                       Entrar <ChevronRight className="w-3 h-3" />
                     </button>
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handlePrint(account.id);
                       }}
+                      aria-label={`Imprimir precuenta de mesa ${account.table_code}`}
                       disabled={printing === account.id}
                       className="px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg py-2 text-xs font-medium disabled:opacity-50"
                     >

@@ -18,8 +18,11 @@ import { PaymentsSection } from '../components/settings/PaymentsSection';
 import { PrintersDiagnosticSection } from '../components/settings/PrintersDiagnosticSection';
 import { RoutingMatrixSection } from '../components/settings/RoutingMatrixSection';
 import { SystemSection } from '../components/settings/SystemSection';
+import { TicketsSection } from '../components/settings/TicketsSection';
 import { FelSection } from '../components/settings/FelSection';
+import { PmsSection } from '../components/settings/PmsSection';
 import { KitchenNotesSection } from '../components/settings/KitchenNotesSection';
+import { VersionMaintenanceSection } from '../components/settings/VersionMaintenanceSection';
 import { BackButton } from '../components/BackButton';
 import {
   FileText,
@@ -47,7 +50,9 @@ import {
   ChevronDown,
   Network,
   LogOut,
-  ChefHat
+  ChefHat,
+  BedDouble,
+  GitBranch
 } from 'lucide-react';
 
 const GROUPS = [
@@ -145,6 +150,7 @@ const GROUPS = [
         color: 'text-orange-600 bg-orange-50 border-orange-200/80',
         keywords: ['tickets', 'comandas', 'red', 'escpos', 'imprimir', 'papel', 'puerto'],
         requiresRole: ['superadmin'],
+        getBadge: (d) => d.printers?.length,
       },
       {
         id: 'routing',
@@ -170,7 +176,7 @@ const GROUPS = [
         icon: Users,
         color: 'text-blue-600 bg-blue-50 border-blue-200/80',
         keywords: ['empleados', 'meseros', 'cajeros', 'pin', 'personal', 'staff'],
-        requiresRole: ['superadmin'],
+        requiresRole: ['superadmin', 'admin'],
         getBadge: (d) => d.staffUsers?.length,
       },
       {
@@ -180,7 +186,7 @@ const GROUPS = [
         icon: Shield,
         color: 'text-purple-600 bg-purple-50 border-purple-200/80',
         keywords: ['seguridad', 'permisos', 'privilegios', 'administrador', 'cajero', 'accesos'],
-        requiresRole: ['superadmin'],
+        requiresRole: ['superadmin', 'admin'],
         getBadge: (d) => d.roles?.length,
       },
     ],
@@ -210,12 +216,30 @@ const GROUPS = [
         requiresRole: ['superadmin'],
       },
       {
+        id: 'pms',
+        label: 'Hotel PMS',
+        shortDesc: 'Integración cargos a habitación',
+        icon: BedDouble,
+        color: 'text-teal-600 bg-teal-50 border-teal-200/80',
+        keywords: ['hotel', 'pms', 'habitaciones', 'folio', 'huesped', 'cargos', 'cuarto', 'room'],
+        requiresRole: ['superadmin'],
+      },
+      {
+        id: 'tickets',
+        label: 'Diseño de Tickets',
+        shortDesc: 'Logo B/N, encabezado, pie y arqueo',
+        icon: Printer,
+        color: 'text-indigo-600 bg-indigo-50 border-indigo-200/80',
+        keywords: ['ticket', 'comprobante', 'cierre', 'arqueo', 'precuenta', 'encabezado', 'pie', 'logo', 'pos'],
+        requiresRole: ['superadmin'],
+      },
+      {
         id: 'system',
         label: 'Identidad y Sistema',
         shortDesc: 'Nombre, logo, propina',
         icon: Settings,
         color: 'text-slate-600 bg-slate-100 border-slate-200/80',
-        keywords: ['branding', 'logo', 'restaurante', 'propina', 'empresa', 'datos', 'ticket', 'pie'],
+        keywords: ['branding', 'logo', 'restaurante', 'propina', 'empresa', 'datos'],
         requiresRole: ['superadmin'],
       },
       {
@@ -227,16 +251,31 @@ const GROUPS = [
         keywords: ['licencia', 'serial', 'activacion', 'terminal', 'registro', 'tier'],
         requiresRole: ['superadmin'],
       },
+      {
+        id: 'versions',
+        label: 'Versiones y Mantenimiento',
+        shortDesc: 'Aviso 30s, changelog y PWA',
+        icon: GitBranch,
+        color: 'text-rose-600 bg-rose-50 border-rose-200/80',
+        keywords: ['mantenimiento', 'versiones', 'pwa', 'aviso', 'actualizacion', 'changelog', 'pausa'],
+        requiresRole: ['superadmin'],
+      },
     ],
   },
 ];
 
-export function SettingsPage({ onBack }) {
+export function SettingsPage({ onBack, initialTab }) {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('products');
+  const [activeTab, setActiveTab] = useState(initialTab || 'products');
   const [searchTerm, setSearchTerm] = useState('');
   const [collapsed, setCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   const { data, setData, loading, loadData } = useSettingsData();
   const searchInputRef = useRef(null);
@@ -648,6 +687,7 @@ export function SettingsPage({ onBack }) {
               products={data.products}
               categories={data.categories}
               productionCenters={data.productionCenters}
+              printers={data.printers || []}
               productProductionCenters={data.productProductionCenters}
               modifierGroups={data.modifierGroups}
               productModifierGroups={data.productModifierGroups}
@@ -675,6 +715,7 @@ export function SettingsPage({ onBack }) {
           {activeTab === 'production' && (
             <ProductionCentersSection
               productionCenters={data.productionCenters}
+              printers={data.printers || []}
               centers={data.centers}
               onReload={loadData}
             />
@@ -691,6 +732,7 @@ export function SettingsPage({ onBack }) {
           {activeTab === 'terminals' && (
             <TerminalsSection
               terminals={data.terminals}
+              printers={data.printers || []}
               centers={data.centers}
               areas={data.areas}
               productionCenters={data.productionCenters || []}
@@ -745,8 +787,18 @@ export function SettingsPage({ onBack }) {
             <FelSection />
           )}
 
+          {activeTab === 'pms' && (
+            <PmsSection />
+          )}
+
           {activeTab === 'printers' && (
-            <PrintersDiagnosticSection />
+            <PrintersDiagnosticSection
+              printers={data.printers || []}
+              productionCenters={data.productionCenters || []}
+              terminals={data.terminals || []}
+              products={data.products || []}
+              onReload={loadData}
+            />
           )}
 
           {activeTab === 'routing' && (
@@ -764,6 +816,10 @@ export function SettingsPage({ onBack }) {
             <LicensesTab />
           )}
 
+          {activeTab === 'tickets' && (
+            <TicketsSection onReload={loadData} />
+          )}
+
           {activeTab === 'system' && (
             <SystemSection
               restaurantName={data.restaurantName}
@@ -777,6 +833,10 @@ export function SettingsPage({ onBack }) {
                 if (updates.loginBgUrl !== undefined) setData(d => ({ ...d, loginBgUrl: updates.loginBgUrl }));
               }}
             />
+          )}
+
+          {activeTab === 'versions' && (
+            <VersionMaintenanceSection />
           )}
         </main>
       </div>

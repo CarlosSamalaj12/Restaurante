@@ -319,6 +319,25 @@ const analyticsRepository = {
       revenue: Number(r.total_revenue || 0),
     }));
 
+    // KPI: Gastos operativos y Utilidad Neta
+    const expConditions = ["status != 'cancelled'"];
+    const expParams = [];
+    if (startDate && endDate) {
+      expConditions.push("expense_date BETWEEN ? AND ?");
+      expParams.push(startDate, endDate);
+    } else {
+      expConditions.push("expense_date = CURDATE()");
+    }
+    let totalExpenses = 0;
+    try {
+      const [expRows] = await query(
+        `SELECT COALESCE(SUM(amount), 0) AS total_expenses FROM expenses WHERE ${expConditions.join(" AND ")}`,
+        expParams
+      );
+      totalExpenses = Number(expRows[0]?.total_expenses || 0);
+    } catch (_) {}
+    const netProfit = totalRevenue - totalExpenses;
+
     return {
       kpis: {
         totalRevenue,
@@ -327,6 +346,8 @@ const analyticsRepository = {
         totalDiscounts,
         openAccountsCount,
         openPotentialRevenue,
+        totalExpenses,
+        netProfit,
       },
       salesByHour,
       salesByMethod,

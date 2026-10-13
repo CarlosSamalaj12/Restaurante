@@ -26,6 +26,7 @@ export function TerminalsSection({
   areas = [],
   productionCenters = [],
   licensedTerminals = [],
+  printers = [],
   onReload
 }) {
   const [showWizard, setShowWizard] = useState(false);
@@ -237,6 +238,7 @@ export function TerminalsSection({
           areas={areas}
           productionCenters={productionCenters}
           licensedTerminals={licensedTerminals}
+          printers={printers}
           onClose={() => {
             setShowWizard(false);
             setEditingTerminal(null);
@@ -289,6 +291,7 @@ function TerminalWizardModal({
   areas = [],
   productionCenters = [],
   licensedTerminals = [],
+  printers = [],
   onClose,
   onCreated
 }) {
@@ -301,13 +304,47 @@ function TerminalWizardModal({
     kdsProductionCenterId: editingTerminal?.kds_production_center_id || '',
     kdsOperationCenterId: editingTerminal?.kds_operation_center_id || '',
     deviceSerial: editingTerminal?.device_serial || '',
+    printerId: editingTerminal?.printer_id || '',
     printerName: editingTerminal?.printer_name || '',
     printerIp: editingTerminal?.printer_ip || '',
     printerPort: editingTerminal?.printer_port || 9100,
     isActive: editingTerminal?.is_active !== false
   });
+  const [isManualPrinter, setIsManualPrinter] = useState(!editingTerminal?.printer_id && !!editingTerminal?.printer_ip);
   const [loading, setLoading] = useState(false);
   const toast = useToast();
+
+  const handleSelectPrinter = (selectedId) => {
+    if (!selectedId) {
+      setForm(prev => ({
+        ...prev,
+        printerId: '',
+        printerName: '',
+        printerIp: '',
+        printerPort: 9100,
+      }));
+      setIsManualPrinter(false);
+      return;
+    }
+
+    if (selectedId === 'manual') {
+      setIsManualPrinter(true);
+      setForm(prev => ({ ...prev, printerId: '' }));
+      return;
+    }
+
+    const prn = printers.find(p => p.id === Number(selectedId));
+    if (prn) {
+      setForm(prev => ({
+        ...prev,
+        printerId: prn.id,
+        printerName: prn.name,
+        printerIp: prn.ip,
+        printerPort: prn.port || 9100,
+      }));
+      setIsManualPrinter(false);
+    }
+  };
 
   const handleUseCurrentDevice = () => {
     setForm(prev => ({
@@ -332,6 +369,7 @@ function TerminalWizardModal({
         kdsProductionCenterId: form.isKds && form.kdsProductionCenterId ? Number(form.kdsProductionCenterId) : null,
         kdsOperationCenterId: form.isKds && form.kdsOperationCenterId ? Number(form.kdsOperationCenterId) : null,
         deviceSerial: form.deviceSerial?.trim() || null,
+        printerId: form.printerId ? Number(form.printerId) : null,
         printerName: form.printerName?.trim() || null,
         printerIp: form.printerIp?.trim() || null,
         printerPort: form.printerPort ? Number(form.printerPort) : 9100,
@@ -412,9 +450,11 @@ function TerminalWizardModal({
             {/* Configuración KDS específica cuando está activo */}
             {form.isKds && (
               <m.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-3.5"
+                layout
+                initial={{ opacity: 0, scaleY: 0.95 }}
+                animate={{ opacity: 1, scaleY: 1 }}
+                transition={{ duration: 0.15 }}
+                className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-3.5 origin-top"
               >
                 <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs uppercase tracking-wider">
                   <Sparkles className="w-4 h-4 text-indigo-600" />
@@ -562,46 +602,79 @@ function TerminalWizardModal({
               </p>
             </div>
 
-            {/* Impresora Opcional */}
-            <div className="pt-2 border-t border-gray-100">
-              <p className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1.5">
-                <Printer className="w-3.5 h-3.5 text-gray-500" />
-                Impresora Térmica Asociada {form.isKds && '(Opcional para KDS)'}
-              </p>
-              
-              <div className="space-y-2.5">
-                <div>
-                  <input
-                    type="text"
-                    value={form.printerName}
-                    onChange={e => setForm({ ...form, printerName: e.target.value })}
-                    className="w-full px-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500"
-                    placeholder="Nombre impresora (ej: Ticketera Cocina)"
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <input
-                      type="text"
-                      value={form.printerIp}
-                      onChange={e => setForm({ ...form, printerIp: e.target.value })}
-                      className="w-full px-3.5 py-2 text-xs font-mono border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500"
-                      placeholder="IP: 192.168.1.100"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={form.printerPort}
-                      onChange={e => setForm({ ...form, printerPort: e.target.value === '' ? 9100 : Number(e.target.value) })}
-                      className="w-full px-3.5 py-2 text-xs font-mono border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500"
-                      placeholder="9100"
-                    />
-                  </div>
-                </div>
+            {/* Impresora Térmica */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <Printer className="w-3.5 h-3.5 text-slate-500" />
+                  Impresora Térmica Asociada {form.isKds && '(Opcional para KDS)'}
+                </label>
+                <select
+                  value={isManualPrinter ? 'manual' : (form.printerId || '')}
+                  onChange={e => handleSelectPrinter(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-500 font-medium"
+                >
+                  <option value="">🚫 Sin impresora directa</option>
+                  {printers && printers.map(p => (
+                    <option key={p.id} value={p.id}>
+                      🖨️ {p.name} ({p.ip}:{p.port || 9100}) {p.type === 'receipt' ? '· Caja' : p.type === 'production' ? '· Cocina' : '· Doble'}
+                    </option>
+                  ))}
+                  <option value="manual">✏️ Configuración manual (Escribir IP personalizada)...</option>
+                </select>
               </div>
+
+              {/* Si seleccionó del catálogo */}
+              {form.printerIp && !isManualPrinter && (
+                <div className="flex items-center justify-between p-2.5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 text-xs">
+                  <span>Enlazada a: <strong>{form.printerName}</strong></span>
+                  <span className="font-mono font-bold">{form.printerIp}:{form.printerPort}</span>
+                </div>
+              )}
+
+              {/* Modo manual si es necesario */}
+              {isManualPrinter && (
+                <div className="space-y-2.5 pt-1 border-t border-slate-200/60">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Nombre / Etiqueta
+                    </label>
+                    <input
+                      type="text"
+                      value={form.printerName}
+                      onChange={e => setForm({ ...form, printerName: e.target.value })}
+                      className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-xl"
+                      placeholder="Ticketera Caja"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        IP de la Impresora
+                      </label>
+                      <input
+                        type="text"
+                        value={form.printerIp}
+                        onChange={e => setForm({ ...form, printerIp: e.target.value })}
+                        className="w-full px-3 py-1.5 text-xs font-mono border border-slate-200 rounded-xl"
+                        placeholder="192.168.1.100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Puerto
+                      </label>
+                      <input
+                        type="number"
+                        value={form.printerPort}
+                        onChange={e => setForm({ ...form, printerPort: Number(e.target.value) || 9100 })}
+                        className="w-full px-3 py-1.5 text-xs font-mono border border-slate-200 rounded-xl"
+                        placeholder="9100"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

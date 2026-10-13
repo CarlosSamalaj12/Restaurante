@@ -27,8 +27,8 @@ const accountsController = {
   }),
 
   searchPaidAccounts: asyncHandler(async (req, res) => {
-    const { q, centerId, startDate, endDate } = req.query;
-    const result = await accountsService.searchPaidAccounts({ q, centerId, startDate, endDate });
+    const { q, centerId, startDate, endDate, status, areaId } = req.query;
+    const result = await accountsService.searchPaidAccounts({ q, centerId, startDate, endDate, status, areaId });
     res.json(result);
   }),
 

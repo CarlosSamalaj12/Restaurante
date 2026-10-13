@@ -4,6 +4,7 @@ import api from '../api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { BackButton } from '../components/BackButton';
+import { ShiftTicketModal, printShiftTicket } from '../components/ShiftTicketModal';
 import {
   ArrowLeft,
   PlayCircle,
@@ -98,11 +99,17 @@ export function ShiftsPage({ onBack }) {
   const [submittingReopen, setSubmittingReopen] = useState(false);
 
   const toast = useToast();
-  const { user, logout, canView, hasPermission = () => true } = useAuth();
+  const { user, logout, canView, hasPermission = () => true, selectedTerminal } = useAuth();
+  const [businessProfile, setBusinessProfile] = useState(null);
+  const [showTicketModal, setShowTicketModal] = useState(false);
+  const [ticketModalType, setTicketModalType] = useState('X');
 
   // Load initial data
   useEffect(() => {
     loadBootstrap();
+    api.settings.getBusinessProfile().then(bp => {
+      if (bp) setBusinessProfile(bp);
+    }).catch(() => {});
   }, []);
 
   // When selected center changes, fetch active shift and real-time pre-cierre
@@ -147,12 +154,25 @@ export function ShiftsPage({ onBack }) {
   const loadBootstrap = async () => {
     try {
       const data = await api.bootstrap();
-      setCenters(data.centers || []);
-      if (data.centers?.length > 0) {
-        const userCenter = user?.operation_center_id
-          ? data.centers.find((c) => c.id === Number(user.operation_center_id))?.id
+      const availableCenters = data.centers || [];
+      setCenters(availableCenters);
+      if (availableCenters.length > 0) {
+        let preferredCenter = user?.operation_center_id
+          ? availableCenters.find((c) => c.id === Number(user.operation_center_id))?.id
           : null;
-        setSelectedCenter(userCenter || data.centers[0].id);
+
+        // Si el centro asignado no tiene turno activo o no existe, buscar el centro que tenga turno abierto
+        for (const c of availableCenters) {
+          try {
+            const shiftCheck = await api.checkActiveShift(c.id);
+            if (shiftCheck?.active) {
+              preferredCenter = c.id;
+              break;
+            }
+          } catch (_) {}
+        }
+
+        setSelectedCenter(preferredCenter || availableCenters[0].id);
       }
     } catch (error) {
       toast.error('Error al cargar datos del sistema');
@@ -381,158 +401,35 @@ export function ShiftsPage({ onBack }) {
   const closingCashNum = closingCash !== '' ? Number(closingCash) : null;
   const cashDiff = closingCashNum !== null ? closingCashNum - expectedCashNum : null;
 
-  // Print Corte X (Audit preview) or Corte Z (Definitive closure)
+  const selectedCenterName = centers.find(c => c.id === selectedCenter)?.name || 'Sucursal Principal';
+
+  // Print Corte X (Audit preview modal) or Corte Z (Definitive closure automatic thermal print)
   const handlePrint = (type = 'X', customSummary = null, customOpened = null, customClosed = null) => {
-    const win = window.open('', '_blank');
-    if (!win) {
-      toast.error('Permite ventanas emergentes para imprimir');
+    if (type === 'X') {
+      setTicketModalType('X');
+      setShowTicketModal(true);
       return;
     }
 
-    const data = customSummary || s;
-    const centerObj = centers.find(c => c.id === selectedCenter);
-    const centerName = centerObj?.name || 'Centro de Operación';
-    const openedStr = (customOpened || shiftDates.openedAt) ? new Date(customOpened || shiftDates.openedAt).toLocaleString('es-GT') : '---';
-    const closedStr = (customClosed || shiftDates.closedAt) ? new Date(customClosed || shiftDates.closedAt).toLocaleString('es-GT') : (type === 'X' ? 'EN CURSO (NO CERRADO)' : new Date().toLocaleString('es-GT'));
-    const isZ = type === 'Z';
-    const title = isZ ? 'CORTE Z - CIERRE DEFINITIVO' : 'CORTE X - AUDITORÍA PARCIAL';
-    const docNotice = isZ ? 'CIERRE FISCAL Y DE AUDITORÍA DEFINITIVO' : 'DOCUMENTO DE CONTROL INTERNO - NO CIERRA TURNO';
-
-    const pOpening = Number(data.openingCash || openingCashNum).toFixed(2);
-    const pCash = Number(data.cash_total || cashTotalNum).toFixed(2);
-    const pExpenses = Number(data.expensesTotal || expensesTotalNum).toFixed(2);
-    const pExpected = Number(data.expectedCash || expectedCashNum).toFixed(2);
-    const pClosing = closingCashNum !== null ? closingCashNum.toFixed(2) : (data.closingCash !== null && data.closingCash !== undefined ? Number(data.closingCash).toFixed(2) : '---');
-    const pDiff = closingCashNum !== null ? (closingCashNum - Number(pExpected)).toFixed(2) : '---';
-
-    let methodsHtml = '';
-    for (const m of (data.methods || [{ code: 'cash', label: 'Efectivo' }, { code: 'card', label: 'Tarjeta' }, { code: 'transfer', label: 'Transferencia' }])) {
-      const tot = Number(data[m.code + '_total'] || 0);
-      if (tot > 0) {
-        methodsHtml += `
-          <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px;">
-            <span>${m.label}:</span>
-            <span style="font-weight:bold;">Q${tot.toFixed(2)}</span>
-          </div>
-        `;
-      }
+    try {
+      printShiftTicket({
+        type: 'Z',
+        shiftData: {
+          ...(customSummary || s),
+          shiftId: currentShift?.id || '0001',
+          openedAt: customOpened || shiftDates.openedAt,
+          closedAt: customClosed || shiftDates.closedAt || new Date().toISOString(),
+          closingCash: closingCashNum,
+        },
+        businessProfile,
+        centerName: selectedCenterName,
+        cashierName: user?.full_name || 'Cajero',
+        terminalInfo: selectedTerminal || { code: 'POS-01', name: 'Lado A' },
+      });
+    } catch (e) {
+      toast.error(e.message || 'Error al imprimir corte Z');
     }
-
-    let expensesHtml = '';
-    const expList = data.expenses || [];
-    if (expList.length > 0) {
-      expensesHtml = `
-        <div style="margin-top:12px;border-top:1px dashed #999;padding-top:6px;">
-          <div style="font-weight:bold;font-size:11px;text-transform:uppercase;margin-bottom:4px;">Retiros de Caja Chica (${expList.length})</div>
-          ${expList.map(e => `
-            <div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;">
-              <span>- ${e.reason}</span>
-              <span style="color:#b91c1c;font-weight:bold;">-Q${Number(e.amount).toFixed(2)}</span>
-            </div>
-          `).join('')}
-        </div>
-      `;
-    }
-
-    win.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${title}</title>
-        <style>
-          body {
-            font-family: 'Courier New', Courier, monospace;
-            width: 78mm;
-            margin: 0 auto;
-            padding: 10px 4px;
-            color: #111;
-            font-size: 12px;
-          }
-          .center { text-align: center; }
-          .bold { font-weight: bold; }
-          .header-box { border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 8px; text-align: center; }
-          .h-title { font-size: 15px; font-weight: bold; letter-spacing: 0.5px; }
-          .sub { font-size: 11px; margin-top: 2px; }
-          .box { border: 1px dashed #666; padding: 6px; margin: 8px 0; }
-          .row { display: flex; justify-content: space-between; padding: 2px 0; }
-          .highlight { font-size: 13px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 0; margin: 6px 0; }
-          .footer { margin-top: 18px; text-align: center; font-size: 10px; color: #555; border-top: 1px dashed #999; padding-top: 8px; }
-          .sign-area { margin-top: 28px; display: flex; justify-content: space-between; }
-          .sign-box { width: 45%; border-top: 1px solid #000; text-align: center; font-size: 10px; padding-top: 4px; }
-        </style>
-      </head>
-      <body>
-        <div class="header-box">
-          <div class="h-title">${title}</div>
-          <div class="sub">${centerName}</div>
-          <div class="sub" style="font-weight:bold;margin-top:4px;">${docNotice}</div>
-        </div>
-
-        <div style="font-size:11px;margin-bottom:8px;">
-          <div class="row"><span>Turno ID:</span><span class="bold">#TRN-${data.shiftId || currentShift?.id || '---'}</span></div>
-          <div class="row"><span>Cajero:</span><span>${user?.full_name || 'Cajero'}</span></div>
-          <div class="row"><span>Apertura:</span><span>${openedStr}</span></div>
-          <div class="row"><span>${isZ ? 'Cierre:' : 'Hora Impresión:'}</span><span>${closedStr}</span></div>
-        </div>
-
-        <div class="box">
-          <div class="bold" style="font-size:11px;margin-bottom:4px;text-align:center;">ARQUEO DE EFECTIVO</div>
-          <div class="row"><span>Fondo Inicial:</span><span>Q${pOpening}</span></div>
-          <div class="row"><span>+ Ventas Efectivo:</span><span>+Q${pCash}</span></div>
-          <div class="row"><span>- Retiros Caja Chica:</span><span>-Q${pExpenses}</span></div>
-          <div class="row highlight"><span>EFECTIVO ESPERADO:</span><span>Q${pExpected}</span></div>
-          <div class="row"><span>Efectivo Contado:</span><span class="bold">Q${pClosing}</span></div>
-          <div class="row" style="font-weight:bold;">
-            <span>Diferencia:</span>
-            <span style="${Number(pDiff) === 0 ? '' : Number(pDiff) > 0 ? 'color:#047857;' : 'color:#b91c1c;'}">
-              ${Number(pDiff) > 0 ? '+' : ''}Q${pDiff}
-            </span>
-          </div>
-        </div>
-
-        ${expensesHtml}
-
-        <div style="margin-top:10px;">
-          <div class="bold" style="font-size:11px;border-bottom:1px solid #000;padding-bottom:2px;margin-bottom:4px;">TOTALES POR FORMA DE PAGO</div>
-          ${methodsHtml}
-          <div class="row highlight" style="font-size:14px;">
-            <span>VENTAS BRUTAS:</span>
-            <span>Q${Number(data.grand_total || grandTotalNum).toFixed(2)}</span>
-          </div>
-        </div>
-
-        <div class="row" style="margin-top:8px;font-size:11px;">
-          <span>Cuentas Cobradas:</span><span class="bold">${totalChecksNum}</span>
-        </div>
-        <div class="row" style="font-size:11px;">
-          <span>Ticket Promedio:</span><span class="bold">Q${averageTicketNum.toFixed(2)}</span>
-        </div>
-        <div class="row" style="font-size:11px;">
-          <span>Artículos Vendidos:</span><span class="bold">${itemsSoldNum} items</span>
-        </div>
-
-        ${isZ ? `
-          <div class="sign-area">
-            <div class="sign-box">Firma Cajero</div>
-            <div class="sign-box">Firma Supervisor</div>
-          </div>
-        ` : ''}
-
-        <div class="footer">
-          <div>SamaPos • Gestión de Restaurante</div>
-          <div>Impreso: ${new Date().toLocaleString('es-GT')}</div>
-        </div>
-        <script>
-          window.print();
-          window.close();
-        <\/script>
-      </body>
-      </html>
-    `);
-    win.document.close();
   };
-
-  const selectedCenterName = centers.find(c => c.id === selectedCenter)?.name || 'Sucursal Principal';
 
   return (
     <div className="min-h-screen bg-slate-50/70 pb-24 text-slate-800 antialiased">
@@ -1855,6 +1752,24 @@ export function ShiftsPage({ onBack }) {
           </div>
         )}
       </AnimatePresence>
+
+      {/* MODAL DE PREVISUALIZACIÓN DE TICKET TÉRMICO (CORTE X) */}
+      <ShiftTicketModal
+        isOpen={showTicketModal}
+        onClose={() => setShowTicketModal(false)}
+        type={ticketModalType}
+        shiftData={{
+          ...s,
+          shiftId: currentShift?.id,
+          openedAt: shiftDates.openedAt,
+          closedAt: shiftDates.closedAt,
+          closingCash: closingCashNum,
+        }}
+        businessProfile={businessProfile}
+        centerName={selectedCenterName}
+        cashierName={user?.full_name || 'Cajero'}
+        terminalInfo={selectedTerminal || { code: 'POS-01', name: 'Lado A' }}
+      />
     </div>
   );
 }

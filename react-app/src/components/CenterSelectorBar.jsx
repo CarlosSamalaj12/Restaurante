@@ -14,7 +14,6 @@ import {
   Wine,
   Sun,
   UtensilsCrossed,
-  Sparkles,
   ArrowRight
 } from 'lucide-react';
 
@@ -137,7 +136,7 @@ function getCenterTheme(center, index = 0) {
   }
   if (name.includes('vip') || name.includes('reservado')) {
     return {
-      Icon: Sparkles,
+      Icon: Sun,
       palette: {
         bg: 'bg-violet-50 text-violet-600 border-violet-200/80',
         activeBg: 'bg-gradient-to-br from-violet-500 to-purple-600 text-white border-violet-600',
@@ -287,46 +286,26 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
   const CurrentIcon = currentTheme.Icon;
 
   return (
-    <div ref={containerRef} className="relative flex items-center min-w-0 max-w-full">
-      {/* ─── VISTA COMPACTA PARA PANTALLAS PEQUEÑAS (MÓVIL / TABLET VERTICAL) ─── */}
-      <div className="md:hidden flex items-center">
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className="group inline-flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 rounded-xl border border-slate-200/90 text-xs font-bold shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
-        >
-          <span className={`w-5 h-5 rounded-lg flex items-center justify-center border shadow-2xs ${currentTheme.palette.bg}`}>
-            <CurrentIcon className="w-3 h-3" />
-          </span>
-          <span className="truncate max-w-[130px]">{currentCenter?.name || 'Seleccionar'}</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-            {centers.length}
-          </span>
-          <ChevronDown className={`w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
-      </div>
-
-      {/* ─── VISTA CARROUSEL FLUIDO PARA PANTALLAS MEDIANAS Y GRANDES ─── */}
-      <div className="hidden md:flex items-center max-w-[420px] lg:max-w-[560px] xl:max-w-[720px] bg-slate-100/90 rounded-2xl border border-slate-200/70 p-1 shadow-inner relative">
-        {/* Flecha Scroll Izquierda con Degradado Suave */}
+    <div ref={containerRef} className="relative flex items-center w-full min-w-0">
+      {/* ─── PISTA HORIZONTAL RESPONSIVA CON FLECHAS INLINE ─── */}
+      <div className="w-full flex items-center gap-1.5 sm:gap-2 min-w-0">
+        {/* Flecha Scroll Izquierda (Inline, nunca se superpone al texto) */}
         {canScrollLeft && (
-          <div className="absolute left-0 inset-y-0 z-10 flex items-center pl-1 pr-3 bg-gradient-to-r from-slate-100 via-slate-100/95 to-transparent rounded-l-2xl pointer-events-none">
-            <button
-              type="button"
-              onClick={() => handleScroll(-1)}
-              className="p-1.5 rounded-lg bg-white shadow-2xs hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/80 transition-all hover:scale-110 active:scale-95 cursor-pointer pointer-events-auto"
-              title="Ver centros anteriores"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => handleScroll(-1)}
+            className="p-1.5 rounded-xl bg-white shadow-2xs hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+            title="Ver salones anteriores"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
         )}
 
-        {/* Pista de Centros con Scroll Horizontal Invisible */}
+        {/* Pista de Centros con Scroll Horizontal Fluido */}
         <div
           ref={scrollRef}
           onScroll={checkScroll}
-          className="flex items-center gap-1.5 overflow-x-auto scrollbar-none scrollbar-hide no-scrollbar scroll-smooth px-1 py-0.5 min-w-0"
+          className="flex-1 flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none scrollbar-hide no-scrollbar scroll-smooth py-1 px-0.5 min-w-0"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {centers.map((center, idx) => {
@@ -340,10 +319,10 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
                 data-center-id={center.id}
                 onClick={() => handleSelect(center.id)}
                 className={`
-                  group shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 whitespace-nowrap cursor-pointer border
+                  group shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 flex items-center gap-2 whitespace-nowrap cursor-pointer border
                   ${isSelected 
-                    ? 'bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white shadow-md shadow-slate-900/25 border-slate-800 font-bold scale-[1.02]' 
-                    : 'bg-white/80 hover:bg-white text-slate-700 hover:text-slate-900 border-slate-200/60 hover:border-slate-300 shadow-2xs hover:shadow-xs hover:scale-[1.03] active:scale-95'
+                    ? 'bg-slate-900 text-white shadow-sm border-slate-900 font-bold scale-[1.02]' 
+                    : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border-slate-200 shadow-2xs hover:shadow-xs active:scale-95'
                   }
                 `}
               >
@@ -351,7 +330,7 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
                 <span className={`
                   w-5 h-5 rounded-lg flex items-center justify-center border transition-transform duration-200 group-hover:scale-110 shadow-2xs shrink-0
                   ${isSelected 
-                    ? 'bg-amber-400/20 text-amber-300 border-amber-400/30' 
+                    ? 'bg-white/20 text-white border-white/20' 
                     : `${theme.palette.bg}`
                   }
                 `}>
@@ -362,46 +341,44 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
 
                 {/* Dot activo con micro-pulso */}
                 {isSelected && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5 shrink-0" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                 )}
               </button>
             );
           })}
         </div>
 
-        {/* Flecha Scroll Derecha con Degradado Suave */}
+        {/* Flecha Scroll Derecha (Inline, nunca se superpone al texto) */}
         {canScrollRight && (
-          <div className="absolute right-12 inset-y-0 z-10 flex items-center pr-1 pl-3 bg-gradient-to-l from-slate-100 via-slate-100/95 to-transparent pointer-events-none">
-            <button
-              type="button"
-              onClick={() => handleScroll(1)}
-              className="p-1.5 rounded-lg bg-white shadow-2xs hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/80 transition-all hover:scale-110 active:scale-95 cursor-pointer pointer-events-auto"
-              title="Ver siguientes centros"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => handleScroll(1)}
+            className="p-1.5 rounded-xl bg-white shadow-2xs hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+            title="Ver siguientes salones"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
         )}
 
         {/* Separador y Botón "Ver Todos" / Dropdown Rápido */}
-        <div className="flex items-center shrink-0 pl-1.5 border-l border-slate-200/80 ml-1">
+        <div className="flex items-center shrink-0 pl-1 border-l border-slate-200/80">
           <button
             type="button"
             onClick={() => setIsOpen(!isOpen)}
             className={`
               group px-2.5 py-1.5 rounded-xl transition-all duration-200 flex items-center gap-1.5 text-xs font-bold cursor-pointer shadow-2xs hover:scale-105 active:scale-95
               ${isOpen 
-                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-indigo-500/25 ring-2 ring-indigo-500/20' 
-                : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90'
+                ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/20' 
+                : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200'
               }
             `}
-            title="Ver todos los centros de consumo"
+            title="Ver todos los salones"
           >
-            <LayoutGrid className={`w-3.5 h-3.5 transition-transform duration-200 group-hover:rotate-12 ${isOpen ? 'text-white' : 'text-indigo-600'}`} />
+            <LayoutGrid className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'text-white' : 'text-indigo-600'}`} />
             <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${isOpen ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-700 border border-indigo-200/60'}`}>
               {centers.length}
             </span>
-            <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'text-slate-400 group-hover:text-slate-700'}`} />
+            <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-180 text-white' : 'text-slate-400 group-hover:text-slate-700'}`} />
           </button>
         </div>
       </div>

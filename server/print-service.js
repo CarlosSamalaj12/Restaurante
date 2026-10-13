@@ -99,9 +99,19 @@ function sendToNetworkPrinter(ip, port, builder) {
         try {
           const built = builder(printer);
           const finalPrinter = built && typeof built.close === "function" ? built : printer;
-          finalPrinter.close((closeErr) => {
-            if (closeErr) return fail(new Error(`Error al cerrar conexión: ${closeErr.message || closeErr}`));
-            ok();
+          finalPrinter.flush((flushErr) => {
+            if (flushErr) return fail(new Error(`Error al enviar datos a impresora: ${flushErr.message || flushErr}`));
+            // Esperar 400ms para permitir que el hardware de la impresora vacíe el buffer y ejecute el corte físico
+            setTimeout(() => {
+              try {
+                if (device.device && typeof device.device.end === "function") {
+                  device.device.end();
+                } else if (typeof device.close === "function") {
+                  device.close(() => {});
+                }
+              } catch (_) {}
+              ok();
+            }, 400);
           });
         } catch (builderErr) {
           fail(new Error(`Error construyendo ticket: ${builderErr.message || builderErr}`));
@@ -156,43 +166,74 @@ function buildKitchenTicket(ticket, center, account) {
     const now = new Date();
     const time = now.toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" });
 
+    // En tamaño doble (1,1): 80mm tiene ~21-24 cols y 58mm tiene ~16 cols
+    const is58mm = String(center?.paper_width || "").toLowerCase().includes("58");
+    const divider = is58mm ? "----------------" : "--------------------";
+
     printer
       .align("ct")
       .style("b")
       .size(1, 1)
       .text(centerName)
-      .text("--------------------------------")
+      .text(divider)
       .style("normal")
-      .size(0, 0)
       .align("lt");
 
-    if (account?.check_number) printer.text(`Pedido:  ${account.check_number}`);
-    if (account?.table_code) printer.text(`Mesa:    ${account.table_code}`);
-    if (account?.waiter_name) printer.text(`Mesero:  ${account.waiter_name}`);
-    printer.text(`Hora:    ${time}`);
-    printer.text("--------------------------------");
+    // Mesa y Pedido en letra grande y negrita para visibilidad inmediata en cocina/bar
+    if (account?.table_code) {
+      printer.style("b").size(1, 1).text(`MESA:   ${account.table_code}`).style("normal");
+    }
+    if (account?.check_number) {
+      printer.style("b").size(1, 1).text(`PEDIDO: #${account.check_number}`).style("normal");
+    }
+    if (account?.waiter_name) {
+      printer.size(1, 1).text(`MESERO: ${account.waiter_name}`);
+    }
+    printer.size(1, 1).text(`HORA:   ${time}`);
+    printer.text(divider);
 
+    // Ítems y Modificadores en letra grande
     for (const item of ticket.items || []) {
-      const name = item.productName || item.product_name || "";
-      printer.text(`${item.qty} x ${name}`);
-      if (item.notes) printer.text(`   > ${item.notes}`);
-      if (Array.isArray(item.modifiers) && item.modifiers.length) {
-        for (const mod of item.modifiers) printer.text(`   - ${mod.name}`);
+      const name = (item.productName || item.product_name || "").toUpperCase();
+      printer.style("b").size(1, 1).text(`${item.qty} x ${name}`).style("normal");
+
+      if (item.notes) {
+        printer.style("b").size(1, 1).text(`  >> ${item.notes}`).style("normal");
       }
+      if (Array.isArray(item.modifiers) && item.modifiers.length) {
+        for (const mod of item.modifiers) {
+          printer.size(1, 1).text(`  * ${mod.name}`);
+        }
+      }
+      printer.text(""); // Espacio entre platos para facilitar la lectura al chef/barman
     }
 
     if (ticket.notes) {
-      printer.text("--------------------------------");
-      printer.style("b").text(`Notas: ${ticket.notes}`).style("normal");
+      printer.text(divider);
+      printer.style("b").size(1, 1).text(`NOTAS:\n${ticket.notes}`).style("normal");
     }
 
     printer
-      .text("--------------------------------")
+      .text(divider)
       .align("ct")
       .style("b")
+      .size(1, 1)
       .text(`* ${time} *`)
       .style("normal")
-      .text("");
+      .size(0, 0)
+      .feed(3);
+
+    try {
+      // Secuencia universal de corte ESC/POS:
+      // 1. Full cut estándar (\x1DV\x00) soportado por el 99.9% de impresoras térmicas
+      if (typeof printer.cut === "function") {
+        printer.cut(); // Ejecuta feed y \x1DV\x00
+      } else {
+        printer.raw(Buffer.from([0x1d, 0x56, 0x00]));
+      }
+      // 2. Compatibilidad adicional con impresoras que requieren comando Function B (\x1DV\x42\x00)
+      printer.raw(Buffer.from([0x1d, 0x56, 0x42, 0x00]));
+    } catch (_) {}
 
     return printer;
   };
@@ -343,7 +384,16 @@ function buildCustomerReceipt(receipt, restaurant) {
       .style("b")
       .text("Gracias por su visita!")
       .style("normal")
-      .text("");
+      .feed(3);
+
+    try {
+      if (typeof printer.cut === "function") {
+        printer.cut();
+      } else {
+        printer.raw(Buffer.from([0x1d, 0x56, 0x00]));
+      }
+      printer.raw(Buffer.from([0x1d, 0x56, 0x42, 0x00]));
+    } catch (_) {}
 
     return printer;
   };
@@ -374,7 +424,16 @@ function buildTestPage(target) {
       .text("es correcta.")
       .align("ct")
       .text("--- SamaPos test page ---")
-      .text("");
+      .feed(3);
+
+    try {
+      if (typeof printer.cut === "function") {
+        printer.cut();
+      } else {
+        printer.raw(Buffer.from([0x1d, 0x56, 0x00]));
+      }
+      printer.raw(Buffer.from([0x1d, 0x56, 0x42, 0x00]));
+    } catch (_) {}
 
     return printer;
   };

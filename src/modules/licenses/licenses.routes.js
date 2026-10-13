@@ -8,6 +8,7 @@ const asyncHandler = require("../../common/asyncHandler");
 
 const licenseRouter = express.Router();
 licenseRouter.post("/enroll", licensesController.enroll);
+licenseRouter.post("/request-access", licensesController.requestAccess);
 licenseRouter.post("/heartbeat", licensesController.heartbeat);
 licenseRouter.get("/status", licensesController.status);
 licenseRouter.post("/admin-self-approve", asyncHandler(licensesController.adminSelfApprove));
@@ -18,7 +19,9 @@ adminLicenseRouter.get("/licenses", licensesController.listLicenses);
 adminLicenseRouter.post("/licenses", licensesController.createLicense);
 adminLicenseRouter.post("/licenses/:id/revoke", licensesController.revokeLicense);
 adminLicenseRouter.get("/terminals", licensesController.listTerminals);
+adminLicenseRouter.get("/terminals/pending-count", licensesController.getPendingCount);
 adminLicenseRouter.post("/terminals/:id/approve", licensesController.approveTerminal);
+adminLicenseRouter.post("/terminals/:id/reject", licensesController.rejectTerminal);
 adminLicenseRouter.post("/terminals/:id/revoke", licensesController.revokeTerminal);
 adminLicenseRouter.post("/terminals/:id/replace", licensesController.replaceTerminal);
 adminLicenseRouter.put("/terminals/:id", asyncHandler(licensesController.updateTerminal));

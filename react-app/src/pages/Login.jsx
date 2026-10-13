@@ -12,6 +12,7 @@ import {
   Laptop
 } from 'lucide-react';
 import api from '../api';
+import { InstallPwaButton } from '../components/InstallPwaButton';
 
 const PIN_LENGTH = 6;
 
@@ -286,8 +287,13 @@ export function Login() {
       {/* 2. PANEL DERECHO (TECLADO NUMÉRICO Y CÓDIGO DE ACCESO)   */}
       {/* ======================================================== */}
       <div className="w-full md:w-[46%] lg:w-[42%] xl:w-[38%] bg-[#0b0e14] flex flex-col justify-between items-center py-6 px-4 sm:px-8 relative z-10 min-h-screen overflow-y-auto">
+        {/* Barra superior con instalador PWA */}
+        <div className="w-full flex justify-end mb-2">
+          <InstallPwaButton variant="login" />
+        </div>
+
         {/* Cabecera / Logo / Nombre de Restaurante */}
-        <div className="w-full flex flex-col items-center text-center mt-2 sm:mt-4">
+        <div className="w-full flex flex-col items-center text-center mt-1 sm:mt-2">
           {/* Logo Card estilo {cs} */}
           <div className="w-15 h-15 sm:w-16 sm:h-16 rounded-2xl bg-white shadow-xl shadow-black/60 flex items-center justify-center p-2 mb-3 transition-transform hover:scale-105">
             {logoUrl ? (

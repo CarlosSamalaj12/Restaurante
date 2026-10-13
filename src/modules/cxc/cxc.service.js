@@ -169,7 +169,7 @@ const cxcService = {
       accountId: account_id ? Number(account_id) : null,
       shiftId: shift_id ? Number(shift_id) : null,
       amount: parsedAmount,
-      balance: newBalance,
+      balance: parsedAmount,
       reference,
       notes,
     });

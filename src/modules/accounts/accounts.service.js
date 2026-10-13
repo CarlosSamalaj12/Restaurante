@@ -135,9 +135,9 @@ const accountsService = {
   /**
    * Busca cuentas pagadas con filtros opcionales de texto y rango de fechas.
    */
-  async searchPaidAccounts({ centerId, q, startDate, endDate }) {
+  async searchPaidAccounts({ centerId, q, startDate, endDate, status, areaId }) {
     if (!centerId) throw new BadRequestError("centerId es requerido");
-    return accountsRepository.searchPaidAccounts({ centerId, q, startDate, endDate });
+    return accountsRepository.searchPaidAccounts({ centerId, q, startDate, endDate, status, areaId });
   },
 
   /**

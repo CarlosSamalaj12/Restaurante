@@ -7,7 +7,12 @@ async function safeExec(sql, params = []) {
   try {
     return await query(sql, params);
   } catch (err) {
-    if (err.code === "ER_DUP_FIELDNAME" || err.message?.includes("Duplicate column")) {
+    if (
+      err.code === "ER_DUP_FIELDNAME" ||
+      err.code === "ER_DUP_KEYNAME" ||
+      err.message?.includes("Duplicate column") ||
+      err.message?.includes("Duplicate key name")
+    ) {
       return null;
     }
     console.warn(`[SYNC MIGRATION] Aviso en safeExec: ${err.message}`);

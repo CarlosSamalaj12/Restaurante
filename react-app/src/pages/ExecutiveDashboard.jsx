@@ -27,7 +27,9 @@ import {
   MapPin,
   Utensils,
   ChevronRight,
-  LogOut
+  LogOut,
+  Wallet,
+  TrendingDown
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../hooks/useAuth';
@@ -448,8 +450,8 @@ export function ExecutiveDashboard({ onBack }) {
           </div>
         </section>
 
-        {/* 4 Cards de KPIs Principales con estética limpia */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* Cards de KPIs Principales con estética limpia */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           {/* Card 1: Ingresos Totales */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
             <div className="flex items-center justify-between">
@@ -461,17 +463,67 @@ export function ExecutiveDashboard({ onBack }) {
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight font-mono">
+              <span className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight font-mono">
                 {currencySymbol} {Number(data?.kpis?.totalRevenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-100">
-              <span>{data?.kpis?.paymentTransactions || 0} pagos cobrados</span>
-              <span className="text-emerald-600 font-semibold">Total Liquidado</span>
+            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500 pt-3 border-t border-slate-100">
+              <span>{data?.kpis?.paymentTransactions || 0} pagos</span>
+              <span className="text-emerald-600 font-semibold">Ventas</span>
             </div>
           </div>
 
-          {/* Card 2: Ticket Promedio */}
+          {/* Card 2: Gastos Operativos */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Gastos Totales
+              </span>
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center">
+                <TrendingDown className="w-5 h-5" strokeWidth={1.8} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <span className="text-xl sm:text-2xl font-extrabold text-rose-700 tracking-tight font-mono">
+                {currencySymbol} {Number(data?.kpis?.totalExpenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500 pt-3 border-t border-slate-100">
+              <span>Egresos del período</span>
+              <span className="text-rose-600 font-semibold">Operación</span>
+            </div>
+          </div>
+
+          {/* Card 3: Utilidad Neta */}
+          <div className={`rounded-2xl p-5 border shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between ${
+            Number(data?.kpis?.netProfit || 0) >= 0 
+              ? 'bg-gradient-to-br from-emerald-600 to-teal-700 text-white border-emerald-500' 
+              : 'bg-gradient-to-br from-rose-600 to-red-700 text-white border-rose-500'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-white/80">
+                Utilidad Neta
+              </span>
+              <div className="w-10 h-10 rounded-xl bg-white/20 text-white flex items-center justify-center">
+                <Wallet className="w-5 h-5" strokeWidth={1.8} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <span className="text-xl sm:text-2xl font-black text-white tracking-tight font-mono">
+                {currencySymbol} {Number(data?.kpis?.netProfit || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="mt-3 flex items-center justify-between text-[11px] text-white/80 pt-3 border-t border-white/20">
+              <span>Ganancia Neta</span>
+              <span className="font-bold">
+                {Number(data?.kpis?.totalRevenue || 0) > 0 
+                  ? `${((Number(data?.kpis?.netProfit || 0) / Number(data?.kpis?.totalRevenue || 1)) * 100).toFixed(1)}%` 
+                  : '0%'}
+              </span>
+            </div>
+          </div>
+
+          {/* Card 4: Ticket Promedio */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -482,33 +534,33 @@ export function ExecutiveDashboard({ onBack }) {
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight font-mono">
+              <span className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight font-mono">
                 {currencySymbol} {Number(data?.kpis?.avgTicket || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-100">
-              <span>Por comanda liquidada</span>
-              <span className="text-blue-600 font-semibold">Consumo promedio</span>
+            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500 pt-3 border-t border-slate-100">
+              <span>Por comanda</span>
+              <span className="text-blue-600 font-semibold">Consumo</span>
             </div>
           </div>
 
-          {/* Card 3: Cuentas Cerradas & Mesas Activas */}
+          {/* Card 5: Cuentas Cerradas & Mesas Activas */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Cuentas Cerradas
+                Cuentas Cobradas
               </span>
               <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 border border-purple-100 flex items-center justify-center">
                 <CheckCircle2 className="w-5 h-5" strokeWidth={1.8} />
               </div>
             </div>
             <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight font-mono">
+              <span className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight font-mono">
                 {data?.kpis?.closedAccountsCount || 0}
               </span>
               <span className="text-xs text-slate-500 font-medium">cuentas</span>
             </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-100">
+            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500 pt-3 border-t border-slate-100">
               <span className="text-amber-600 font-semibold">
                 {data?.kpis?.openAccountsCount || 0} mesas en curso
               </span>
@@ -518,24 +570,24 @@ export function ExecutiveDashboard({ onBack }) {
             </div>
           </div>
 
-          {/* Card 4: Descuentos & Cortesías */}
+          {/* Card 6: Descuentos & Cortesías */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Descuentos Otorgados
+                Descuentos
               </span>
               <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center">
                 <Award className="w-5 h-5" strokeWidth={1.8} />
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-2xl sm:text-3xl font-extrabold text-amber-600 tracking-tight font-mono">
+              <span className="text-xl sm:text-2xl font-extrabold text-amber-600 tracking-tight font-mono">
                 {currencySymbol} {Number(data?.kpis?.totalDiscounts || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-100">
-              <span>Cortesías y promociones</span>
-              <span className="text-amber-600 font-semibold">Control de margen</span>
+            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500 pt-3 border-t border-slate-100">
+              <span>Cortesías y promo</span>
+              <span className="text-amber-600 font-semibold">Margen</span>
             </div>
           </div>
         </section>

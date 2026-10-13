@@ -14,21 +14,25 @@
  */
 
 const crypto = require('crypto');
+const os = require('os');
 const { query } = require('./db');
 
-const LICENSE_HMAC_SECRET =
-  process.env.LICENSE_HMAC_SECRET ||
-  'dev-only-secret-DO-NOT-USE-IN-PROD-replace-me-please-32b';
+function resolveLicenseHmacSecret() {
+  if (process.env.LICENSE_HMAC_SECRET) {
+    return process.env.LICENSE_HMAC_SECRET;
+  }
+  return crypto.createHash('sha256').update(os.hostname() || 'samapos-dev').digest('hex');
+}
+const LICENSE_HMAC_SECRET = resolveLicenseHmacSecret();
 
 const TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 días de gracia offline
 const HEARTBEAT_STALE_SECONDS = 2 * 60 * 60; // 2 horas sin heartbeat → "stale"
 
-// Rate limit en memoria para /enroll (50 por IP por hora — permisivo para
-// permitir recargas del POS durante setup/debug. En producción se puede bajar
-// porque la terminal solo debería enrollar UNA vez en su vida).
+// Rate limit en memoria para /enroll (500 por IP por hora — permisivo para
+// permitir recargas del POS durante setup/debug). Localhost / Servidor nunca se limita.
 const ENROLL_RATELIMIT = new Map(); // ip -> [timestamps]
 const ENROLL_WINDOW_MS = 60 * 60 * 1000;
-const ENROLL_MAX = 50;
+const ENROLL_MAX = 500;
 
 // ───────── Dev bypass (máquina del creador) ─────────
 // La máquina del creador/desarrollador queda SIEMPRE autorizada, sin
@@ -45,10 +49,27 @@ function devBypassSerialList() {
     .filter(Boolean);
 }
 
+function getHostLocalIps() {
+  const ips = new Set(['127.0.0.1', '::1', 'localhost']);
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name] || []) {
+        if (iface && iface.address) {
+          const addr = iface.address.replace('::ffff:', '').split('%')[0].trim().toLowerCase();
+          ips.add(addr);
+        }
+      }
+    }
+  } catch (_) {}
+  return ips;
+}
+
 function isLocalhostIp(ip) {
   if (!ip || typeof ip !== 'string') return false;
-  const clean = ip.replace('::ffff:', '').trim().toLowerCase();
-  return clean === '127.0.0.1' || clean === '::1' || clean === 'localhost';
+  const clean = ip.replace('::ffff:', '').split('%')[0].trim().toLowerCase();
+  if (clean === '127.0.0.1' || clean === '::1' || clean === 'localhost') return true;
+  return getHostLocalIps().has(clean);
 }
 
 function isDevBypass(serial, ip = null) {
@@ -327,16 +348,24 @@ async function writeAudit(query, { actorUserId, terminalId, licenseId, action, d
 }
 
 function clientIp(req) {
-  const raw = String(
-    req.headers['x-forwarded-for'] || req.ip || '',
+  const remote = String(
+    req.socket?.remoteAddress || req.connection?.remoteAddress || req.ip || '',
   )
-    .split(',')[0]
+    .replace('::ffff:', '')
     .trim();
-  return raw.replace('::ffff:', '');
+
+  // Solo confiar en x-forwarded-for si la conexión TCP directa proviene de un proxy local (localhost)
+  const isDirectLocal = remote === '127.0.0.1' || remote === '::1';
+  if (isDirectLocal && req.headers['x-forwarded-for']) {
+    const forwarded = String(req.headers['x-forwarded-for']).split(',')[0].trim().replace('::ffff:', '');
+    if (forwarded) return forwarded;
+  }
+  return remote || '127.0.0.1';
 }
 
-// Rate limit enroll por IP
+// Rate limit enroll por IP (localhost / dev bypass siempre exento)
 function checkEnrollRateLimit(ip) {
+  if (isLocalhostIp(ip)) return true;
   const now = Date.now();
   const list = (ENROLL_RATELIMIT.get(ip) || []).filter(
     (t) => now - t < ENROLL_WINDOW_MS,
@@ -373,9 +402,6 @@ function enrollResponse(terminal) {
  */
 async function enroll(req, res) {
   const ip = clientIp(req);
-  if (!checkEnrollRateLimit(ip)) {
-    return res.status(429).json({ error: 'Demasiadas solicitudes, intenta más tarde' });
-  }
   const serial = String(req.body?.serial || '').trim();
   const terminalType = String(req.body?.terminal_type || 'pos').trim();
   const hostname = String(req.body?.hostname || '').trim().slice(0, 255);
@@ -390,7 +416,7 @@ async function enroll(req, res) {
   }
 
   // Dev-bypass: la máquina del creador / localhost se autoriza sola, sin esperar
-  // aprobación del admin y aunque estuviera pending/revoked.
+  // aprobación del admin, aunque estuviera pending/revoked y NUNCA se limita por rate limit.
   if (isDevBypass(serial, ip)) {
     try {
       const { terminal, license: devLic } = await upsertTerminalActive(query, {
@@ -416,6 +442,11 @@ async function enroll(req, res) {
       console.error('[license.enroll.dev-bypass]', e);
       return res.status(500).json({ error: 'Error en dev-bypass de terminal' });
     }
+  }
+
+  // Para terminales remotas, aplicar rate limit
+  if (!checkEnrollRateLimit(ip)) {
+    return res.status(429).json({ error: 'Demasiadas solicitudes, intenta más tarde' });
   }
 
   try {
@@ -493,12 +524,114 @@ async function enroll(req, res) {
 }
 
 /**
+ * POST /api/license/request-access
+ * Body: { serial, label?, hostname?, os_info?, terminal_type? }
+ * Permite a cualquier PC cliente solicitar acceso formal al sistema.
+ * Si estaba 'revoked' o es nueva, pasa a 'pending' con auditoría.
+ */
+async function requestAccess(req, res) {
+  const ip = clientIp(req);
+  const serial = String(req.body?.serial || '').trim();
+  const label = String(req.body?.label || '').trim().slice(0, 255) || null;
+  const hostname = String(req.body?.hostname || '').trim().slice(0, 255);
+  const osInfo = String(req.body?.os_info || '').trim().slice(0, 255);
+  const terminalType = String(req.body?.terminal_type || 'pos').trim();
+
+  if (!/^[0-9a-fA-F-]{8,64}$/.test(serial)) {
+    return res.status(400).json({ error: 'Serial inválido' });
+  }
+
+  // Si la petición proviene de localhost (la máquina donde corre el servidor),
+  // se auto-autoriza como Servidor Central de forma inmediata.
+  if (isLocalhostIp(ip)) {
+    try {
+      const { terminal, license: devLic } = await upsertTerminalActive(query, {
+        serial,
+        hostname,
+        osInfo,
+        terminalType,
+        label: label || 'Servidor Principal (Esta PC)',
+        ip,
+      });
+      return res.json({
+        ok: true,
+        status: 'active',
+        terminal_id: terminal.id,
+        label: terminal.label,
+        message: 'Servidor Central autorizado automáticamente',
+      });
+    } catch (e) {
+      console.error('[license.requestAccess.localhost]', e);
+      return res.status(500).json({ error: 'Error al autorizar servidor local' });
+    }
+  }
+
+  try {
+    const [existingRows] = await query(
+      `SELECT * FROM licensed_terminals WHERE serial = ? LIMIT 1`,
+      [serial]
+    );
+    const existing = existingRows[0];
+
+    if (existing) {
+      await query(
+        `UPDATE licensed_terminals
+         SET status = 'pending',
+             label = COALESCE(?, label),
+             hostname = COALESCE(?, hostname),
+             ip_address = ?,
+             os_info = COALESCE(?, os_info),
+             terminal_type = ?,
+             last_seen_at = NOW(),
+             first_seen_at = NOW()
+         WHERE id = ?`,
+        [label, hostname, ip, osInfo, terminalType, existing.id]
+      );
+      await writeAudit(query, {
+        terminalId: existing.id,
+        action: 'terminal.request_access',
+        details: { label: label || existing.label, ip, previous_status: existing.status },
+      });
+      return res.json({
+        ok: true,
+        status: 'pending',
+        terminal_id: existing.id,
+        label: label || existing.label,
+        message: 'Solicitud enviada al administrador',
+      });
+    }
+
+    const [ins] = await query(
+      `INSERT INTO licensed_terminals
+         (serial, hostname, ip_address, os_info, terminal_type, label, status, first_seen_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW())`,
+      [serial, hostname, ip, osInfo, terminalType, label || 'Terminal Nueva']
+    );
+    await writeAudit(query, {
+      terminalId: ins.insertId,
+      action: 'terminal.request_access',
+      details: { label: label || 'Terminal Nueva', ip, hostname },
+    });
+    return res.json({
+      ok: true,
+      status: 'pending',
+      terminal_id: ins.insertId,
+      label: label || 'Terminal Nueva',
+      message: 'Solicitud enviada al administrador',
+    });
+  } catch (e) {
+    console.error('[license.requestAccess]', e);
+    return res.status(500).json({ error: 'Error al procesar solicitud de acceso' });
+  }
+}
+
+/**
  * POST /api/license/heartbeat
  * Header: X-Terminal-Serial
  * Devuelve: { ok, status, license_token, license, server_time }
  */
 async function heartbeat(req, res) {
-  const serial = String(req.headers['x-terminal-serial'] || '').trim();
+  const serial = String(req.headers['x-terminal-serial'] || req.body?.serial || '').trim();
   if (!serial) {
     return res.status(400).json({ ok: false, reason: 'missing-serial' });
   }
@@ -861,6 +994,38 @@ async function revokeTerminal(req, res) {
   return res.json({ ok: true });
 }
 
+/** POST /api/admin/terminals/:id/reject */
+async function rejectTerminal(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'id inválido' });
+  const [rows] = await query(`SELECT * FROM licensed_terminals WHERE id = ?`, [id]);
+  if (!rows[0]) return res.status(404).json({ error: 'Terminal no encontrada' });
+  await query(`UPDATE licensed_terminals SET status='revoked' WHERE id = ?`, [id]);
+  await writeAudit(query, {
+    actorUserId: req.authUser?.id,
+    terminalId: id,
+    action: 'terminal.reject',
+    details: { reason: req.body?.reason || 'Rechazado por el administrador' },
+  });
+  return res.json({ ok: true, status: 'revoked' });
+}
+
+/** GET /api/admin/terminals/pending-count */
+async function getPendingCount(req, res) {
+  try {
+    const [rows] = await query(
+      `SELECT t.id, t.serial, t.label, t.hostname, t.ip_address, t.terminal_type, t.first_seen_at, t.last_seen_at
+       FROM licensed_terminals t
+       WHERE t.status = 'pending'
+       ORDER BY t.first_seen_at DESC`
+    );
+    return res.json({ count: rows.length, terminals: rows });
+  } catch (e) {
+    console.error('[license.getPendingCount]', e);
+    return res.status(500).json({ error: 'Error al consultar terminales pendientes' });
+  }
+}
+
 /** POST /api/admin/terminals/:id/replace */
 async function replaceTerminal(req, res) {
   const id = Number(req.params.id);
@@ -952,6 +1117,7 @@ module.exports = {
   expireOverdueLicenses,
   // Endpoints públicos
   enroll,
+  requestAccess,
   heartbeat,
   status,
   // Middleware
@@ -961,7 +1127,9 @@ module.exports = {
   createLicense,
   revokeLicense,
   listTerminals,
+  getPendingCount,
   approveTerminal,
+  rejectTerminal,
   revokeTerminal,
   replaceTerminal,
   updateTerminal,

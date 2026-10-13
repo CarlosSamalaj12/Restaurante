@@ -23,10 +23,12 @@ export function KdsSidebar({
       <AnimatePresence>
         {showSidebar && (
           <m.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 280, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            className="bg-white border-r border-gray-200 flex flex-col overflow-hidden flex-shrink-0"
+            layout
+            initial={{ x: -280, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -280, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="w-[280px] bg-white border-r border-gray-200 flex flex-col overflow-hidden flex-shrink-0"
           >
             <div className="p-4 flex flex-col h-full">
               <div className="flex items-center justify-between mb-4">

@@ -49,6 +49,9 @@ const shiftsService = {
       openedAt: nowSql(),
     });
 
+    // Vincular cuentas abiertas del centro que no tenían turno asignado
+    await shiftsRepository.attachOrphanAccountsToShift(shiftId, parsedCenterId, nowSql());
+
     return { shiftId };
   },
 
@@ -113,6 +116,9 @@ const shiftsService = {
       throw new BadRequestError("No hay turno abierto en este centro");
     }
 
+    // Vincular cuentas huérfanas cobradas o abiertas durante este turno antes de calcular el corte
+    await shiftsRepository.attachOrphanAccountsToShift(openShift.id, parsedCenterId, openShift.opened_at);
+
     const summary = await this.getShiftSummary(
       openShift.id,
       closingCash !== undefined && closingCash !== null ? Number(closingCash) : null
@@ -142,6 +148,9 @@ const shiftsService = {
     if (!openShift) {
       throw new BadRequestError("No hay turno abierto en este centro");
     }
+
+    // Vincular cuentas antes de cerrar definitivamente
+    await shiftsRepository.attachOrphanAccountsToShift(openShift.id, parsedCenterId, openShift.opened_at);
 
     const shiftId = openShift.id;
     const closedAt = nowSql();

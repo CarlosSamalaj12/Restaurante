@@ -248,3 +248,31 @@ export function StepIcon({ state, size = 18 }) {
     </svg>
   );
 }
+
+// ─── Ícono minimalista de libreta de comandas (sin signos de moneda) ──────
+export function NotebookMinimalIcon({ className = "w-5 h-5", size = 20, ...props }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      {...props}
+    >
+      <rect x="5" y="3" width="15" height="18" rx="2" />
+      <line x1="9" y1="8" x2="16" y2="8" />
+      <line x1="9" y1="12" x2="16" y2="12" />
+      <line x1="9" y1="16" x2="13" y2="16" />
+      <path d="M3 6.5h3.5" />
+      <path d="M3 10.5h3.5" />
+      <path d="M3 14.5h3.5" />
+      <path d="M3 18.5h3.5" />
+    </svg>
+  );
+}
+

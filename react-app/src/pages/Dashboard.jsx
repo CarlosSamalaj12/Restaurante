@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import api from '../api';
 import { MacDock } from '../components/MacDock';
 import { CenterSelectorBar } from '../components/CenterSelectorBar';
+import { InstallPwaButton } from '../components/InstallPwaButton';
 import { 
   LayoutGrid, 
   Settings, 
@@ -28,7 +29,8 @@ import {
   UtensilsCrossed,
   ArrowRight,
   TrendingUp,
-  Shield
+  Shield,
+  AlertTriangle
 } from 'lucide-react';
 
 export function Dashboard({ onNavigate, onSelectTable }) {
@@ -170,8 +172,8 @@ export function Dashboard({ onNavigate, onSelectTable }) {
   const shiftSalesTotal = Number(shiftSummary?.total_sales || shiftSummary?.grand_total || shiftCashTotal || 0);
   const openingCash = Number(activeShift?.opening_cash || shiftSummary?.openingCash || 300);
 
-  // Cocina y tiempos
-  const kitchenOrdersCount = kdsOrders.length || openAccounts.length || 0;
+  // Cocina y tiempos (conteo estricto de órdenes reales en KDS)
+  const kitchenOrdersCount = Array.isArray(kdsOrders) ? kdsOrders.length : 0;
   
   // Mesa con mayor tiempo de espera o sentados
   const getElapsedMinutes = (dateStr) => {
@@ -179,6 +181,63 @@ export function Dashboard({ onNavigate, onSelectTable }) {
     const diff = Math.max(0, Date.now() - new Date(dateStr).getTime());
     return Math.floor(diff / 60000);
   };
+
+  // Notificaciones reales calculadas dinámicamente
+  const notifications = useMemo(() => {
+    const list = [];
+
+    // 1. Órdenes demoradas en cocina (> 15 min)
+    const delayedOrders = kdsOrders.filter((o) => {
+      const min = getElapsedMinutes(o.created_at || o.opened_at);
+      return min >= 15;
+    });
+    if (delayedOrders.length > 0) {
+      list.push({
+        id: 'delayed-kds',
+        type: 'warning',
+        icon: Clock,
+        title: `${delayedOrders.length} comanda${delayedOrders.length > 1 ? 's' : ''} demorada${delayedOrders.length > 1 ? 's' : ''}`,
+        desc: 'Hay órdenes en cocina con más de 15 minutos en preparación.',
+        color: 'text-amber-500',
+        bg: 'bg-amber-50',
+        actionView: 'kds',
+      });
+    }
+
+    // 2. Alerta de turno no abierto
+    if (!activeShift) {
+      list.push({
+        id: 'no-shift',
+        type: 'danger',
+        icon: AlertTriangle,
+        title: 'Turno de caja cerrado',
+        desc: 'No hay un turno activo en este centro de operación.',
+        color: 'text-rose-500',
+        bg: 'bg-rose-50',
+        actionView: 'shifts',
+      });
+    }
+
+    // 3. Mesas con tiempo muy prolongado en salón (> 120 min)
+    const longAccounts = openAccounts.filter((a) => {
+      const min = getElapsedMinutes(a.opened_at || a.created_at);
+      return min >= 120;
+    });
+    if (longAccounts.length > 0) {
+      list.push({
+        id: 'long-accounts',
+        type: 'info',
+        icon: Clock,
+        title: `${longAccounts.length} mesa${longAccounts.length > 1 ? 's' : ''} con más de 2h`,
+        desc: 'Mesas con servicio prolongado activas en salón.',
+        color: 'text-blue-500',
+        bg: 'bg-blue-50',
+        actionView: 'tables',
+      });
+    }
+
+    return list;
+  }, [kdsOrders, activeShift, openAccounts]);
 
   // Mesa seleccionada en la tarjeta en vivo
   const currentActiveAccount = openAccounts[activeAccountIndex] || null;
@@ -347,6 +406,34 @@ export function Dashboard({ onNavigate, onSelectTable }) {
       roles: ['superadmin', 'admin', 'manager', 'cashier']
     },
     {
+      id: 'cxc',
+      title: 'Cuentas por Cobrar (CXC)',
+      subtitle: 'Clientes de crédito, estados de cuenta, cartera y abonos globales',
+      badge: 'CXC & Folio',
+      badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+      icon: Users,
+      iconBg: 'bg-indigo-600 text-white',
+      footerLeft: 'Crédito Folio',
+      footerLeftColor: 'text-gray-600',
+      footerRight: 'Gestión Cartera',
+      footerRightColor: 'text-indigo-600 font-semibold',
+      roles: ['superadmin', 'admin', 'manager', 'cashier'],
+    },
+    {
+      id: 'expenses',
+      title: 'Gastos & Proveedores (CXP)',
+      subtitle: 'Egresos operativos, compras, cuentas por pagar y balance',
+      badge: 'CXP & Gastos',
+      badgeColor: 'bg-rose-50 text-rose-700 border-rose-100',
+      icon: Receipt,
+      iconBg: 'bg-rose-600 text-white',
+      footerLeft: 'Control Egresos',
+      footerLeftColor: 'text-gray-600',
+      footerRight: 'Proveedores & P&L',
+      footerRightColor: 'text-rose-600 font-semibold',
+      roles: ['superadmin', 'admin', 'manager', 'cashier'],
+    },
+    {
       id: 'executive-dashboard',
       title: 'Dashboard Ejecutivo',
       subtitle: 'Métricas financieras, curvas de venta, salones y rendimiento',
@@ -379,167 +466,215 @@ export function Dashboard({ onNavigate, onSelectTable }) {
       {/* ========================================================================= */}
       {/* 1. TOP HEADER BAR                                                         */}
       {/* ========================================================================= */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 lg:px-6 py-2.5 shadow-sm transition-all">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 max-w-[1700px] mx-auto">
-          
-          {/* Lado Izquierdo: Branding, Saludo, Estado y Roles */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-11 h-11 rounded-xl bg-slate-950 text-white font-mono font-bold flex items-center justify-center text-sm shadow-sm ring-1 ring-black/5 overflow-hidden flex-shrink-0">
-              {logoUrl ? (
-                <img src={logoUrl} alt={restaurantName || 'POS'} className="w-full h-full object-contain p-1" />
-              ) : (
-                <span>{`{cs}`}</span>
-              )}
-            </div>
-
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-bold text-slate-900 text-base lg:text-lg leading-tight">
-                  {greeting}, {user?.full_name?.split(' ')[0] || 'Carlos'}
-                </h1>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  En línea
-                </span>
-                {userRole === 'superadmin' && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-700 border border-purple-200 shadow-xs">
-                    <Shield className="w-3 h-3 text-purple-600" /> Superadmin
-                  </span>
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs transition-all">
+        {/* ========================================================================= */}
+        {/* TIER 1: Branding, Usuario & Acciones Principales                          */}
+        {/* ========================================================================= */}
+        <div className="px-4 lg:px-6 py-2.5">
+          <div className="flex items-center justify-between gap-3 max-w-[1700px] mx-auto flex-wrap sm:flex-nowrap">
+            
+            {/* Lado Izquierdo: Branding, Saludo, Estado y Roles */}
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="w-11 h-11 rounded-xl bg-slate-950 text-white font-mono font-bold flex items-center justify-center text-sm shadow-sm ring-1 ring-black/5 overflow-hidden flex-shrink-0">
+                {logoUrl ? (
+                  <img src={logoUrl} alt={restaurantName || 'POS'} className="w-full h-full object-contain p-1" />
+                ) : (
+                  <span>{`{cs}`}</span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5">
-                <span className={userRole === 'superadmin' ? 'font-bold text-purple-700' : ''}>
-                  {currentRoleLabel}
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="font-bold text-slate-900 text-base lg:text-lg leading-tight">
+                    {greeting}, {user?.full_name?.split(' ')[0] || 'Carlos'}
+                  </h1>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    En línea
+                  </span>
+                  {userRole === 'superadmin' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-700 border border-purple-200 shadow-xs">
+                      <Shield className="w-3 h-3 text-purple-600" /> Superadmin
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5">
+                  <span className={userRole === 'superadmin' ? 'font-bold text-purple-700' : ''}>
+                    {currentRoleLabel}
+                  </span>
+                  <span>•</span>
+                  <span>{activeShift ? `Turno #${activeShift.id}` : 'Turno General'}</span>
+                  <span>•</span>
+                  <span>Caja #01</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Lado Derecho: Reloj, Sincronización, Notificaciones y Salir */}
+            <div className="flex items-center gap-2 shrink-0 ml-auto">
+              {/* Reloj y Período */}
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100/80 rounded-xl border border-slate-200/70 text-xs font-medium text-slate-700 shrink-0">
+                <Clock className="w-3.5 h-3.5 text-blue-600" />
+                <span className="font-mono font-semibold tracking-wider">
+                  {currentTime.toLocaleTimeString('es-GT', { hour12: false })}
                 </span>
-                <span>•</span>
-                <span>{activeShift ? `Turno #${activeShift.id}` : 'Turno General'}</span>
-                <span>•</span>
-                <span>Caja #01</span>
-              </p>
-            </div>
-          </div>
-
-          {/* Centro: Selector de Salones / Centros de Operación */}
-          {centers.length > 0 && (
-            <div className="flex-1 min-w-0 flex items-center justify-center px-1">
-              <CenterSelectorBar
-                centers={centers}
-                selectedCenter={selectedCenter}
-                onSelectCenter={(id) => setSelectedCenter(id)}
-              />
-            </div>
-          )}
-
-          {/* Lado Derecho: Reloj, Sincronización, Notificaciones y Salir */}
-          <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
-            {/* Reloj y Período */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100/80 rounded-xl border border-slate-200/70 text-xs font-medium text-slate-700">
-              <Clock className="w-3.5 h-3.5 text-blue-600" />
-              <span className="font-mono font-semibold tracking-wider">
-                {currentTime.toLocaleTimeString('es-GT', { hour12: false })}
-              </span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 tracking-wider">
-                {mealPeriod}
-              </span>
-            </div>
-
-            {/* Acceso al Dashboard Ejecutivo */}
-            {canViewExecutive && (
-              <button
-                onClick={() => onNavigate('executive-dashboard')}
-                className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 hover:text-slate-900 border border-slate-200/80 text-xs font-semibold shadow-sm transition-all"
-                title="Abrir Dashboard Ejecutivo"
-              >
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Dashboard Ejecutivo</span>
-              </button>
-            )}
-
-            {/* Acceso a Configuración */}
-            {['superadmin', 'admin', 'manager'].includes(userRole) && (
-              <button
-                onClick={() => onNavigate('settings')}
-                className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-xs transition-all ${
-                  userRole === 'superadmin'
-                    ? 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
-                    : 'bg-slate-100 text-slate-700 border-slate-200/80 hover:bg-slate-200/80'
-                }`}
-                title="Abrir Configuración del Sistema"
-              >
-                <Settings className={`w-3.5 h-3.5 ${userRole === 'superadmin' ? 'text-purple-600' : 'text-slate-600'}`} />
-                <span>Configuración</span>
-              </button>
-            )}
-
-            {/* Botón Sincronizar */}
-            <button
-              onClick={() => loadData(selectedCenter, true)}
-              title="Sincronizar información"
-              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70 transition-colors"
-            >
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
-            </button>
-
-            {/* Notificaciones */}
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70 transition-colors"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white">
-                  {openAccounts.length > 0 ? openAccounts.length : '1'}
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 tracking-wider">
+                  {mealPeriod}
                 </span>
+              </div>
+
+              {/* Acceso al Dashboard Ejecutivo */}
+              {canViewExecutive && (
+                <button
+                  onClick={() => onNavigate('executive-dashboard')}
+                  className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 hover:text-slate-900 border border-slate-200/80 text-xs font-semibold shadow-xs transition-all cursor-pointer shrink-0"
+                  title="Abrir Dashboard Ejecutivo"
+                >
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Dashboard Ejecutivo</span>
+                </button>
+              )}
+
+              {/* Acceso a Configuración */}
+              {['superadmin', 'admin', 'manager'].includes(userRole) && (
+                <button
+                  onClick={() => onNavigate('settings')}
+                  className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-xs transition-all cursor-pointer shrink-0 ${
+                    userRole === 'superadmin'
+                      ? 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+                      : 'bg-slate-100 text-slate-700 border-slate-200/80 hover:bg-slate-200/80'
+                  }`}
+                  title="Abrir Configuración del Sistema"
+                >
+                  <Settings className={`w-3.5 h-3.5 ${userRole === 'superadmin' ? 'text-purple-600' : 'text-slate-600'}`} />
+                  <span>Configuración</span>
+                </button>
+              )}
+
+              {/* Acceso directo a Usuarios / Personal */}
+              {['superadmin', 'admin'].includes(userRole) && (
+                <button
+                  onClick={() => onNavigate('settings', { tab: 'users' })}
+                  className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold shadow-xs transition-all cursor-pointer shrink-0"
+                  title="Gestión de Usuarios, Meseros, Cajeros y Códigos PIN"
+                >
+                  <Users className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Usuarios</span>
+                </button>
+              )}
+
+              {/* Botón Instalar PWA */}
+              <InstallPwaButton variant="header" />
+
+              {/* Botón Sincronizar */}
+              <button
+                onClick={() => loadData(selectedCenter, true)}
+                title="Sincronizar información"
+                className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70 transition-colors shrink-0 cursor-pointer"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
               </button>
 
-              {/* Popover de Notificaciones */}
-              <AnimatePresence>
-                {showNotifications && (
-                  <m.div 
-                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 p-3 z-50 text-xs"
-                  >
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                      <span className="font-bold text-slate-800">Alertas de Servicio</span>
-                      <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-600">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <div className="divide-y divide-slate-100 mt-1 max-h-60 overflow-y-auto">
-                      <div className="py-2 flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <p className="font-semibold text-slate-800">Caja Chica verificada</p>
-                          <p className="text-slate-500 text-[11px]">Turno en operación activa con saldo base.</p>
-                        </div>
+              {/* Notificaciones */}
+              <div className="relative shrink-0">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70 transition-colors cursor-pointer"
+                  title="Alertas y notificaciones"
+                >
+                  <Bell className="w-4 h-4" />
+                  {notifications.length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white animate-pulse">
+                      {notifications.length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Popover de Notificaciones */}
+                <AnimatePresence>
+                  {showNotifications && (
+                    <m.div 
+                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                      className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 p-3 z-50 text-xs"
+                    >
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <span className="font-bold text-slate-800">Alertas del Sistema</span>
+                        <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                      {openAccounts.length > 0 && (
-                        <div className="py-2 flex items-start gap-2">
-                          <Clock className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="font-semibold text-slate-800">{openAccounts.length} Cuentas activas en salón</p>
-                            <p className="text-slate-500 text-[11px]">Sincronizadas con cocina y comandas.</p>
+                      <div className="divide-y divide-slate-100 mt-1 max-h-64 overflow-y-auto">
+                        {notifications.length === 0 ? (
+                          <div className="py-6 text-center text-slate-500">
+                            <CheckCircle2 className="w-7 h-7 text-emerald-500 mx-auto mb-2 opacity-90" />
+                            <p className="font-bold text-slate-800 text-xs">Todo al día</p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">No hay órdenes demoradas ni alertas activas.</p>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  </m.div>
-                )}
-              </AnimatePresence>
-            </div>
+                        ) : (
+                          notifications.map((notif) => {
+                            const IconComp = notif.icon;
+                            return (
+                              <div
+                                key={notif.id}
+                                onClick={() => {
+                                  if (notif.actionView && onNavigate) {
+                                    onNavigate(notif.actionView);
+                                    setShowNotifications(false);
+                                  }
+                                }}
+                                className="py-2.5 px-2 flex items-start gap-2.5 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors"
+                              >
+                                <div className={`p-1.5 rounded-lg shrink-0 ${notif.bg} ${notif.color}`}>
+                                  <IconComp className="w-4 h-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-bold text-slate-800 leading-tight">{notif.title}</p>
+                                  <p className="text-slate-500 text-[11px] mt-0.5 leading-snug">{notif.desc}</p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </m.div>
+                  )}
+                </AnimatePresence>
+              </div>
 
-            {/* Botón Salir */}
-            <button
-              onClick={logout}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50/50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-colors text-xs font-semibold"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Salir</span>
-            </button>
+              {/* Botón Salir */}
+              <button
+                onClick={logout}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50/50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-colors text-xs font-semibold shrink-0 cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Salir</span>
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* ========================================================================= */}
+        {/* TIER 2: Selector de Salones / Centros de Operación (Ribbon Amplio)        */}
+        {/* ========================================================================= */}
+        {centers.length > 0 && (
+          <div className="border-t border-slate-100/90 bg-slate-50/80 px-4 lg:px-6 py-2 shadow-inner">
+            <div className="flex items-center gap-3 max-w-[1700px] mx-auto">
+              <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-slate-500 shrink-0">
+                <Store className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="uppercase tracking-wider text-[11px] text-slate-600 font-extrabold">Salones:</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <CenterSelectorBar
+                  centers={centers}
+                  selectedCenter={selectedCenter}
+                  onSelectCenter={(id) => setSelectedCenter(id)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* ========================================================================= */}

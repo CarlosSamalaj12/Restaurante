@@ -1,29 +1,43 @@
-import { useState, useEffect } from 'react';
+// react-app/src/components/reports/SalesByUserReportPage.jsx
+// Reporte de Ventas por Usuario / Mesero - Diseño Intuitivo & Minimalista v3.4 POS
+
+import { useState, useEffect, useMemo } from 'react';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
 import { exportToExcel, exportToPDF } from '../../utils/exports';
-import { BackButton } from '../BackButton';
+import { ReportLayout } from './ReportLayout';
+import { NotebookMinimalIcon } from '../icons/CustomIcons';
 import {
-  ArrowLeft,
-  Loader2,
-  Printer,
-  XCircle,
+  Users,
+  TrendingUp,
+  Coins,
+  Package,
   Search,
+  Printer,
   FileSpreadsheet,
-  Users
+  FileText,
+  XCircle,
+  Loader2,
+  CheckCircle2,
+  ChevronRight,
+  UserCheck,
+  Building2,
+  AlertTriangle
 } from 'lucide-react';
 
 export function SalesByUserReportPage({ onBack }) {
+  const toast = useToast();
   const [centers, setCenters] = useState([]);
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
-  const [activeTab, setActiveTab] = useState('users');
-  const toast = useToast();
+  const [activeTab, setActiveTab] = useState('users'); // 'users' | 'products' | 'detail'
 
+  // Fechas (por defecto mes en curso)
   const today = new Date().toISOString().slice(0, 10);
-  const firstDay = new Date(); firstDay.setDate(1);
+  const firstDay = new Date();
+  firstDay.setDate(1);
   const [startDate, setStartDate] = useState(firstDay.toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState(today);
   const [centerId, setCenterId] = useState('');
@@ -31,40 +45,54 @@ export function SalesByUserReportPage({ onBack }) {
   const [productName, setProductName] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState([]);
 
-  // Product autocomplete
+  // Autocompletado de producto
   const [prodSearch, setProdSearch] = useState('');
   const [prodResults, setProdResults] = useState([]);
   const [searchingProd, setSearchingProd] = useState(false);
   const [showProdDrop, setShowProdDrop] = useState(false);
 
   useEffect(() => {
-    api.bootstrap().then(boot => {
+    loadBootstrap();
+  }, []);
+
+  const loadBootstrap = async () => {
+    try {
+      const boot = await api.bootstrap();
       setCenters(boot.centers || []);
       setCategories(boot.categories || []);
       setUsers(boot.waiters || []);
-    }).catch(() => {});
-  }, []);
+      fetchReportData();
+    } catch (e) {
+      console.error('Error cargando iniciales:', e);
+    }
+  };
 
   useEffect(() => {
-    if (prodSearch.trim().length < 2) { setProdResults([]); return; }
+    if (prodSearch.trim().length < 2) {
+      setProdResults([]);
+      return;
+    }
     const timer = setTimeout(async () => {
       setSearchingProd(true);
       try {
         const prods = await api.getProducts(categoryId || undefined, centerId || undefined);
-        const filtered = (prods || []).filter(p =>
-          p.name.toLowerCase().includes(prodSearch.toLowerCase())
-        ).slice(0, 20);
+        const filtered = (prods || [])
+          .filter((p) => p.name.toLowerCase().includes(prodSearch.toLowerCase()))
+          .slice(0, 15);
         setProdResults(filtered);
         if (filtered.length > 0) setShowProdDrop(true);
-      } catch (_) { setProdResults([]); }
-      finally { setSearchingProd(false); }
-    }, 350);
+      } catch (_) {
+        setProdResults([]);
+      } finally {
+        setSearchingProd(false);
+      }
+    }, 300);
     return () => clearTimeout(timer);
   }, [prodSearch, categoryId, centerId]);
 
   const selectProduct = (p) => {
     setProductName(p.name);
-    setProdSearch('');
+    setProdSearch(p.name);
     setProdResults([]);
     setShowProdDrop(false);
   };
@@ -76,9 +104,18 @@ export function SalesByUserReportPage({ onBack }) {
     setShowProdDrop(false);
   };
 
-  const handleSearch = async () => {
+  const toggleUser = (userId) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const fetchReportData = async () => {
+    if (!startDate || !endDate) {
+      toast.error('Selecciona un rango de fechas');
+      return;
+    }
     setLoading(true);
-    setActiveTab('users');
     try {
       const result = await api.getSalesByUser({
         startDate,
@@ -89,51 +126,160 @@ export function SalesByUserReportPage({ onBack }) {
         userIds: selectedUserIds.length > 0 ? selectedUserIds : undefined,
       });
       setData(result);
-      if (!result.detail_rows?.length && !result.users?.length) toast.error('Sin resultados');
     } catch (e) {
-      toast.error(e.message);
+      toast.error(e.message || 'Error al consultar ventas por usuario');
     } finally {
       setLoading(false);
     }
   };
 
-  const fmt = (n) => `Q${Number(n || 0).toFixed(2)}`;
+  const fmt = (n) => `Q ${Number(n || 0).toFixed(2)}`;
 
-  const toggleUser = (userId) => {
-    setSelectedUserIds(prev =>
-      prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
-    );
+  // Cálculos de KPIs
+  const grandTotal = Number(data?.grand_total || 0);
+  const grandQty = Number(data?.grand_qty || 0);
+  const activeUsersCount = data?.users?.length || 0;
+  const avgPerUser = activeUsersCount > 0 ? grandTotal / activeUsersCount : 0;
+
+  // Mesero Estrella
+  const topWaiter = useMemo(() => {
+    if (!data?.users || data.users.length === 0) return null;
+    let max = data.users[0];
+    for (const u of data.users) {
+      if (Number(u.total_sales || 0) > Number(max.total_sales || 0)) {
+        max = u;
+      }
+    }
+    return max;
+  }, [data]);
+
+  const kpis = [
+    {
+      label: 'Ventas Totales Equipo',
+      value: fmt(grandTotal),
+      subtext: `${activeUsersCount} meseros activos`,
+      subtextColor: 'text-emerald-700 font-bold',
+      icon: Coins,
+      iconBg: 'bg-emerald-50 text-emerald-600 border border-emerald-100',
+    },
+    {
+      label: 'Mesero Estrella (#1)',
+      value: topWaiter?.user_name || 'N/A',
+      subtext: topWaiter ? `${fmt(topWaiter.total_sales)} facturado` : 'Sin registros',
+      subtextColor: 'text-rose-700 font-semibold',
+      icon: Users,
+      iconBg: 'bg-rose-50 text-rose-600 border border-rose-100',
+    },
+    {
+      label: 'Promedio por Mesero',
+      value: fmt(avgPerUser),
+      subtext: 'Rendimiento medio individual',
+      subtextColor: 'text-blue-700 font-semibold',
+      icon: TrendingUp,
+      iconBg: 'bg-blue-50 text-blue-600 border border-blue-100',
+    },
+    {
+      label: 'Artículos Despachados',
+      value: grandQty.toLocaleString('es-GT'),
+      subtext: 'Platos & bebidas servidas',
+      subtextColor: 'text-purple-700 font-semibold',
+      icon: Package,
+      iconBg: 'bg-purple-50 text-purple-600 border border-purple-100',
+    },
+  ];
+
+  // Impresión térmica 80mm
+  const handlePrintThermal = () => {
+    if (!data) return;
+    const centerName = centers.find((c) => c.id === Number(centerId))?.name || 'Todos los centros';
+    const nowStr = new Date().toLocaleString('es-GT');
+
+    const content = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Resumen de Ventas por Usuario</title>
+          <style>
+            body { font-family: monospace; width: 78mm; margin: 0 auto; padding: 4px; font-size: 11px; }
+            .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 6px; margin-bottom: 6px; }
+            .title { font-size: 14px; font-weight: 900; }
+            .meta { font-size: 10px; margin-bottom: 4px; }
+            .row { display: flex; justify-content: space-between; padding: 2px 0; }
+            .bold { font-weight: bold; }
+            .total { font-size: 13px; font-weight: 900; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; padding: 3px 0; margin-top: 6px; }
+            .footer { text-align: center; font-size: 9px; margin-top: 10px; border-top: 1px dashed #000; padding-top: 4px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">VENTAS POR PERSONAL / MESERO</div>
+            <div class="meta">${centerName}</div>
+            <div class="meta">Periodo: ${startDate} al ${endDate}</div>
+            <div class="meta">Impreso: ${nowStr}</div>
+          </div>
+
+          <div style="font-weight: bold; margin-bottom: 4px;">RANKING INDIVIDUAL:</div>
+          ${(data.users || [])
+            .map((u, i) => {
+              const pct = grandTotal > 0 ? ((Number(u.total_sales) / grandTotal) * 100).toFixed(1) : '0';
+              return `
+                <div class="row">
+                  <span>#${i + 1} ${u.user_name} (${u.total_qty} pzs):</span>
+                  <span class="bold">Q ${Number(u.total_sales || 0).toFixed(2)} (${pct}%)</span>
+                </div>
+              `;
+            })
+            .join('')}
+
+          <div class="row total">
+            <span>TOTAL EQUIPO:</span>
+            <span>Q ${grandTotal.toFixed(2)}</span>
+          </div>
+
+          <div class="footer">
+            CONTROL DE PRODUCTIVIDAD • NO FISCAL
+          </div>
+          <script>window.print();window.close();<\/script>
+        </body>
+      </html>
+    `;
+
+    const win = window.open('', '_blank', 'width=400,height=600');
+    if (!win) {
+      toast.error('Permite las ventanas emergentes para imprimir');
+      return;
+    }
+    win.document.write(content);
+    win.document.close();
   };
 
+  // Exportar Excel
   const handleExportExcel = () => {
-    if (!data) return;
-    const centerName = centers.find(c => c.id === Number(centerId))?.name || 'Todos los centros';
-    const userFilter = selectedUserIds.length > 0
-      ? ` | Usuarios: ${selectedUserIds.map(id => users.find(u => u.id === id)?.full_name || id).join(', ')}`
-      : '';
+    if (!data?.users?.length && !data?.detail_rows?.length) {
+      toast.error('No hay datos para exportar');
+      return;
+    }
+    const centerName = centers.find((c) => c.id === Number(centerId))?.name || 'Todos los centros';
 
     exportToExcel({
       sheets: [
-        // Sheet 1: Resumen por usuario
         {
           name: 'PorUsuario',
           title: 'SamaPos - Ventas por Usuario',
-          subtitle: `Del ${startDate} al ${endDate} | Centro: ${centerName}${userFilter}`,
+          subtitle: `Del ${startDate} al ${endDate} | Centro: ${centerName}`,
           headers: [
-            { label: '#', width: 5, type: 'center' },
-            { label: 'Usuario', width: 22 },
+            { label: '#', width: 6, type: 'center' },
+            { label: 'Colaborador / Mesero', width: 24 },
             { label: 'Rol', width: 14 },
             { label: 'Centro', width: 16 },
-            { label: 'Productos', width: 12, type: 'center' },
-            { label: 'Cantidad', width: 10, type: 'center' },
-            { label: 'Total Vendido', width: 15, type: 'money' },
+            { label: 'Productos Distintos', width: 14, type: 'center' },
+            { label: 'Unidades Vendidas', width: 14, type: 'center' },
+            { label: 'Total Ventas', width: 16, type: 'money' },
           ],
-          rows: data.users.map((u, i) => [
+          rows: (data.users || []).map((u, i) => [
             { value: i + 1, type: 'center' },
             { value: u.user_name, type: 'bold' },
-            { value: u.user_role || '-' },
+            { value: u.user_role || 'Mesero' },
             { value: u.center_name || '-' },
             { value: Number(u.product_count || 0), type: 'center' },
             { value: Number(u.total_qty || 0), type: 'center' },
@@ -145,122 +291,30 @@ export function SalesByUserReportPage({ onBack }) {
             { value: '' },
             { value: '' },
             { value: '' },
-            { value: Number(data.grand_qty || 0), type: 'boldCenter' },
-            { value: parseFloat(Number(data.grand_total || 0).toFixed(2)), type: 'money' },
+            { value: grandQty, type: 'boldCenter' },
+            { value: parseFloat(grandTotal.toFixed(2)), type: 'money' },
           ],
         },
-        // Sheet 2: Comparación de productos
-        {
-          name: 'Comparacion',
-          title: 'SamaPos - Comparación por Producto',
-          subtitle: `Del ${startDate} al ${endDate} | Centro: ${centerName}${userFilter}`,
-          headers: [
-            { label: 'Producto', width: 28 },
-            { label: 'Categoría', width: 18 },
-            { label: 'Vendido por', width: 20 },
-            { label: 'Cantidad', width: 10, type: 'center' },
-            { label: 'Total', width: 14, type: 'money' },
-          ],
-          rows: (data.product_comparison || []).map(p => {
-            const topSeller = [...p.sellers].sort((a, b) => b.qty - a.qty)[0];
-            const sellerCount = p.sellers.length;
-            return [
-              { value: p.product_name, type: 'bold' },
-              { value: p.category_name },
-              { value: sellerCount === 1 ? topSeller?.user_name || '-' : `${sellerCount} vendedores` },
-              { value: Number(p.total_qty || 0), type: 'center' },
-              { value: parseFloat(Number(p.total_sales || 0).toFixed(2)), type: 'money' },
-            ];
-          }),
-          grandTotals: [
-            { value: 'TOTAL', type: 'bold' },
-            { value: '' },
-            { value: '' },
-            { value: Number(data.grand_qty || 0), type: 'boldCenter' },
-            { value: parseFloat(Number(data.grand_total || 0).toFixed(2)), type: 'money' },
-          ],
-        },
-        // Sheet 3: Detalle
-        {
-          name: 'Detalle',
-          title: 'SamaPos - Detalle de Ventas',
-          subtitle: `Del ${startDate} al ${endDate} | Centro: ${centerName}${userFilter}`,
-          headers: [
-            { label: 'Usuario', width: 20 },
-            { label: 'Centro', width: 14 },
-            { label: 'Categoría', width: 16 },
-            { label: 'Producto', width: 28 },
-            { label: 'Cuenta', width: 12 },
-            { label: 'Fecha', width: 14 },
-            { label: 'Cant.', width: 8, type: 'center' },
-            { label: 'Total', width: 14, type: 'money' },
-          ],
-          rows: (data.detail_rows || []).map(r => [
-            { value: r.user_name || '-' },
-            { value: r.center_name || '-' },
-            { value: r.category_name },
-            { value: r.product_name },
-            { value: r.check_number || '-' },
-            { value: r.closed_at ? new Date(r.closed_at).toLocaleDateString('es-GT') : '-' },
-            { value: Number(r.qty || 0), type: 'center' },
-            { value: parseFloat(Number(r.line_total || 0).toFixed(2)), type: 'money' },
-          ]),
-          grandTotals: [
-            { value: 'TOTAL', type: 'bold' },
-            { value: '' },
-            { value: '' },
-            { value: '' },
-            { value: '' },
-            { value: '' },
-            { value: Number(data.grand_qty || 0), type: 'boldCenter' },
-            { value: parseFloat(Number(data.grand_total || 0).toFixed(2)), type: 'money' },
-          ],
-        },
-        // Sheet 4: Cuentas unidas
-        ...((data.merged_accounts || []).length > 0 ? [{
-          name: 'Unidas',
-          title: 'SamaPos - Cuentas Unidas',
-          subtitle: `Del ${startDate} al ${endDate} | Centro: ${centerName}${userFilter}`,
-          headers: [
-            { label: 'Usuario', width: 20 },
-            { label: 'Centro', width: 14 },
-            { label: 'Cuenta Original', width: 16 },
-            { label: 'Fecha', width: 14 },
-            { label: 'Unida a Cuenta', width: 16 },
-            { label: 'Total', width: 14, type: 'money' },
-          ],
-          rows: (data.merged_accounts || []).map(ma => [
-            { value: ma.user_name || '-' },
-            { value: ma.center_name || '-' },
-            { value: ma.check_number || `#${ma.account_id}` },
-            { value: ma.closed_at ? new Date(ma.closed_at).toLocaleDateString('es-GT') : '-' },
-            { value: `#${ma.merged_into_account_id}`, type: 'bold' },
-            { value: 0, type: 'money' },
-          ]),
-          grandTotals: [
-            { value: `${(data.merged_accounts || []).length} CUENTA(S) UNIDA(S)`, type: 'bold' },
-            { value: '' },
-            { value: '' },
-            { value: '' },
-            { value: '' },
-            { value: 0, type: 'money' },
-          ],
-        }] : []),
       ],
     });
+    toast.success('Archivo Excel exportado con éxito');
   };
 
+  // Exportar PDF
   const handleExportPDF = () => {
-    if (!data) return;
-    const centerName = centers.find(c => c.id === Number(centerId))?.name || 'Todos los centros';
+    if (!data?.users?.length) {
+      toast.error('No hay datos para exportar');
+      return;
+    }
+    const centerName = centers.find((c) => c.id === Number(centerId))?.name || 'Todos los centros';
+
     exportToPDF({
-      title: 'Ventas por Usuario',
+      title: 'Ventas por Personal y Rendimiento',
       subtitle: `Del ${startDate} al ${endDate} | Centro: ${centerName}`,
       tables: [
         {
-          sectionTitle: 'Resumen por Usuario',
           headers: ['#', 'Usuario', 'Rol', 'Centro', 'Prod.', 'Cant.', 'Total'],
-          rows: data.users.map((u, i) => [
+          rows: (data.users || []).map((u, i) => [
             { value: i + 1, type: 'center' },
             { value: u.user_name, type: 'bold' },
             { value: u.user_role || '-' },
@@ -269,369 +323,403 @@ export function SalesByUserReportPage({ onBack }) {
             { value: Number(u.total_qty || 0), type: 'center' },
             { value: fmt(u.total_sales), type: 'money' },
           ]),
-        },
-        {
-          sectionTitle: 'Comparación de Productos',
-          headers: ['Producto', 'Categoría', '# Vend.', 'Cantidad', 'Total'],
-          rows: (data.product_comparison || []).map(p => [
-            { value: p.product_name, type: 'bold' },
-            { value: p.category_name },
-            { value: p.sellers.length, type: 'center' },
-            { value: Number(p.total_qty || 0), type: 'center' },
-            { value: fmt(p.total_sales), type: 'money' },
-          ]),
+          grandTotals: [
+            { value: 'TOTAL', type: 'bold' },
+            { value: '' },
+            { value: '' },
+            { value: '' },
+            { value: '' },
+            { value: grandQty, type: 'boldCenter' },
+            { value: fmt(grandTotal), type: 'money' },
+          ],
         },
       ],
     });
+    toast.success('Reporte PDF generado');
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <BackButton onClick={onBack} label="Reportes" title="Volver a reportes" />
-          <h1 className="font-bold text-gray-900 text-lg">Ventas por Usuario</h1>
-        </div>
-      </header>
-
-      <div className="p-4 space-y-4">
-        {/* Filtros */}
-        <div className="bg-white rounded-xl p-4 border border-gray-100 space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Desde</label>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Hasta</label>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Centro</label>
-              <select value={centerId} onChange={e => setCenterId(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm">
-                <option value="">Todos</option>
-                {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Categoría</label>
-              <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm">
-                <option value="">Todas</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-          </div>
+    <ReportLayout
+      title="Ventas por Usuario & Rendimiento"
+      badge="PERSONAL & PRODUCTIVIDAD"
+      badgeColor="bg-rose-50 text-rose-800 border-rose-200"
+      subtitle="Productividad de meseros, ranking de ventas individuales, productos despachados y auditoría"
+      onBack={onBack}
+      startDate={startDate}
+      setStartDate={setStartDate}
+      endDate={endDate}
+      setEndDate={setEndDate}
+      onRefresh={fetchReportData}
+      loading={loading}
+      centers={centers}
+      selectedCenter={centerId}
+      setSelectedCenter={setCenterId}
+      kpis={kpis}
+      onPrintThermal={handlePrintThermal}
+      onExportExcel={handleExportExcel}
+      onExportPdf={handleExportPDF}
+      extraFilters={
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Selector de Categoría */}
           <div className="relative">
-            <label className="text-xs text-gray-500 mb-1 block">Producto (opcional)</label>
-            <div className="relative">
+            <span className="block text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-0.5">
+              Categoría
+            </span>
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none cursor-pointer"
+            >
+              <option value="">Todas las categorías</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Autocompletado de Platillo */}
+          <div className="relative">
+            <span className="block text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-0.5">
+              Buscar Platillo
+            </span>
+            <div className="relative flex items-center">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
               <input
-                type="text" value={prodSearch}
-                onChange={e => { setProdSearch(e.target.value); if (!e.target.value) { setProductName(''); setShowProdDrop(false); } }}
-                onFocus={() => { if (prodResults.length > 0) setShowProdDrop(true); }}
+                type="text"
+                placeholder="Platillo específico..."
+                value={prodSearch}
+                onChange={(e) => {
+                  setProdSearch(e.target.value);
+                  if (!e.target.value) clearProduct();
+                }}
+                onFocus={() => {
+                  if (prodResults.length > 0) setShowProdDrop(true);
+                }}
                 onBlur={() => setTimeout(() => setShowProdDrop(false), 200)}
-                placeholder="Escribe para buscar producto..."
-                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm pr-8" />
+                className="pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none w-44 focus:bg-white focus:border-rose-400 transition-colors"
+              />
               {searchingProd && (
-                <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 text-rose-500 absolute right-2.5 animate-spin" />
               )}
-              {productName && (
-                <button onClick={clearProduct}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded">
-                  <XCircle className="w-4 h-4 text-gray-400" />
+              {productName && !searchingProd && (
+                <button
+                  type="button"
+                  onClick={clearProduct}
+                  className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
+
             {showProdDrop && prodResults.length > 0 && (
-              <div className="absolute z-50 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 w-full max-h-48 overflow-y-auto">
-                {prodResults.map(p => (
-                  <button key={p.id}
+              <div className="absolute z-50 bg-white border border-slate-200 rounded-xl shadow-lg mt-1 w-60 max-h-52 overflow-y-auto">
+                {prodResults.map((p) => (
+                  <button
+                    key={p.id}
                     onMouseDown={() => selectProduct(p)}
-                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-rose-50 border-b border-gray-50 last:border-0 transition-colors">
-                    <span className="font-medium text-gray-800">{p.name}</span>
-                    {p.category_name && <span className="text-xs text-gray-400 ml-2">({p.category_name})</span>}
+                    className="w-full text-left px-3 py-2 text-xs hover:bg-rose-50 border-b border-slate-100 last:border-0 transition-colors flex items-center justify-between"
+                  >
+                    <span className="font-bold text-slate-800 truncate">{p.name}</span>
+                    {p.category_name && (
+                      <span className="text-[10px] text-slate-400 bg-slate-100 px-1 py-0.5 rounded ml-1 shrink-0">
+                        {p.category_name}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
             )}
-            {showProdDrop && prodSearch.length >= 2 && !searchingProd && prodResults.length === 0 && (
-              <div className="absolute z-50 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 w-full px-4 py-3 text-sm text-gray-400 text-center">
-                Sin coincidencias
-              </div>
-            )}
-            {productName && (
-              <p className="text-xs text-rose-600 mt-1 ml-1">✓ {productName}</p>
-            )}
           </div>
-          {/* Usuarios */}
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">
-              Usuarios ({selectedUserIds.length > 0 ? `${selectedUserIds.length} seleccionado${selectedUserIds.length !== 1 ? 's' : ''}` : 'todos'})
-            </label>
-            <div className="border border-gray-200 rounded-xl p-2 max-h-28 overflow-y-auto space-y-1">
-              {users.length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-1">Cargando...</p>
-              )}
-              {users.map(u => {
-                const isSelected = selectedUserIds.includes(u.id);
-                return (
-                  <label key={u.id} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input type="checkbox" checked={isSelected}
-                      onChange={() => toggleUser(u.id)}
-                      className="w-3.5 h-3.5 accent-rose-600" />
-                    <span className="text-xs text-gray-700">{u.full_name}</span>
-                    {u.role && <span className="text-xs text-gray-400">({u.role})</span>}
-                  </label>
-                );
-              })}
-            </div>
+        </div>
+      }
+    >
+      {/* ─────────────────────────────────────────────────────────── */}
+      {/* SELECTOR DE USUARIOS EN CHIPS INTERACTIVOS */}
+      {/* ─────────────────────────────────────────────────────────── */}
+      {users.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-rose-600" />
+              <span>Filtrar Colaboradores ({selectedUserIds.length > 0 ? `${selectedUserIds.length} seleccionados` : 'Todos'})</span>
+            </span>
             {selectedUserIds.length > 0 && (
-              <button onClick={() => setSelectedUserIds([])}
-                className="mt-1 text-xs text-rose-500 hover:text-rose-700 font-medium">
+              <button
+                type="button"
+                onClick={() => setSelectedUserIds([])}
+                className="text-xs font-bold text-rose-600 hover:text-rose-800 cursor-pointer"
+              >
                 Limpiar selección
               </button>
             )}
           </div>
-          <button onClick={handleSearch} disabled={loading}
-            className="w-full py-2.5 bg-rose-600 text-white font-medium rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            {loading ? 'Consultando...' : 'Generar Reporte'}
+          <div className="flex items-center gap-2 flex-wrap max-h-24 overflow-y-auto pt-1">
+            <button
+              type="button"
+              onClick={() => setSelectedUserIds([])}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                selectedUserIds.length === 0
+                  ? 'bg-rose-600 text-white shadow-2xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Todos los meseros
+            </button>
+            {users.map((u) => {
+              const active = selectedUserIds.includes(u.id);
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => toggleUser(u.id)}
+                  className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    active
+                      ? 'bg-rose-100 text-rose-800 border border-rose-300 font-bold'
+                      : 'bg-slate-50 text-slate-600 border border-slate-200/80 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${active ? 'bg-rose-600' : 'bg-slate-300'}`} />
+                  <span>{u.full_name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────── */}
+      {/* TABS DE RENDIMIENTO: RANKING / PRODUCTOS / DETALLE */}
+      {/* ─────────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+        {/* Navegación por pestañas */}
+        <div className="flex border-b border-slate-200/90 bg-slate-50/60 p-1.5 gap-1.5">
+          <button
+            type="button"
+            onClick={() => setActiveTab('users')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+              activeTab === 'users'
+                ? 'bg-white text-rose-800 shadow-xs border border-slate-200/80'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <span>Ranking por Personal</span>
+            <span className="px-1.5 py-0.5 bg-slate-100 rounded-md text-[10px]">
+              {data?.users?.length || 0}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('products')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+              activeTab === 'products'
+                ? 'bg-white text-amber-800 shadow-xs border border-slate-200/80'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <span>Comparación de Productos</span>
+            <span className="px-1.5 py-0.5 bg-slate-100 rounded-md text-[10px]">
+              {data?.product_comparison?.length || 0}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('detail')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+              activeTab === 'detail'
+                ? 'bg-white text-blue-800 shadow-xs border border-slate-200/80'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <span>Detalle de Transacciones</span>
+            <span className="px-1.5 py-0.5 bg-slate-100 rounded-md text-[10px]">
+              {data?.detail_rows?.length || 0}
+            </span>
           </button>
         </div>
 
-        {data && (
-          <>
-            {/* Totales resumen */}
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              <div className="px-4 py-3 bg-gray-800 flex items-center justify-between">
-                <h3 className="text-white font-semibold text-sm">Resumen General</h3>
-                <div className="flex gap-1.5">
-                  <button onClick={handleExportPDF}
-                    className="px-3 py-1.5 bg-red-500 bg-opacity-20 text-red-300 rounded-lg flex items-center gap-1.5 text-xs font-medium hover:bg-opacity-30">
-                    <Printer className="w-3.5 h-3.5" /> PDF
-                  </button>
-                  <button onClick={handleExportExcel}
-                    className="px-3 py-1.5 bg-emerald-500 bg-opacity-20 text-emerald-300 rounded-lg flex items-center gap-1.5 text-xs font-medium hover:bg-opacity-30">
-                    <FileSpreadsheet className="w-3.5 h-3.5" /> Excel
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 divide-x divide-gray-100">
-                <div className="px-4 py-3 text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">Usuarios</p>
-                  <p className="font-bold text-gray-900 text-lg">{data.users?.length || 0}</p>
-                </div>
-                <div className="px-4 py-3 text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">Productos Vendidos</p>
-                  <p className="font-bold text-gray-900 text-lg">{Number(data.grand_qty || 0).toLocaleString('es-GT')}</p>
-                </div>
-                <div className="px-4 py-3 text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">Total Vendido</p>
-                  <p className="font-bold text-rose-600 text-lg">{fmt(data.grand_total)}</p>
-                </div>
-              </div>
-            </div>
+        {/* Tab 1: Ranking por Usuario */}
+        {activeTab === 'users' && (
+          <div className="p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {(data?.users || []).map((u, i) => {
+                const sales = Number(u.total_sales || 0);
+                const pct = grandTotal > 0 ? ((sales / grandTotal) * 100).toFixed(1) : '0';
 
-            {/* Tabs */}
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              <div className="flex border-b border-gray-100">
-                <button onClick={() => setActiveTab('users')}
-                  className={`flex-1 px-2 py-2.5 text-xs font-medium transition-colors ${activeTab === 'users' ? 'text-rose-600 border-b-2 border-rose-600 bg-rose-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}>
-                  Por Usuario ({data.users?.length || 0})
-                </button>
-                <button onClick={() => setActiveTab('products')}
-                  className={`flex-1 px-2 py-2.5 text-xs font-medium transition-colors ${activeTab === 'products' ? 'text-amber-600 border-b-2 border-amber-600 bg-amber-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}>
-                  Comparación ({data.product_comparison?.length || 0})
-                </button>
-                <button onClick={() => setActiveTab('detail')}
-                  className={`flex-1 px-2 py-2.5 text-xs font-medium transition-colors ${activeTab === 'detail' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}>
-                  Detalle ({data.detail_rows?.length || 0})
-                </button>
-              </div>
-
-              {/* Por Usuario tab */}
-              {activeTab === 'users' && (
-                <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
-                  {data.users?.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400 text-sm">Sin datos</div>
-                  ) : (
-                    data.users.map((u, i) => (
-                      <div key={u.user_id} className={`px-4 py-3 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-rose-50 transition-colors`}>
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
-                              {i + 1}
-                            </span>
-                            <div>
-                              <p className="font-semibold text-gray-900 text-sm">{u.user_name}</p>
-                              <p className="text-xs text-gray-400">
-                                {u.user_role || 'Empleado'} · {u.center_name || 'Sin centro'}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0 ml-3">
-                            <p className="font-bold text-rose-600 text-sm">{fmt(u.total_sales)}</p>
-                            <p className="text-xs text-gray-400">{Number(u.total_qty || 0).toLocaleString('es-GT')} pzs</p>
-                          </div>
+                return (
+                  <div
+                    key={u.user_id}
+                    className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/60 hover:bg-slate-50 transition-all space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shadow-2xs ${
+                            i === 0
+                              ? 'bg-amber-400 text-white'
+                              : i === 1
+                              ? 'bg-slate-300 text-slate-800'
+                              : i === 2
+                              ? 'bg-amber-700 text-white'
+                              : 'bg-rose-100 text-rose-700'
+                          }`}
+                        >
+                          #{i + 1}
                         </div>
-                        {/* Barra de progreso */}
-                        {data.grand_total > 0 && (
-                          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                            <div className="h-full bg-rose-500 rounded-full"
-                              style={{ width: `${Math.min(100, (Number(u.total_sales || 0) / Number(data.grand_total || 1)) * 100)}%` }} />
+                        <div>
+                          <div className="font-extrabold text-slate-900 text-xs">
+                            {u.user_name}
                           </div>
-                        )}
-                        {/* Productos que vendió */}
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {u.products?.slice(0, 5).map(p => (
-                            <span key={p.product_id} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                              {p.product_name} <span className="font-medium">×{p.qty}</span>
-                            </span>
-                          ))}
-                          {u.products?.length > 5 && (
-                            <span className="text-xs text-gray-400 px-2 py-0.5">+{u.products.length - 5} más</span>
-                          )}
+                          <div className="text-[10px] text-slate-500 font-semibold">
+                            {u.user_role || 'Mesero'} · {u.center_name || 'Salón Principal'}
+                          </div>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
 
-              {/* Comparación de productos tab */}
-              {activeTab === 'products' && (
-                <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
-                  {data.product_comparison?.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400 text-sm">Sin datos</div>
-                  ) : (
-                    data.product_comparison.map((p, i) => {
-                      const topSeller = [...p.sellers].sort((a, b) => b.qty - a.qty)[0];
-                      return (
-                        <div key={p.product_id} className={`px-4 py-3 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                {i === 0 && <span className="text-xs bg-amber-400 text-white px-1.5 py-0.5 rounded font-bold">#1</span>}
-                                <p className="font-semibold text-gray-900 text-sm">{p.product_name}</p>
-                              </div>
-                              <p className="text-xs text-gray-400">{p.category_name} · {p.sellers.length} vendedor{p.sellers.length !== 1 ? 'es' : ''}</p>
-                            </div>
-                            <div className="text-right flex-shrink-0 ml-3">
-                              <p className="font-bold text-gray-900 text-sm">{fmt(p.total_sales)}</p>
-                              <p className="text-xs text-gray-400">{Number(p.total_qty || 0).toLocaleString('es-GT')} pzs</p>
-                            </div>
-                          </div>
-                          {/* Ranking de vendedores por producto */}
-                          <div className="space-y-1.5">
-                            {[...p.sellers].sort((a, b) => b.qty - a.qty).map((s, si) => (
-                              <div key={s.user_id} className="flex items-center gap-2">
-                                <span className="text-xs text-gray-400 w-4 text-right flex-shrink-0">{si + 1}.</span>
-                                <span className={`text-xs font-medium w-5 text-center flex-shrink-0 ${si === 0 ? 'text-amber-500' : 'text-gray-500'}`}>
-                                  {si === 0 ? '🥇' : si === 1 ? '🥈' : si === 2 ? '🥉' : ''}
-                                </span>
-                                <span className="text-xs text-gray-700 flex-1 truncate">{s.user_name}</span>
-                                <span className="text-xs text-gray-500">{Number(s.qty || 0).toLocaleString('es-GT')} pzs</span>
-                                <span className="text-xs font-medium text-gray-700 w-20 text-right">{fmt(s.sales)}</span>
-                              </div>
-                            ))}
-                          </div>
+                      <div className="text-right">
+                        <div className="font-mono font-black text-slate-900 text-sm">
+                          {fmt(sales)}
                         </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-
-              {/* Detalle tab */}
-              {activeTab === 'detail' && (
-                <>
-                  {/* Cuentas unidas */}
-                  {data.merged_accounts && data.merged_accounts.length > 0 && (
-                    <div className="mx-4 my-2 border border-red-200 rounded-xl overflow-hidden bg-red-50">
-                      <div className="px-3 py-2 bg-red-100 flex items-center gap-2">
-                        <span className="text-red-600 text-xs font-semibold uppercase tracking-wider">⚠ Cuentas Unidas ({data.merged_accounts.length})</span>
+                        <span className="text-[10px] font-bold text-rose-700 bg-rose-100/60 px-1.5 py-0.5 rounded">
+                          {pct}% del total
+                        </span>
                       </div>
-                      {data.merged_accounts.map((ma, i) => (
-                        <div key={ma.account_id} className={`flex items-center justify-between px-3 py-2 ${i % 2 === 0 ? 'bg-white' : 'bg-red-50/50'}`}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">{ma.user_name || '-'}</span>
-                            <span className="text-gray-300">·</span>
-                            <span className="font-mono text-xs text-gray-600">{ma.check_number || `#${ma.account_id}`}</span>
-                            <span className="text-xs text-gray-400">{ma.center_name || ''}</span>
-                          </div>
-                          <div className="flex items-center gap-3 text-xs">
-                            <span className="text-gray-400">Unida a</span>
-                            <span className="font-bold text-red-600 font-mono">#{ma.merged_into_account_id}</span>
-                            <span className="font-bold text-gray-400 w-16 text-right">Q0.00</span>
-                          </div>
-                        </div>
-                      ))}
                     </div>
-                  )}
-                  <div className="overflow-x-auto max-h-96">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-blue-600 text-white sticky top-0">
-                          <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Usuario</th>
-                          <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Centro</th>
-                          <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Categoría</th>
-                          <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Producto</th>
-                          <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">Cuenta</th>
-                          <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">Fecha</th>
-                          <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">Cant.</th>
-                          <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.detail_rows?.map((r, i) => (
-                          <tr key={i} className={`border-t border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50`}>
-                            <td className="px-3 py-2 font-medium text-gray-800">{r.user_name || '-'}</td>
-                            <td className="px-3 py-2 text-gray-600">{r.center_name || '-'}</td>
-                            <td className="px-3 py-2 text-gray-600">{r.category_name}</td>
-                            <td className="px-3 py-2 font-medium text-gray-800">{r.product_name}</td>
-                            <td className="px-3 py-2 text-center font-mono text-gray-600">
-                              {r.merged_into_account_id ? (
-                                <span className="flex items-center justify-center gap-1">
-                                  <span className="line-through text-gray-400">{r.check_number || '-'}</span>
-                                  <span className="text-xs bg-amber-100 text-amber-700 px-1 rounded font-bold" title={`Unida a #${r.merged_into_account_id}`}>U</span>
-                                </span>
-                              ) : r.check_number || '-'}
-                            </td>
-                            <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">
-                              {r.closed_at ? new Date(r.closed_at).toLocaleDateString('es-GT') : '-'}
-                            </td>
-                            <td className="px-3 py-2 text-center text-gray-600">{Number(r.qty || 0)}</td>
-                            <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(r.line_total)}</td>
-                          </tr>
+
+                    {/* Barra de progreso */}
+                    <div className="w-full bg-slate-200/80 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-rose-500 rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+
+                    {/* Top productos servidos por este usuario */}
+                    {u.products && u.products.length > 0 && (
+                      <div className="pt-2 border-t border-slate-200/60 flex items-center gap-1.5 flex-wrap">
+                        {u.products.slice(0, 4).map((p) => (
+                          <span
+                            key={p.product_id}
+                            className="text-[10px] font-semibold text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded-md"
+                          >
+                            {p.product_name}: <strong className="font-mono">{p.qty}</strong>
+                          </span>
                         ))}
-                      </tbody>
-                    </table>
+                        {u.products.length > 4 && (
+                          <span className="text-[10px] text-slate-400 font-bold">
+                            +{u.products.length - 4} más
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="px-4 py-3 bg-gray-900 text-white flex items-center justify-between rounded-b-xl">
-                    <span className="font-bold text-sm">TOTAL</span>
-                    <div className="flex items-center gap-4 text-sm">
-                      <span>{Number(data.grand_qty || 0).toLocaleString('es-GT')} pzs</span>
-                      <span className="font-bold">{fmt(data.grand_total)}</span>
-                    </div>
-                  </div>
-                </>
+                );
+              })}
+
+              {(!data?.users || data.users.length === 0) && (
+                <div className="col-span-full text-center py-10 text-slate-400">
+                  No hay ventas registradas para el personal en las fechas seleccionadas
+                </div>
               )}
             </div>
-          </>
+          </div>
         )}
 
-        {!data && (
-          <div className="text-center py-12">
-            <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">Selecciona filtros y genera el reporte</p>
+        {/* Tab 2: Comparación de Productos */}
+        {activeTab === 'products' && (
+          <div className="overflow-x-auto max-h-[500px]">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100/90 text-slate-600 font-extrabold uppercase text-[10px] tracking-wider sticky top-0 z-10 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3">Platillo / Producto</th>
+                  <th className="px-4 py-3">Categoría</th>
+                  <th className="px-4 py-3 text-center">Vendedores</th>
+                  <th className="px-4 py-3 text-right">Cant. Vendida</th>
+                  <th className="px-4 py-3 text-right">Total Facturado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                {(data?.product_comparison || []).map((p, i) => (
+                  <tr key={p.product_id || i} className="hover:bg-amber-50/40 transition-colors">
+                    <td className="px-4 py-2.5 font-bold text-slate-800">
+                      {p.product_name}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-500">
+                      {p.category_name}
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[11px]">
+                        {p.sellers?.length || 0} meseros
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono font-semibold text-slate-700">
+                      {Number(p.total_qty || 0).toLocaleString('es-GT')}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono font-black text-slate-900">
+                      {fmt(p.total_sales)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Tab 3: Detalle de Cuentas */}
+        {activeTab === 'detail' && (
+          <div className="overflow-x-auto max-h-[500px]">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100/90 text-slate-600 font-extrabold uppercase text-[10px] tracking-wider sticky top-0 z-10 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3">Mesero</th>
+                  <th className="px-4 py-3">Salón</th>
+                  <th className="px-4 py-3">Platillo / Producto</th>
+                  <th className="px-4 py-3 text-center">Cuenta</th>
+                  <th className="px-4 py-3 text-center">Fecha</th>
+                  <th className="px-4 py-3 text-center">Cant.</th>
+                  <th className="px-4 py-3 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                {(data?.detail_rows || []).map((row, i) => (
+                  <tr key={i} className="hover:bg-blue-50/40 transition-colors">
+                    <td className="px-4 py-2.5 whitespace-nowrap font-bold text-slate-800">
+                      {row.user_name || 'Personal'}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-slate-500">
+                      {row.center_name || '-'}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-slate-700">
+                      {row.product_name}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <NotebookMinimalIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="font-mono font-bold text-slate-700">
+                          #{row.check_number || '-'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-center text-slate-400 font-mono text-[11px]">
+                      {row.closed_at ? new Date(row.closed_at).toLocaleDateString('es-GT') : '-'}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-center font-mono font-semibold text-slate-700">
+                      {Number(row.qty || 0)}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-right font-mono font-black text-slate-900">
+                      {fmt(row.line_total)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
-    </div>
+    </ReportLayout>
   );
 }

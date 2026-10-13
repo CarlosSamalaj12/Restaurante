@@ -31,22 +31,31 @@ async function request(endpoint, options = {}) {
   const response = await fetch(url, config);
   // Validación de status antes de parsear — react-doctor pide esto.
   if (response.status === 401) {
-    // Auto-logout on session expired
+    // Auto-logout on session expired without reloading the page in a loop
     tokenStorage.clearAll();
-    window.location.href = '/login';
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      if (window.location.pathname !== '/' && window.location.pathname !== '') {
+        window.history.replaceState({}, '', '/');
+      }
+    }
     return;
   }
-  // Licencia revocada/vencida → forzar pantalla de bloqueo vía reload.
-  if (response.status === 403) {
-    const data = await response.json().catch(() => null);
-    if (data?.code && String(data.code).startsWith('LICENSE_')) {
-      // El componente LicenseBlock en App.jsx se va a enterar en su próximo
-      // heartbeat. Pero podemos forzar un reload para que arranque limpio.
-      // No hacemos window.location.reload() directo para evitar loops —
-      // dejamos que el useLicense hook re-evalúe en su próximo tick.
+  const data = await response.json().catch(() => null);
+
+  // Licencia revocada/vencida → notificar inmediatamente a useLicense para bloquear pantalla
+  if (response.status === 403 && data?.code && String(data.code).startsWith('LICENSE_')) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('license:blocked', { detail: data }));
     }
   }
-  const data = await response.json().catch(() => null);
+
+  // Modo Mantenimiento activo → notificar inmediatamente a useMaintenance
+  if (response.status === 503 && (data?.code === 'MAINTENANCE_MODE' || data?.maintenance)) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('system:maintenance_active', { detail: data }));
+    }
+  }
 
   if (!response.ok) {
     const error = new Error(data?.message || data?.error || `Error ${response.status}`);
@@ -268,6 +277,12 @@ export const api = {
   }),
   getPrintJobs: (limit = 50) => request(`/settings/printers/recent?limit=${limit}`),
   getPrintServiceStatus: () => request('/settings/printers/status'),
+  getPrinters: () => request('/settings/printers'),
+  createPrinter: (data) => request('/settings/printers', { method: 'POST', body: data }),
+  updatePrinter: (printerId, data) => request(`/settings/printers/${printerId}`, { method: 'PUT', body: data }),
+  deletePrinter: (printerId) => request(`/settings/printers/${printerId}`, { method: 'DELETE' }),
+  testPrinterDirect: (printerId) => request(`/settings/printers/${printerId}/test`, { method: 'POST' }),
+  auditPrinters: () => request('/settings/printers/audit'),
   updateProductProductionCenters: (productId, centerIds) => request(`/settings/products/${productId}/production-centers`, {
     method: 'POST',
     body: { centerIds },
@@ -425,22 +440,26 @@ export const api = {
   }),
 
   // Reprint / Search
-  searchPaidAccounts: (q, centerId, startDate, endDate) => {
-    let url = `/accounts/paid/search?q=${encodeURIComponent(q)}&centerId=${centerId}`;
+  searchPaidAccounts: (q, centerId, startDate, endDate, status, areaId) => {
+    let url = `/accounts/paid/search?centerId=${centerId}`;
+    if (q) url += `&q=${encodeURIComponent(q)}`;
     if (startDate) url += `&startDate=${encodeURIComponent(startDate)}`;
     if (endDate) url += `&endDate=${encodeURIComponent(endDate)}`;
+    if (status) url += `&status=${encodeURIComponent(status)}`;
+    if (areaId) url += `&areaId=${encodeURIComponent(areaId)}`;
     return request(url);
   },
   getAccountReceipt: (accountId) => request(`/accounts/${accountId}/receipt`),
 
   // Shifts
-  checkActiveShift: async (centerId) => {
+  checkActiveShift: async (centerId = 1) => {
+    const cid = centerId || 1;
     if (!navigator.onLine) {
       const cached = await offlineDb.getActiveShift();
       return cached || { active: false, shift: null };
     }
     try {
-      const shift = await request(`/shifts/active?centerId=${centerId}`);
+      const shift = await request(`/shifts/active?centerId=${cid}`);
       if (shift) offlineDb.saveActiveShift(shift).catch(() => {});
       return shift;
     } catch (err) {
@@ -449,6 +468,7 @@ export const api = {
       throw err;
     }
   },
+  getActiveShift: (centerId = 1) => api.checkActiveShift(centerId),
   previewShift: (centerId, closingCash) => request(`/shifts/preview?centerId=${centerId}${closingCash !== undefined ? '&closingCash=' + closingCash : ''}`),
   openShift: (data) => request('/shifts/open', {
     method: 'POST',
@@ -556,6 +576,17 @@ export const api = {
     },
   },
 
+  // Hotel PMS - Property Management System
+  pms: {
+    getConfig: () => request('/pms/config'),
+    updateConfig: (data) => request('/pms/config', { method: 'PUT', body: data }),
+    lookupRoom: (query) => request(`/pms/rooms/lookup${query ? `?query=${encodeURIComponent(query)}` : ''}`),
+    postCharge: (data) => request('/pms/charges', { method: 'POST', body: data }),
+    reverseCharge: (transactionId, data) => request(`/pms/charges/${transactionId}/reverse`, { method: 'POST', body: data }),
+    testConnection: () => request('/pms/test-connection', { method: 'POST' }),
+    getHistory: (limit = 25) => request(`/pms/history?limit=${limit}`),
+  },
+
   // Settings endpoints
   settings: {
     updateBranding: (restaurantName) => request('/settings/branding', {
@@ -569,6 +600,15 @@ export const api = {
     uploadLoginBg: (bgData) => request('/settings/login-bg', {
       method: 'POST',
       body: { bgData },
+    }),
+    uploadReceiptLogo: (logoData) => request('/settings/receipt-logo', {
+      method: 'POST',
+      body: { logoData },
+    }),
+    getBusinessProfile: () => request('/settings/business-profile'),
+    updateBusinessProfile: (data) => request('/settings/business-profile', {
+      method: 'POST',
+      body: data,
     }),
     updateTipConfig: (tipPercent) => request('/settings/tip-config', {
       method: 'POST',
@@ -650,6 +690,12 @@ export const api = {
     createKitchenNote: (data) => request('/settings/kitchen-notes', { method: 'POST', body: data }),
     updateKitchenNote: (id, data) => request(`/settings/kitchen-notes/${id}`, { method: 'PUT', body: data }),
     deleteKitchenNote: (id) => request(`/settings/kitchen-notes/${id}`, { method: 'DELETE' }),
+    getPrinters: () => request('/settings/printers'),
+    createPrinter: (data) => request('/settings/printers', { method: 'POST', body: data }),
+    updatePrinter: (printerId, data) => request(`/settings/printers/${printerId}`, { method: 'PUT', body: data }),
+    deletePrinter: (printerId) => request(`/settings/printers/${printerId}`, { method: 'DELETE' }),
+    testPrinterDirect: (printerId) => request(`/settings/printers/${printerId}/test`, { method: 'POST' }),
+    auditPrinters: () => request('/settings/printers/audit'),
   },
   roles: {
     list: () => request('/settings/roles'),
@@ -743,8 +789,10 @@ export const api = {
     },
   },
 
-  // ───────── Licencias (admin) ─────────
-  // Usados por LicensesTab. Solo visibles para role=admin (protegido server-side).
+  // ───────── Licencias (terminal & admin) ─────────
+  license: {
+    requestAccess: (data) => request('/license/request-access', { method: 'POST', body: data }),
+  },
   licenses: {
     list: () => request('/admin/licenses'),
     create: (data) => request('/admin/licenses', { method: 'POST', body: data }),
@@ -752,7 +800,9 @@ export const api = {
   },
   licenseTerminals: {
     list: (status) => request(`/admin/terminals${status ? `?status=${status}` : ''}`),
+    getPendingCount: () => request('/admin/terminals/pending-count'),
     approve: (id, label) => request(`/admin/terminals/${id}/approve`, { method: 'POST', body: label ? { label } : undefined }),
+    reject: (id, reason) => request(`/admin/terminals/${id}/reject`, { method: 'POST', body: reason ? { reason } : undefined }),
     update: (id, data) => request(`/admin/terminals/${id}`, { method: 'PUT', body: data }),
     revoke: (id, reason) => request(`/admin/terminals/${id}/revoke`, { method: 'POST', body: reason ? { reason } : undefined }),
     replace: (id) => request(`/admin/terminals/${id}/replace`, { method: 'POST' }),
@@ -800,6 +850,73 @@ export const api = {
     method: 'POST',
     body: { items, terminalCode },
   }),
+
+  // ───────── Control de Mantenimiento y Versiones ─────────
+  maintenance: {
+    getStatus: () => request('/maintenance/status'),
+    startCountdown: (data) => request('/maintenance/start', { method: 'POST', body: data }),
+    abortCountdown: () => request('/maintenance/abort', { method: 'POST' }),
+    end: () => request('/maintenance/end', { method: 'POST' }),
+    getVersions: () => request('/maintenance/versions'),
+    createVersion: (data) => request('/maintenance/versions', { method: 'POST', body: data }),
+  },
+
+  // ───────── Gastos, Proveedores y CXP ─────────
+  expenses: {
+    getExpenses: (params = {}) => {
+      const qs = new URLSearchParams();
+      if (params.startDate) qs.append('startDate', params.startDate);
+      if (params.endDate) qs.append('endDate', params.endDate);
+      if (params.categoryId) qs.append('categoryId', params.categoryId);
+      if (params.supplierId) qs.append('supplierId', params.supplierId);
+      if (params.paymentMethod) qs.append('paymentMethod', params.paymentMethod);
+      if (params.status) qs.append('status', params.status);
+      if (params.search) qs.append('search', params.search);
+      if (params.limit) qs.append('limit', params.limit);
+      if (params.offset) qs.append('offset', params.offset);
+      const str = qs.toString();
+      return request(`/expenses${str ? `?${str}` : ''}`);
+    },
+    getExpense: (id) => request(`/expenses/${id}`),
+    createExpense: (data) => request('/expenses', { method: 'POST', body: data }),
+    updateExpense: (id, data) => request(`/expenses/${id}`, { method: 'PUT', body: data }),
+    deleteExpense: (id) => request(`/expenses/${id}`, { method: 'DELETE' }),
+    uploadVoucher: (data) => request('/expenses/upload-voucher', { method: 'POST', body: data }),
+
+    // Categorías
+    getCategories: (params = {}) => {
+      const qs = params.activeOnly ? '?activeOnly=true' : '';
+      return request(`/expenses/categories${qs}`);
+    },
+    createCategory: (data) => request('/expenses/categories', { method: 'POST', body: data }),
+    updateCategory: (id, data) => request(`/expenses/categories/${id}`, { method: 'PUT', body: data }),
+    deleteCategory: (id) => request(`/expenses/categories/${id}`, { method: 'DELETE' }),
+
+    // Proveedores & CXP
+    getSuppliers: (params = {}) => {
+      const qs = new URLSearchParams();
+      if (params.search) qs.append('search', params.search);
+      if (params.onlyWithDebt) qs.append('onlyWithDebt', 'true');
+      const str = qs.toString();
+      return request(`/expenses/suppliers${str ? `?${str}` : ''}`);
+    },
+    getSupplier: (id) => request(`/expenses/suppliers/${id}`),
+    createSupplier: (data) => request('/expenses/suppliers', { method: 'POST', body: data }),
+    updateSupplier: (id, data) => request(`/expenses/suppliers/${id}`, { method: 'PUT', body: data }),
+    deleteSupplier: (id) => request(`/expenses/suppliers/${id}`, { method: 'DELETE' }),
+    getSupplierStatement: (id) => request(`/expenses/suppliers/${id}/statement`),
+    registerSupplierPayment: (supplierId, data) => request(`/expenses/suppliers/${supplierId}/payments`, { method: 'POST', body: data }),
+
+    // Balance Financiero & Ganancias (P&L)
+    getFinancialSummary: (params = {}) => {
+      const qs = new URLSearchParams();
+      if (params.startDate) qs.append('startDate', params.startDate);
+      if (params.endDate) qs.append('endDate', params.endDate);
+      if (params.centerId) qs.append('centerId', params.centerId);
+      const str = qs.toString();
+      return request(`/expenses/financial-summary${str ? `?${str}` : ''}`);
+    },
+  },
 };
 
 export default api;

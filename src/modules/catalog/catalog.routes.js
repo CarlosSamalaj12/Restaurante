@@ -3,18 +3,25 @@
 
 const express = require("express");
 const catalogController = require("./catalog.controller");
+const authService = require("../auth/auth.service");
+
+const requireAuth = authService.requireAuth();
+const requireAdmin = authService.requireAdmin();
 
 // Router para /api/catalog
 const catalogRouter = express.Router();
+catalogRouter.use(requireAuth);
 catalogRouter.get("/products", catalogController.getCatalogProducts);
 catalogRouter.get("/categories", catalogController.getCatalogCategories);
 
 // Router para /api/modifier-templates
 const modifierTemplatesRouter = express.Router();
+modifierTemplatesRouter.use(requireAuth);
 modifierTemplatesRouter.get("/", catalogController.getModifierTemplates);
 
 // Router para /api/settings (rutas asociadas a catálogo)
 const catalogSettingsRouter = express.Router();
+catalogSettingsRouter.use(requireAdmin);
 
 // Categorías
 catalogSettingsRouter.post("/categories", catalogController.createCategory);

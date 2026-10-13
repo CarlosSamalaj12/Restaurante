@@ -22,6 +22,7 @@ authRefreshRouter.post("/refresh-session", settingsController.refreshSession);
 
 // 4. Router para /api/settings
 const settingsRouter = express.Router();
+settingsRouter.use(requireAuth);
 
 settingsRouter.get("/", settingsController.getFullSettings);
 
@@ -29,9 +30,11 @@ settingsRouter.get("/", settingsController.getFullSettings);
 settingsRouter.post("/branding", requireSuperadmin, settingsController.updateBranding);
 settingsRouter.post("/logo", requireSuperadmin, settingsController.uploadLogo);
 settingsRouter.post("/login-bg", requireSuperadmin, settingsController.uploadLoginBg);
+settingsRouter.post("/receipt-logo", requireSuperadmin, settingsController.uploadReceiptLogo);
 settingsRouter.post("/tip-config", requireSuperadmin, settingsController.updateTipConfig);
 settingsRouter.get("/business-profile", settingsController.getBusinessProfile);
 settingsRouter.put("/business-profile", requireSuperadmin, settingsController.updateBusinessProfile);
+settingsRouter.post("/business-profile", requireSuperadmin, settingsController.updateBusinessProfile);
 settingsRouter.get("/tip-excluded-methods", settingsController.getTipExcludedMethods);
 settingsRouter.post("/tip-excluded-methods", requireSuperadmin, settingsController.updateTipExcludedMethods);
 
@@ -63,11 +66,19 @@ settingsRouter.delete("/payment-methods/:code", requireSuperadmin, settingsContr
 settingsRouter.post("/discount-presets", settingsController.createDiscountPreset);
 settingsRouter.post("/discount-presets/:presetId", settingsController.updateDiscountPreset);
 
-// Centros de Producción e Impresoras (Exclusivo Superadmin)
+// Centros de Producción (Exclusivo Superadmin)
 settingsRouter.get("/production-centers", settingsController.getProductionCenters);
 settingsRouter.post("/production-centers", requireSuperadmin, settingsController.createProductionCenter);
 settingsRouter.post("/production-centers/:centerId", requireSuperadmin, settingsController.updateProductionCenter);
 settingsRouter.delete("/production-centers/:centerId", requireSuperadmin, settingsController.deleteProductionCenter);
+
+// Catálogo Central de Impresoras y Diagnóstico (Exclusivo Superadmin)
+settingsRouter.get("/printers", settingsController.getPrinters);
+settingsRouter.post("/printers", requireSuperadmin, settingsController.createPrinter);
+settingsRouter.put("/printers/:printerId", requireSuperadmin, settingsController.updatePrinter);
+settingsRouter.delete("/printers/:printerId", requireSuperadmin, settingsController.deletePrinter);
+settingsRouter.post("/printers/:printerId/test", requireSuperadmin, settingsController.testPrinterDirect);
+settingsRouter.get("/printers/audit", settingsController.auditPrinters);
 settingsRouter.post("/printers/test", requireSuperadmin, settingsController.testPrinter);
 settingsRouter.get("/printers/status", settingsController.getPrintersStatus);
 settingsRouter.get("/printers/recent", settingsController.getRecentPrintJobs);

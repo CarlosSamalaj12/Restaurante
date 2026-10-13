@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { CenterIconBadge } from '../../utils/productIcons';
 
-export function ProductionCentersSection({ productionCenters, centers, onReload }) {
+export function ProductionCentersSection({ productionCenters, centers, printers = [], onReload }) {
   const [showWizard, setShowWizard] = useState(false);
   const [editingCenter, setEditingCenter] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -168,6 +168,7 @@ export function ProductionCentersSection({ productionCenters, centers, onReload 
         <ProductionCenterWizardModal
           editingCenter={editingCenter}
           centers={centers}
+          printers={printers}
           onClose={() => {
             setShowWizard(false);
             setEditingCenter(null);
@@ -214,17 +215,52 @@ export function ProductionCentersSection({ productionCenters, centers, onReload 
 }
 
 // Production Center Wizard Modal
-function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, centers }) {
+function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, centers, printers = [] }) {
   const [form, setForm] = useState({
     name: editingCenter?.name || '',
+    printerId: editingCenter?.printer_id || '',
     printerName: editingCenter?.printer_name || '',
     printerIp: editingCenter?.printer_ip || '',
     printerPort: editingCenter?.printer_port || 9100,
     isActive: editingCenter?.is_active !== false,
     operationCenterId: editingCenter?.operation_center_id || ''
   });
+  const [isManualPrinter, setIsManualPrinter] = useState(!editingCenter?.printer_id && !!editingCenter?.printer_ip);
   const [loading, setLoading] = useState(false);
   const toast = useToast();
+
+  const handleSelectPrinter = (selectedId) => {
+    if (!selectedId) {
+      // Sin impresora física (KDS)
+      setForm(prev => ({
+        ...prev,
+        printerId: '',
+        printerName: '',
+        printerIp: '',
+        printerPort: 9100,
+      }));
+      setIsManualPrinter(false);
+      return;
+    }
+
+    if (selectedId === 'manual') {
+      setIsManualPrinter(true);
+      setForm(prev => ({ ...prev, printerId: '' }));
+      return;
+    }
+
+    const prn = printers.find(p => p.id === Number(selectedId));
+    if (prn) {
+      setForm(prev => ({
+        ...prev,
+        printerId: prn.id,
+        printerName: prn.name,
+        printerIp: prn.ip,
+        printerPort: prn.port || 9100,
+      }));
+      setIsManualPrinter(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!form.name.trim()) {
@@ -235,6 +271,7 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
     try {
       const payload = {
         name: form.name,
+        printerId: form.printerId ? Number(form.printerId) : null,
         printerName: form.printerName,
         printerIp: form.printerIp,
         printerPort: form.printerPort,
@@ -261,7 +298,7 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
       <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-md"
+        className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden"
       >
         <div className="p-6">
           <h3 className="text-lg font-bold text-gray-900 mb-4">
@@ -270,85 +307,128 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                Nombre de la Estación
+              </label>
               <input
                 type="text"
                 value={form.name}
                 onChange={e => setForm({ ...form, name: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="Ej: Cocina Principal"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                placeholder="Ej: Cocina Principal, Bar, Parrilla"
+                autoFocus
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Centro (opcional)</label>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                Centro de Operación (opcional)
+              </label>
               <select
                 value={form.operationCenterId}
                 onChange={e => setForm({ ...form, operationCenterId: e.target.value ? Number(e.target.value) : '' })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-sm"
               >
-                <option value="">Sin centro específico</option>
+                <option value="">Común a todos los salones / centros</option>
                 {centers && centers.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
-              <p className="text-xs text-gray-400 mt-1">Deja vacío si es común a todos los centros</p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de Impresora (etiqueta)</label>
-              <input
-                type="text"
-                value={form.printerName}
-                onChange={e => setForm({ ...form, printerName: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="Ej: TM-COCINA-01"
-              />
-              <p className="text-xs text-gray-500 mt-1">Solo una etiqueta para identificar la impresora</p>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">IP de la impresora</label>
-                <input
-                  type="text"
-                  value={form.printerIp}
-                  onChange={e => setForm({ ...form, printerIp: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="192.168.1.51"
-                />
-              </div>
+            {/* Selector de Impresora Física */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Puerto</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={form.printerPort}
-                  onFocus={e => e.target.select()}
-                  onChange={e => setForm({ ...form, printerPort: e.target.value === '' ? 9100 : Number(e.target.value) })}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="9100"
-                />
+                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">
+                  🖨️ Impresora de Comandas
+                </label>
+                <select
+                  value={isManualPrinter ? 'manual' : (form.printerId || '')}
+                  onChange={e => handleSelectPrinter(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-medium"
+                >
+                  <option value="">📺 Sin impresora física (Solo pantalla KDS)</option>
+                  {printers && printers.map(p => (
+                    <option key={p.id} value={p.id}>
+                      🖨️ {p.name} ({p.ip}:{p.port || 9100}) {p.type === 'production' ? '· Cocina' : ''}
+                    </option>
+                  ))}
+                  <option value="manual">✏️ Configuración manual (Escribir IP personalizada)...</option>
+                </select>
               </div>
+
+              {/* Si seleccionó una del catálogo o modo manual */}
+              {form.printerIp && !isManualPrinter && (
+                <div className="flex items-center justify-between p-2.5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 text-xs">
+                  <span>Enlazada a: <strong>{form.printerName}</strong></span>
+                  <span className="font-mono font-bold">{form.printerIp}:{form.printerPort}</span>
+                </div>
+              )}
+
+              {isManualPrinter && (
+                <div className="space-y-3 pt-1 border-t border-slate-200/60">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Nombre / Etiqueta
+                    </label>
+                    <input
+                      type="text"
+                      value={form.printerName}
+                      onChange={e => setForm({ ...form, printerName: e.target.value })}
+                      placeholder="TM-COCINA-01"
+                      className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        IP de la Impresora
+                      </label>
+                      <input
+                        type="text"
+                        value={form.printerIp}
+                        onChange={e => setForm({ ...form, printerIp: e.target.value })}
+                        placeholder="192.168.1.51"
+                        className="w-full px-3 py-1.5 font-mono border border-slate-200 rounded-xl text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Puerto
+                      </label>
+                      <input
+                        type="number"
+                        value={form.printerPort}
+                        onChange={e => setForm({ ...form, printerPort: Number(e.target.value) || 9100 })}
+                        placeholder="9100"
+                        className="w-full px-3 py-1.5 font-mono border border-slate-200 rounded-xl text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!form.printerIp && (
+                <p className="text-[11px] text-amber-700">
+                  ℹ️ Esta estación enviará los pedidos a la pantalla de cocina KDS digital.
+                </p>
+              )}
             </div>
-            <p className="text-xs text-gray-500 -mt-2">
-              Impresora de red en la misma LAN. Puerto estándar RAW: 9100. Si no configuras IP, SamaPos usa el KDS en pantalla como respaldo.
-            </p>
           </div>
 
           <div className="flex gap-3 mt-6">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-200 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
+              className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 cursor-pointer"
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
               disabled={loading}
-              className="flex-1 bg-primary-600 text-white px-4 py-2 rounded-xl font-medium hover:bg-primary-700 disabled:opacity-50"
+              className="flex-1 bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
-              {loading ? 'Guardando...' : 'Guardar'}
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar'}
             </button>
           </div>
         </div>

@@ -219,6 +219,20 @@ export function LicensesTab() {
     }
   };
 
+  const handleRejectTerminal = async (t) => {
+    if (!window.confirm(`¿Rechazar la solicitud de acceso para "${t.label || t.hostname || t.serial.slice(0, 8)}"?`)) return;
+    setActionBusy(true);
+    try {
+      await api.licenseTerminals.reject(t.id, 'Rechazada por el administrador');
+      toast.success(`Solicitud de "${t.label || t.hostname || 'Terminal'}" rechazada`);
+      await loadData(true);
+    } catch (err) {
+      toast.error(err?.data?.error || err?.message || 'Error al rechazar solicitud');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const openEditModal = (t) => {
     setEditForm({
       label: t.label || '',
@@ -741,13 +755,24 @@ export function LicensesTab() {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {t.status === 'pending' && (
-                            <button
-                              onClick={() => openApproveModal(t)}
-                              disabled={actionBusy}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 shadow-sm transition active:scale-95"
-                            >
-                              <Check className="w-3.5 h-3.5" /> Aprobar
-                            </button>
+                            <>
+                              <button
+                                onClick={() => openApproveModal(t)}
+                                disabled={actionBusy}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 shadow-sm transition active:scale-95"
+                                title="Aprobar acceso a esta terminal"
+                              >
+                                <Check className="w-3.5 h-3.5" /> Aprobar
+                              </button>
+                              <button
+                                onClick={() => handleRejectTerminal(t)}
+                                disabled={actionBusy}
+                                className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1 transition active:scale-95"
+                                title="Rechazar solicitud de acceso"
+                              >
+                                <X className="w-3.5 h-3.5" /> Rechazar
+                              </button>
+                            </>
                           )}
 
                           {t.status === 'active' && (

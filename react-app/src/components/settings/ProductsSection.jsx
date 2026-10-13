@@ -10,12 +10,17 @@ import {
   Check,
   X,
   Printer,
-  Sparkles
+  Sparkles,
+  CheckCircle2,
+  ChefHat,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle
 } from 'lucide-react';
 import { ProductIconBadge } from '../../utils/productIcons';
 
 // Products Section
-export function ProductsSection({ products, categories, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, printCategories = [], onReload }) {
+export function ProductsSection({ products, categories, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, printCategories = [], printers = [], onReload }) {
   const [showWizard, setShowWizard] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -168,6 +173,7 @@ export function ProductsSection({ products, categories, productionCenters, produ
           productModifierGroups={productModifierGroups}
           centers={centers}
           printCategories={printCategories}
+          printers={printers}
           onClose={() => {
             setShowWizard(false);
             setEditingProduct(null);
@@ -214,7 +220,7 @@ export function ProductsSection({ products, categories, productionCenters, produ
 }
 
 // Product Creation Wizard
-function ProductWizardModal({ categories, editingProduct, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, printCategories = [], onClose, onCreated }) {
+function ProductWizardModal({ categories, editingProduct, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, printCategories = [], printers = [], onClose, onCreated }) {
   const existingProductionCenters = editingProduct
     ? (productProductionCenters?.filter(ppc => Number(ppc.product_id) === Number(editingProduct.id)).map(ppc => Number(ppc.center_id)) || [])
     : [];
@@ -232,6 +238,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
   };
 
   const [step, setStep] = useState(editingProduct ? 8 : 1);
+  const [showAdvancedRouting, setShowAdvancedRouting] = useState(false);
   const [form, setForm] = useState({
     name: editingProduct?.name || '',
     categoryId: editingProduct?.category_id || '',
@@ -256,6 +263,11 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
   const filteredProductionCenters = form.operationCenterId
     ? productionCenters?.filter(pc => Number(pc.operation_center_id) === Number(form.operationCenterId)) || []
     : productionCenters || [];
+
+  const getCenterPrinterInfo = (center) => {
+    return printers?.find(p => p.id === center.printer_id) 
+      || (center.printer_ip ? { name: center.printer_name, ip: center.printer_ip, port: center.printer_port } : null);
+  };
 
   useEffect(() => {
     if (editingProduct && editingProduct.track_inventory) {
@@ -350,10 +362,23 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
 
   const toggleProductionCenter = (centerId) => {
     setForm(prev => {
-      const ids = prev.productionCenterIds.includes(centerId)
+      const isSelected = prev.productionCenterIds.includes(centerId);
+      const newIds = isSelected
         ? prev.productionCenterIds.filter(id => id !== centerId)
         : [...prev.productionCenterIds, centerId];
-      return { ...prev, productionCenterIds: ids };
+
+      let exclusive = prev.centroProduccionExclusivoId;
+      if (!isSelected && (!exclusive || newIds.length === 1)) {
+        exclusive = centerId;
+      } else if (isSelected && exclusive === centerId) {
+        exclusive = newIds.length > 0 ? newIds[0] : '';
+      }
+
+      return {
+        ...prev,
+        productionCenterIds: newIds,
+        centroProduccionExclusivoId: exclusive
+      };
     });
   };
 
@@ -543,98 +568,154 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
             <div className="space-y-6">
               <div>
                 <p className="text-gray-500 text-sm mb-1">Paso 5 de 7</p>
-                <h4 className="text-lg font-semibold text-gray-900">Enrutamiento y Elaboración</h4>
-                <p className="text-xs text-gray-400 mt-1">
-                  Configura cómo se imprimen las comandas y a qué estaciones de KDS se envían los pedidos.
+                <h4 className="text-lg font-semibold text-gray-900">¿Dónde se prepara / elabora este producto?</h4>
+                <p className="text-xs text-gray-500 mt-1">
+                  Selecciona la cocina, barra o estación responsable. La comanda se imprimirá automáticamente en su ticketera asignada.
                 </p>
               </div>
 
-              {/* Categoría de Impresión (Enrutamiento dinámico) */}
-              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="block text-sm font-bold text-slate-800">
-                    Categoría de Impresión (Matriz Dinámica)
-                  </label>
-                  <span className="text-[10px] font-semibold text-primary-700 bg-primary-50 px-2 py-0.5 rounded-full border border-primary-200/50">
-                    Recomendado
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Permite que el producto se enrute automáticamente según el salón o área donde se pide (ej: Bar Piscina vs Bar Principal).
-                </p>
-                <select
-                  value={form.categoriaImpresionId}
-                  onChange={e => setForm({ ...form, categoriaImpresionId: e.target.value ? Number(e.target.value) : '' })}
-                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-medium"
-                >
-                  <option value="">Heredar de categoría del menú ({categories.find(c => c.id === form.categoryId)?.name || 'General'})...</option>
-                  {printCategories.map(pc => (
-                    <option key={pc.id} value={pc.id}>🖨️ {pc.nombre}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Centro de Producción Exclusivo (Override) */}
-              <div className="bg-purple-50/40 border border-purple-200/70 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="block text-sm font-bold text-purple-900 flex items-center gap-1.5">
-                    <span>⭐ Centro de Producción Exclusivo</span>
-                  </label>
-                  <span className="text-[10px] font-medium text-purple-700 bg-purple-100/60 px-2 py-0.5 rounded-full">
-                    Opcional
-                  </span>
-                </div>
-                <p className="text-xs text-purple-700/80">
-                  Si se especifica, este producto SIEMPRE saldrá en este centro (ej: Bar de Autor), ignorando la matriz del área de la orden.
-                </p>
-                <select
-                  value={form.centroProduccionExclusivoId}
-                  onChange={e => setForm({ ...form, centroProduccionExclusivoId: e.target.value ? Number(e.target.value) : '' })}
-                  className="w-full px-4 py-2.5 bg-white border border-purple-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                >
-                  <option value="">Ninguno (Usar resolución dinámica por Matriz)</option>
-                  {productionCenters.map(center => (
-                    <option key={center.id} value={center.id}>
-                      {center.name} {center.printer_name ? `(${center.printer_name})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Centros de producción directos tradicionales */}
-              <div>
-                <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                  Centros de producción directos (Compatibilidad)
-                </h5>
+              {/* Selector directo de estaciones */}
+              <div className="space-y-2.5">
                 {!filteredProductionCenters.length ? (
-                  <div className="text-center py-4 text-gray-400 bg-gray-50 rounded-xl text-xs">
-                    No hay centros asociados directamente
+                  <div className="text-center py-6 px-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                    <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-amber-800">No hay estaciones de producción registradas</p>
+                    <p className="text-xs text-amber-600 mt-1">
+                      Crea tus centros de producción (ej. Cocina, Bar) en la pestaña correspondiente antes de continuar.
+                    </p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {filteredProductionCenters.map(center => (
+                  filteredProductionCenters.map(center => {
+                    const printer = getCenterPrinterInfo(center);
+                    const isSelected = form.productionCenterIds.includes(center.id);
+                    return (
                       <button
                         key={center.id}
                         type="button"
                         onClick={() => toggleProductionCenter(center.id)}
-                        className={`w-full p-3 rounded-xl border text-left transition-all flex items-center gap-3 ${
-                          form.productionCenterIds.includes(center.id)
-                            ? 'border-primary-500 bg-primary-50 text-primary-900 font-medium'
-                            : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                        className={`w-full p-4 rounded-2xl border text-left transition-all flex items-start justify-between gap-3 ${
+                          isSelected
+                            ? 'border-primary-500 bg-primary-50/40 shadow-sm ring-1 ring-primary-500/50'
+                            : 'border-gray-200 hover:border-gray-300 bg-white'
                         }`}
                       >
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                          form.productionCenterIds.includes(center.id)
-                            ? 'border-primary-500 bg-primary-500 text-white'
-                            : 'border-gray-300'
-                        }`}>
-                          {form.productionCenterIds.includes(center.id) && (
-                            <Check className="w-3 h-3 text-white" />
-                          )}
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                            isSelected ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            <ChefHat className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className={`font-semibold text-sm ${isSelected ? 'text-primary-950' : 'text-gray-900'}`}>
+                                {center.name}
+                              </p>
+                              {form.centroProduccionExclusivoId === center.id && (
+                                <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded">
+                                  Principal
+                                </span>
+                              )}
+                            </div>
+                            
+                            {/* Printer connection info */}
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              {printer ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-mono font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/70 px-2 py-0.5 rounded-lg">
+                                  <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>{printer.name || center.printer_name}</span>
+                                  <span className="text-emerald-600 text-[11px]">({printer.ip}:{printer.port || 9100})</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200/70 px-2 py-0.5 rounded-lg">
+                                  <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                                  <span>Sin ticketera (Solo pantalla KDS)</span>
+                                </span>
+                              )}
+                            </div>
+
+                            {isSelected && (
+                              <p className="text-[11px] text-primary-700 font-medium mt-1.5 flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-primary-600 shrink-0" />
+                                <span>Los tickets se enviarán a esta estación</span>
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <span className="text-sm">{center.name}</span>
+
+                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-1 transition-colors ${
+                          isSelected ? 'border-primary-600 bg-primary-600 text-white' : 'border-gray-300 bg-white'
+                        }`}>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
+                        </div>
                       </button>
-                    ))}
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Opciones avanzadas de enrutamiento */}
+              <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedRouting(!showAdvancedRouting)}
+                  className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 text-left transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                    <span className="text-xs font-bold text-slate-700">
+                      Opciones Avanzadas (Enrutamiento por Matriz Salón/Barra)
+                    </span>
+                  </div>
+                  {showAdvancedRouting ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+
+                {showAdvancedRouting && (
+                  <div className="p-4 bg-white border-t border-slate-200 space-y-4">
+                    {/* Categoría de Impresión (Enrutamiento dinámico) */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-800">
+                        Categoría de Impresión (Matriz Dinámica)
+                      </label>
+                      <p className="text-[11px] text-slate-500">
+                        Permite que el producto cambie de impresora según el área o salón donde se ordene (ej. Bar Piscina vs Bar Principal).
+                      </p>
+                      <select
+                        value={form.categoriaImpresionId}
+                        onChange={e => setForm({ ...form, categoriaImpresionId: e.target.value ? Number(e.target.value) : '' })}
+                        className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-500 font-medium"
+                      >
+                        <option value="">Heredar de categoría del menú ({categories.find(c => c.id === form.categoryId)?.name || 'General'})...</option>
+                        {printCategories.map(pc => (
+                          <option key={pc.id} value={pc.id}>🖨️ {pc.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Override centro exclusivo */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                      <label className="block text-xs font-bold text-purple-900">
+                        Forzar Estación Exclusiva (Override)
+                      </label>
+                      <p className="text-[11px] text-purple-700/80">
+                        Garantiza que siempre saldrá en esta estación fija sin importar el salón de la orden.
+                      </p>
+                      <select
+                        value={form.centroProduccionExclusivoId}
+                        onChange={e => setForm({ ...form, centroProduccionExclusivoId: e.target.value ? Number(e.target.value) : '' })}
+                        className="w-full px-3.5 py-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 font-medium"
+                      >
+                        <option value="">Automático (Según estación seleccionada)</option>
+                        {productionCenters.map(center => (
+                          <option key={center.id} value={center.id}>
+                            {center.name} {center.printer_name ? `(${center.printer_name})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 )}
               </div>
@@ -795,29 +876,43 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                   <span className="text-gray-500">Precio</span>
                   <span className="font-bold text-primary-600">Q {Number(form.basePrice).toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-500">Cat. Impresión</span>
-                  <span className="font-medium text-gray-900 text-right text-sm">
-                    {printCategories.find(pc => pc.id === form.categoriaImpresionId)?.nombre || 'Heredada / Menú'}
-                  </span>
+                <div className="flex justify-between items-start py-1">
+                  <span className="text-gray-500 text-sm">Estación y Ticketera</span>
+                  <div className="text-right">
+                    {form.productionCenterIds.length > 0 ? (
+                      form.productionCenterIds.map(id => {
+                        const c = productionCenters.find(pc => pc.id === id);
+                        const p = getCenterPrinterInfo(c || {});
+                        return (
+                          <div key={id} className="text-sm font-medium text-gray-900 flex items-center justify-end gap-1.5 mb-0.5">
+                            <span>{c?.name}</span>
+                            {p ? (
+                              <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded font-mono">
+                                🖨️ {p.name || 'Ticketera'} ({p.ip})
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+                                📺 KDS
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+                        ⚠️ Sin estación asignada
+                      </span>
+                    )}
+                  </div>
                 </div>
-                {form.centroProduccionExclusivoId && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Centro Exclusivo</span>
-                    <span className="font-semibold text-purple-700 text-right text-sm inline-flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                      {productionCenters.find(c => c.id === form.centroProduccionExclusivoId)?.name}
+                {form.categoriaImpresionId && (
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-gray-500 text-sm">Cat. Impresión</span>
+                    <span className="font-medium text-gray-900 text-right text-sm">
+                      {printCategories.find(pc => pc.id === form.categoriaImpresionId)?.nombre}
                     </span>
                   </div>
                 )}
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-500">Elaboración Directa</span>
-                  <span className="font-medium text-gray-900 text-right text-sm">
-                    {form.productionCenterIds.length > 0
-                      ? form.productionCenterIds.map(id => productionCenters.find(c => c.id === id)?.name).join(', ')
-                      : 'Ninguno'}
-                  </span>
-                </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500">Inventario</span>
                   <span className="font-medium text-gray-900">{form.trackInventory ? `Sí (${form.recipe.length} insumos)` : 'No'}</span>

@@ -8,10 +8,42 @@ const {
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
+  TooManyRequestsError,
 } = require("../../common/errors");
 
 const AUTH_SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
 const authSessionsCache = new Map(); // token -> { userId, role, permissions, expiresAt }
+
+const LOGIN_ATTEMPTS_WINDOW_MS = 60 * 1000; // 1 minuto
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const loginFailedAttempts = new Map(); // ip/key -> [timestamps]
+
+function checkLoginRateLimit(key) {
+  if (!key) return true;
+  const now = Date.now();
+  const attempts = (loginFailedAttempts.get(key) || []).filter(
+    (t) => now - t < LOGIN_ATTEMPTS_WINDOW_MS
+  );
+  if (attempts.length >= MAX_FAILED_LOGIN_ATTEMPTS) {
+    loginFailedAttempts.set(key, attempts);
+    return false;
+  }
+  return true;
+}
+
+function recordFailedLogin(key) {
+  if (!key) return;
+  const now = Date.now();
+  const attempts = (loginFailedAttempts.get(key) || []).filter(
+    (t) => now - t < LOGIN_ATTEMPTS_WINDOW_MS
+  );
+  attempts.push(now);
+  loginFailedAttempts.set(key, attempts);
+}
+
+function clearFailedLogins(key) {
+  if (key) loginFailedAttempts.delete(key);
+}
 
 const authService = {
   /**
@@ -119,6 +151,11 @@ const authService = {
    * Inicia sesión con PIN de empleado.
    */
   async pinLogin({ pin, ip, userAgent }) {
+    const clientKey = String(ip || "unknown").trim();
+    if (!checkLoginRateLimit(clientKey)) {
+      throw new TooManyRequestsError("Demasiados intentos fallidos de PIN. Por favor espere 1 minuto antes de reintentar.");
+    }
+
     const cleanPin = String(pin || "").trim();
     if (!/^\d{6}$/.test(cleanPin)) {
       throw new BadRequestError("El PIN debe tener exactamente 6 dígitos numéricos");
@@ -126,8 +163,12 @@ const authService = {
 
     const user = await authRepository.findUserByPin(cleanPin);
     if (!user) {
+      recordFailedLogin(clientKey);
       throw new ForbiddenError("Contraseña inválida");
     }
+
+    // Login exitoso: limpiar intentos fallidos previos
+    clearFailedLogins(clientKey);
 
     const permissions = await authRepository.getUserPermissions(Number(user.id));
     const allowedModules = await this.getAllowedModulesForContext(user, ip);
@@ -264,7 +305,7 @@ const authService = {
   requireAuth() {
     return async (req, res, next) => {
       try {
-        const token = String(req.headers["x-auth-token"] || "").trim();
+        const token = String(req.headers["x-auth-token"] || req.query?.token || "").trim();
         const session = await authService.getAuthSession(token);
         if (!session) {
           throw new UnauthorizedError("Sesión inválida o vencida");
@@ -280,7 +321,7 @@ const authService = {
   requireAdmin() {
     return async (req, res, next) => {
       try {
-        const token = String(req.headers["x-auth-token"] || "").trim();
+        const token = String(req.headers["x-auth-token"] || req.query?.token || "").trim();
         const session = await authService.getAuthSession(token);
         if (!session) {
           throw new UnauthorizedError("Sesión inválida o vencida");
@@ -290,8 +331,8 @@ const authService = {
           throw new UnauthorizedError("Usuario no encontrado");
         }
         const role = String(user.role || "").toLowerCase();
-        if (role !== "admin" && role !== "superadmin") {
-          throw new ForbiddenError("Solo un administrador o superadministrador puede acceder a esta sección");
+        if (role !== "admin" && role !== "superadmin" && role !== "manager") {
+          throw new ForbiddenError("Solo un administrador o supervisor puede acceder a esta sección");
         }
         req.session = session;
         req.authUser = user;
@@ -305,7 +346,7 @@ const authService = {
   requireSuperadmin() {
     return async (req, res, next) => {
       try {
-        const token = String(req.headers["x-auth-token"] || "").trim();
+        const token = String(req.headers["x-auth-token"] || req.query?.token || "").trim();
         const session = await authService.getAuthSession(token);
         if (!session) {
           throw new UnauthorizedError("Sesión inválida o vencida");
@@ -330,7 +371,7 @@ const authService = {
   requirePermission(slug) {
     return async (req, res, next) => {
       try {
-        const token = String(req.headers["x-auth-token"] || "").trim();
+        const token = String(req.headers["x-auth-token"] || req.query?.token || "").trim();
         const session = await authService.getAuthSession(token);
         if (!session) {
           throw new UnauthorizedError("Sesión inválida o vencida");
@@ -349,7 +390,7 @@ const authService = {
   requirePermissionOrSupervisor(slug) {
     return async (req, res, next) => {
       try {
-        const token = String(req.headers["x-auth-token"] || "").trim();
+        const token = String(req.headers["x-auth-token"] || req.query?.token || "").trim();
         const session = await authService.getAuthSession(token);
         if (!session) {
           throw new UnauthorizedError("Sesión inválida o vencida");

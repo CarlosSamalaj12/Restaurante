@@ -130,36 +130,50 @@ const accountsRepository = {
     return map;
   },
 
-  async searchPaidAccounts({ centerId, q, startDate, endDate }, conn = null) {
-    const conditions = ["t.operation_center_id = ?", "a.status = 'paid'"];
+  async searchPaidAccounts({ centerId, q, startDate, endDate, status = 'all', areaId = null }, conn = null) {
+    const conditions = ["t.operation_center_id = ?"];
     const params = [Number(centerId)];
 
+    if (status === 'paid') {
+      conditions.push("a.status = 'paid'");
+    } else if (status === 'open') {
+      conditions.push("a.status = 'open'");
+    } else {
+      conditions.push("a.status IN ('open', 'paid')");
+    }
+
     if (q && String(q).trim()) {
-      conditions.push("a.check_number LIKE ?");
-      params.push(`%${String(q).trim()}%`);
+      const cleanQ = `%${String(q).trim()}%`;
+      conditions.push("(a.check_number LIKE ? OR t.code LIKE ? OR u.full_name LIKE ?)");
+      params.push(cleanQ, cleanQ, cleanQ);
+    }
+    if (areaId) {
+      conditions.push("t.area_id = ?");
+      params.push(Number(areaId));
     }
     if (startDate) {
-      conditions.push("a.closed_at >= ?");
+      conditions.push("COALESCE(a.closed_at, a.opened_at) >= ?");
       params.push(startDate);
     }
     if (endDate) {
-      conditions.push("a.closed_at <= ?");
+      conditions.push("COALESCE(a.closed_at, a.opened_at) <= ?");
       params.push(`${endDate} 23:59:59`);
     }
 
     const [rows] = await query(
-      `SELECT a.id, a.check_number, a.status, a.guest_count, a.closed_at, a.table_id, a.shift_id,
-              s.status AS shift_status, t.code AS table_code,
+      `SELECT a.id, a.check_number, a.status, a.guest_count, a.opened_at, a.closed_at, a.table_id, a.shift_id,
+              s.status AS shift_status, t.code AS table_code, da.name AS area_name,
               u.full_name AS waiter_name, oc.name AS center_name,
               (SELECT COALESCE(SUM(oi.line_total), 0) FROM order_items oi WHERE oi.account_id = a.id AND oi.status = 'active') AS total
        FROM accounts a
        INNER JOIN staff_users u ON u.id = a.waiter_id
        INNER JOIN restaurant_tables t ON t.id = a.table_id
+       LEFT JOIN dining_areas da ON da.id = t.area_id
        INNER JOIN operation_centers oc ON oc.id = t.operation_center_id
        LEFT JOIN shifts s ON s.id = a.shift_id
        WHERE ${conditions.join(" AND ")}
-       ORDER BY a.closed_at DESC
-       LIMIT 50`,
+       ORDER BY COALESCE(a.closed_at, a.opened_at) DESC
+       LIMIT 60`,
       params,
       conn
     );
@@ -260,6 +274,14 @@ const accountsRepository = {
       conn
     );
     return rows[0] || null;
+  },
+
+  async updateAccountShift(accountId, shiftId, conn = null) {
+    const q = conn ? conn.query.bind(conn) : query;
+    await q(
+      `UPDATE accounts SET shift_id = ? WHERE id = ?`,
+      [Number(shiftId), Number(accountId)]
+    );
   },
 
   async createAccountRecord(data, conn = null) {

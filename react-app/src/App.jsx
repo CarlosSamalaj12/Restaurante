@@ -18,6 +18,13 @@ import { AccountsPage } from './pages/AccountsPage';
 import { ReprintPage } from './pages/ReprintPage';
 import { KitchenDisplay } from './pages/KitchenDisplay';
 import { ExecutiveDashboard } from './pages/ExecutiveDashboard';
+import { CXCPage } from './pages/CXC';
+import { ExpensesPage } from './pages/ExpensesPage';
+import { PendingTerminalsNotification } from './components/PendingTerminalsNotification';
+import { useMaintenance } from './hooks/useMaintenance';
+import { MaintenanceCountdownBanner } from './components/MaintenanceCountdownBanner';
+import { MaintenanceLockScreen } from './components/MaintenanceLockScreen';
+import { SuperadminMaintenanceBar } from './components/SuperadminMaintenanceBar';
 import api from './api';
 import { syncService } from './lib/syncService';
 
@@ -27,6 +34,7 @@ function AppContent() {
     const cachedUser = api ? null : null; // lazy fallback
     return 'dashboard';
   });
+  const [settingsTab, setSettingsTab] = useState('products');
   const [centers, setCenters] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [selectedTableCode, setSelectedTableCode] = useState(null);
@@ -75,6 +83,9 @@ function AppContent() {
     }
     setView(page);
     setSelectedAccount(null);
+    if (page === 'settings') {
+      setSettingsTab(params.tab || 'products');
+    }
     if (page === 'tables' && params.openTableId) {
       setAutoOpenTable({ tableId: params.openTableId, accountId: params.openAccountId });
     } else {
@@ -167,11 +178,17 @@ function AppContent() {
       );
     case 'reports':
       return (
-        <ReportsPage onBack={() => handleBackFromView('reports')} />
+        <ReportsPage 
+          onBack={() => handleBackFromView('reports')} 
+          onNavigateShifts={() => setView('shifts')}
+        />
       );
     case 'settings':
       return (
-        <SettingsPage onBack={() => handleBackFromView('settings')} />
+        <SettingsPage 
+          onBack={() => handleBackFromView('settings')} 
+          initialTab={settingsTab}
+        />
       );
     case 'accounts':
       return (
@@ -183,6 +200,19 @@ function AppContent() {
             setSelectedTableId(account.table_id);
             setView('order');
           }} 
+          onNavigate={handleNavigate}
+        />
+      );
+    case 'cxc':
+      return (
+        <CXCPage 
+          onBack={() => handleBackFromView('cxc')} 
+        />
+      );
+    case 'expenses':
+      return (
+        <ExpensesPage 
+          onBack={() => handleBackFromView('expenses')} 
         />
       );
     case 'kds':
@@ -215,14 +245,24 @@ function AppContent() {
 }
 
 function LicenseGate({ children }) {
-  const { status, reason, online, serial, canOperate, terminalMeta } = useLicense();
-  // Mientras no sepamos el estado, mostramos loading neutro (no bloqueamos login todavía)
-  if (status === 'unknown') {
+  const { status, reason, online, serial, canOperate, terminalMeta, requestAccess, retryEnroll } = useLicense();
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
+
+  useEffect(() => {
+    if (status === 'unknown') {
+      const timer = setTimeout(() => setLoadingTimeout(true), 3000);
+      return () => clearTimeout(timer);
+    }
+    setLoadingTimeout(false);
+  }, [status]);
+
+  // Durante los primeros 3s mostramos el spinner inicial
+  if (status === 'unknown' && !loadingTimeout && !reason) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
         <div className="text-center">
           <div className="inline-block w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin mb-3" />
-          <p className="text-sm text-white/70">Verificando licencia de la terminal...</p>
+          <p className="text-sm text-white/70">Verificando autorización de terminal...</p>
         </div>
       </div>
     );
@@ -234,27 +274,87 @@ function LicenseGate({ children }) {
         reason={reason}
         online={online}
         serial={serial}
+        label={terminalMeta.label}
         firstSeenAt={terminalMeta.first_seen_at}
         ipAddress={terminalMeta.ip_address}
-        onRetry={() => window.location.reload()}
+        onRequestAccess={requestAccess}
+        onRetry={() => {
+          if (retryEnroll) retryEnroll();
+          else window.location.reload();
+        }}
       />
     );
   }
   return children;
 }
 
+function MaintenanceGate({ children }) {
+  const { user } = useAuth();
+  const {
+    isActive,
+    isCountingDown,
+    countdownRemaining,
+    reason,
+    targetVersion,
+    abortCountdown,
+    endMaintenance,
+    refreshStatus
+  } = useMaintenance();
+
+  const isSuperadmin = String(user?.role || '').toLowerCase() === 'superadmin';
+
+  return (
+    <>
+      {/* Banner de cuenta regresiva de 30 segundos sincronizado */}
+      <MaintenanceCountdownBanner
+        isCountingDown={isCountingDown}
+        countdownRemaining={countdownRemaining}
+        reason={reason}
+        targetVersion={targetVersion}
+        onAbort={isSuperadmin ? abortCountdown : null}
+      />
+
+      {/* Control de pantalla durante el mantenimiento */}
+      {isActive ? (
+        isSuperadmin ? (
+          <>
+            <SuperadminMaintenanceBar
+              isActive={isActive}
+              reason={reason}
+              targetVersion={targetVersion}
+              onEndMaintenance={endMaintenance}
+            />
+            {children}
+          </>
+        ) : (
+          <MaintenanceLockScreen
+            reason={reason}
+            targetVersion={targetVersion}
+            onRefresh={refreshStatus}
+          />
+        )
+      ) : (
+        children
+      )}
+    </>
+  );
+}
+
 export default function App() {
   return (
     <LazyMotion features={domMax}>
-      <MotionConfig reducedMotion={false}>
+      <MotionConfig reducedMotion="user">
         <AuthProvider>
           <LicenseGate>
             <ToastProvider>
-              <OfflineBanner />
-              <ErrorBoundary>
-                <AppContent />
-              </ErrorBoundary>
-              <Toast />
+              <MaintenanceGate>
+                <OfflineBanner />
+                <PendingTerminalsNotification />
+                <ErrorBoundary>
+                  <AppContent />
+                </ErrorBoundary>
+                <Toast />
+              </MaintenanceGate>
             </ToastProvider>
           </LicenseGate>
         </AuthProvider>

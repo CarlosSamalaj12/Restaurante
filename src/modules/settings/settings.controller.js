@@ -38,6 +38,11 @@ const settingsController = {
     res.json(result);
   }),
 
+  uploadReceiptLogo: asyncHandler(async (req, res) => {
+    const result = await settingsService.saveReceiptLogo(req.body?.logoData || req.body?.logo, process.cwd());
+    res.json(result);
+  }),
+
   updateTipConfig: asyncHandler(async (req, res) => {
     const result = await settingsService.updateTipConfig(req.body?.tipPercent);
     res.json(result);
@@ -210,6 +215,36 @@ const settingsController = {
 
   getRecentPrintJobs: asyncHandler(async (req, res) => {
     const result = await settingsService.getRecentPrintJobs(req.query?.limit);
+    res.json(result);
+  }),
+
+  getPrinters: asyncHandler(async (_req, res) => {
+    const result = await settingsService.getPrinters();
+    res.json(result);
+  }),
+
+  createPrinter: asyncHandler(async (req, res) => {
+    const result = await settingsService.createPrinter(req.body || {});
+    res.status(201).json(result);
+  }),
+
+  updatePrinter: asyncHandler(async (req, res) => {
+    const result = await settingsService.updatePrinter(req.params.printerId, req.body || {});
+    res.json(result);
+  }),
+
+  deletePrinter: asyncHandler(async (req, res) => {
+    const result = await settingsService.deletePrinter(req.params.printerId);
+    res.json(result);
+  }),
+
+  testPrinterDirect: asyncHandler(async (req, res) => {
+    const result = await settingsService.testPrinterDirect(req.params.printerId);
+    res.json(result);
+  }),
+
+  auditPrinters: asyncHandler(async (_req, res) => {
+    const result = await settingsService.auditPrinters();
     res.json(result);
   }),
 

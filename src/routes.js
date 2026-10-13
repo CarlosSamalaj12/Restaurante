@@ -77,6 +77,18 @@ router.use("/analytics", analyticsRouter);
 const syncRouter = require("./modules/sync/sync.routes");
 router.use("/sync", syncRouter);
 
+// 14. Módulo de Integración Hotel PMS (Property Management System)
+const pmsRouter = require("./modules/pms/pms.routes");
+router.use("/pms", pmsRouter);
+
+// 15. Módulo de Modo Mantenimiento y Control de Versiones
+const maintenanceRouter = require("./modules/maintenance/maintenance.routes");
+router.use("/maintenance", maintenanceRouter);
+
+// 16. Módulo de Gastos, Proveedores y Balance Financiero (CXP)
+const expensesRouter = require("./modules/expenses/expenses.routes");
+router.use("/expenses", expensesRouter);
+
 module.exports = router;
 
 

@@ -3,8 +3,11 @@
 
 const express = require("express");
 const cxcController = require("./cxc.controller");
+const authService = require("../auth/auth.service");
 
+const requireAuth = authService.requireAuth();
 const cxcRouter = express.Router();
+cxcRouter.use(requireAuth);
 
 // Áreas
 cxcRouter.get("/areas", cxcController.getAreas);

@@ -5,6 +5,13 @@ const crypto = require("crypto");
 
 const PEPPER = process.env.AUTH_PIN_PEPPER || "samapos_restaurant_secure_pin_pepper_2026";
 
+if (!process.env.AUTH_PIN_PEPPER && process.env.NODE_ENV === "production") {
+  console.warn(
+    "[SECURITY WARNING] AUTH_PIN_PEPPER no está definido en el archivo .env. " +
+    "Por favor configure un secreto robusto para los PINs de empleados."
+  );
+}
+
 function hashPin(pin) {
   if (!pin) return null;
   const cleanPin = String(pin).trim();

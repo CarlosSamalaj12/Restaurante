@@ -11,7 +11,9 @@ const license = require("./src/license");
 const apiRoutes = require("./src/routes");
 const { traceMiddleware, errorHandler } = require("./src/common/middlewares");
 const { ensureConfigTables } = require("./src/modules/settings/settings.migration");
+const { ensureExpensesTables } = require("./src/modules/expenses/expenses.migration");
 const { initSocket } = require("./src/common/sockets");
+const maintenanceService = require("./src/modules/maintenance/maintenance.service");
 
 // Migraciones de esquema — se ejecutan una vez al iniciar
 (async () => {
@@ -58,6 +60,14 @@ const { initSocket } = require("./src/common/sockets");
     await license.expireOverdueLicenses();
   } catch (e) {
     console.error("[MIGRATION] Error en tablas de licencias:", e.message);
+  }
+
+  // Tablas de modo mantenimiento y control de versiones
+  try {
+    await maintenanceService.ensureTables();
+    console.log("[MIGRATION] Tablas de mantenimiento y versiones OK");
+  } catch (e) {
+    console.warn("[MIGRATION] Error en tablas de mantenimiento:", e.message);
   }
 
   // Printers: columnas en production_centers
@@ -156,17 +166,51 @@ const { initSocket } = require("./src/common/sockets");
   } catch (e) {
     console.warn("[MIGRATION] Error al crear tabla auth_sessions:", e.message);
   }
+
+  // Expenses & CXP: tablas de gastos, proveedores y pagos
+  try {
+    await ensureExpensesTables();
+  } catch (e) {
+    console.warn("[MIGRATION] Error al asegurar tablas de gastos:", e.message);
+  }
 })();
+
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+  ? process.env.CORS_ALLOWED_ORIGINS.split(",").map((s) => s.trim())
+  : null;
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: (origin, callback) => {
+      // Permitir clientes sin cabecera origin (móviles, apps locales o same-origin)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins) {
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(null, false);
+      }
+      // Permitir localhost, loopback y terminales POS en subredes locales (LAN)
+      const isLocalOrLan =
+        /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(
+          origin
+        );
+      if (isLocalOrLan) return callback(null, true);
+      return callback(null, false);
+    },
     methods: ["GET", "POST"],
   },
 });
 initSocket(io);
+
+// Cabeceras de seguridad HTTP (defensa contra MIME-sniffing, clickjacking y XSS)
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
 
 app.use(traceMiddleware);
 app.use(express.json({ limit: "10mb" }));
@@ -191,6 +235,49 @@ app.use("/api", (req, res, next) => {
     return next();
   }
   return license.requireLicensedTerminal(req, res, next);
+});
+
+// Middleware de Modo Mantenimiento (Exclusivo Superadmin durante mantenimiento)
+const MAINTENANCE_EXEMPT_PATHS = [
+  "/api/maintenance",
+  "/api/auth/login",
+  "/api/bootstrap",
+  "/api/license",
+];
+app.use("/api", async (req, res, next) => {
+  try {
+    const fullPath = req.originalUrl.split("?")[0];
+    if (MAINTENANCE_EXEMPT_PATHS.some((p) => fullPath.startsWith(p))) {
+      return next();
+    }
+
+    const isInMaintenance = await maintenanceService.isSystemInMaintenance();
+    if (!isInMaintenance) {
+      return next();
+    }
+
+    // Si el sistema está en mantenimiento, permitir exclusivamente a Superadmin
+    const token = String(req.headers["x-auth-token"] || "").trim();
+    if (token) {
+      const authService = require("./src/modules/auth/auth.service");
+      const session = await authService.getAuthSession(token);
+      if (session && String(session.role || "").toLowerCase() === "superadmin") {
+        return next();
+      }
+    }
+
+    const status = await maintenanceService.getStatus();
+    return res.status(503).json({
+      ok: false,
+      code: "MAINTENANCE_MODE",
+      message: "El sistema se encuentra en modo mantenimiento. Acceso temporalmente restringido para usuarios regulares.",
+      maintenance: true,
+      reason: status.reason || "Mantenimiento y actualización en curso",
+      targetVersion: status.targetVersion || "v1.0.0",
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Rutas desacopladas de la API

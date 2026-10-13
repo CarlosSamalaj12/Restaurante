@@ -4,6 +4,10 @@
 const express = require("express");
 const router = express.Router();
 const reportsController = require("./reports.controller");
+const authService = require("../auth/auth.service");
+
+const requireAuth = authService.requireAuth();
+router.use(requireAuth);
 
 router.get("/voided-items", reportsController.getVoidedItems);
 router.get("/waiter-tips", reportsController.getWaiterTips);

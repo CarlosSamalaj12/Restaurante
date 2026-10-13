@@ -170,9 +170,9 @@ export function KitchenDisplay({ onBack }) {
   const activeOpCenterName = useMemo(() => {
     if (selectedOperationCenter) {
       const oc = operationCenters.find(c => c.id === selectedOperationCenter);
-      return oc?.name || 'Centro';
+      return oc?.name || 'Área';
     }
-    return 'Todos los centros';
+    return 'Todas las áreas';
   }, [selectedOperationCenter, operationCenters]);
 
   const isBarStation = activeStationName.toLowerCase().includes('bar');
@@ -359,12 +359,12 @@ export function KitchenDisplay({ onBack }) {
                 })}
               </div>
 
-              {/* Centro de Consumo / Salón */}
+              {/* Centro de Consumo / Área */}
               {operationCenters.length > 0 && (
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 ml-auto border-l pl-3 border-gray-200">
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1 mr-1">
                     <Building2 className="w-3 h-3" />
-                    Salón:
+                    Área:
                   </span>
 
                   <button
@@ -375,7 +375,7 @@ export function KitchenDisplay({ onBack }) {
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
-                    Todos
+                    Todas
                   </button>
 
                   {operationCenters.map(oc => {

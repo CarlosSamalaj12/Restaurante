@@ -13,7 +13,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 // desregistra cualquier SW viejo para que no interfiera con HMR ni tire
 // errores de caché (chrome-extension://, "Failed to fetch", etc.).
 if ('serviceWorker' in navigator) {
-  if (import.meta.env.PROD) {
+  if (import.meta.env.PROD || window.location.search.includes('pwa=1')) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').catch((error) => {
         console.log('SW registration failed:', error);

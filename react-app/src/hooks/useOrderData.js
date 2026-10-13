@@ -16,7 +16,9 @@ export function useOrderData(accountId) {
   const [addingProductId, setAddingProductId] = useState(null);
   const toast = useToast();
   const selectedCenterRef = useRef(selectedCenter);
-  selectedCenterRef.current = selectedCenter;
+  useEffect(() => {
+    selectedCenterRef.current = selectedCenter;
+  }, [selectedCenter]);
 
   // Carga inicial completa de la comanda y catálogo
   const loadInitialData = useCallback(async () => {

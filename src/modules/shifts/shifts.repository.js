@@ -61,6 +61,25 @@ const shiftsRepository = {
   },
 
   /**
+   * Vincula cuentas del centro de operación que se abrieron o cerraron durante este turno
+   * pero que quedaron huérfanas (shift_id NULL) o pertenecían a un turno ya cerrado.
+   */
+  async attachOrphanAccountsToShift(shiftId, centerId, openedAt) {
+    await query(
+      `UPDATE accounts a
+       LEFT JOIN shifts s ON s.id = a.shift_id
+       SET a.shift_id = ?
+       WHERE a.operation_center_id = ?
+         AND (a.shift_id IS NULL OR s.status = 'closed')
+         AND (
+           a.status = 'open'
+           OR (a.status = 'paid' AND a.closed_at >= ?)
+         )`,
+      [Number(shiftId), Number(centerId), openedAt]
+    );
+  },
+
+  /**
    * Lista los turnos cerrados para un centro con paginación/límite.
    */
   async findClosedShifts(centerId, limit = 20) {
@@ -127,8 +146,8 @@ const shiftsRepository = {
    */
   async getShiftPaymentsDetail(shiftId) {
     const [rows] = await query(
-      `SELECT p.id AS payment_id, p.method, p.amount, p.reference_no, a.check_number, a.id AS account_id,
-              u.full_name AS waiter_name, a.closed_at
+      `SELECT p.id AS payment_id, p.method, p.amount, p.reference_no, p.created_at AS payment_time,
+              a.check_number, a.id AS account_id, u.full_name AS waiter_name, a.closed_at
        FROM account_payments p
        INNER JOIN accounts a ON a.id = p.account_id
        LEFT JOIN staff_users u ON u.id = a.waiter_id

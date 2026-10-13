@@ -10,6 +10,7 @@ const { clientIp } = require("../../common/utils");
 
 const licensesController = {
   enroll: licenseService.enroll,
+  requestAccess: licenseService.requestAccess,
   heartbeat: licenseService.heartbeat,
   status: licenseService.status,
 
@@ -18,7 +19,9 @@ const licensesController = {
   revokeLicense: licenseService.revokeLicense,
 
   listTerminals: licenseService.listTerminals,
+  getPendingCount: licenseService.getPendingCount,
   approveTerminal: licenseService.approveTerminal,
+  rejectTerminal: licenseService.rejectTerminal,
   revokeTerminal: licenseService.revokeTerminal,
   replaceTerminal: licenseService.replaceTerminal,
   async updateTerminal(req, res) {
@@ -46,9 +49,9 @@ const licensesController = {
       throw new BadRequestError("Serial inválido");
     }
 
-    // 1) Verificar que el PIN sea de un admin
+    // 1) Verificar que el PIN sea de un admin o superadmin
     const user = await authRepository.findUserByPin(pin);
-    if (!user || user.role !== "admin") {
+    if (!user || (user.role !== "admin" && user.role !== "superadmin")) {
       throw new ForbiddenError("PIN incorrecto o no pertenece a un administrador");
     }
 
@@ -71,8 +74,8 @@ const licensesController = {
       });
       return res.json({ ok: true, alreadyActive: true, authToken, user, allowedModules });
     }
-    if (terminal.status !== "pending") {
-      throw new ForbiddenError(`Terminal en estado '${terminal.status}'. Solo se pueden aprobar terminales pendientes.`);
+    if (terminal.status !== "pending" && terminal.status !== "revoked") {
+      throw new ForbiddenError(`Terminal en estado '${terminal.status}'. Solo se pueden aprobar terminales pendientes o revocadas.`);
     }
 
     // 3) Buscar una licencia activa con cupo disponible

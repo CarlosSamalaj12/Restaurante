@@ -170,8 +170,13 @@ const ordersRepository = {
 
   async findProductionCenter(centerId, conn = null) {
     const [rows] = await query(
-      `SELECT id, name, printer_name, printer_ip, printer_port
-       FROM production_centers WHERE id = ? LIMIT 1`,
+      `SELECT pc.id, pc.name, pc.printer_name,
+              COALESCE(p.ip, pc.printer_ip) AS printer_ip,
+              COALESCE(p.port, pc.printer_port, 9100) AS printer_port,
+              COALESCE(p.paper_width, '80mm') AS paper_width
+       FROM production_centers pc
+       LEFT JOIN printers p ON p.id = pc.printer_id
+       WHERE pc.id = ? LIMIT 1`,
       [Number(centerId)],
       conn
     );

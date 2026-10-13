@@ -1,18 +1,44 @@
 {
-  "name": "SamaPos - Sistema de Restaurante",
+  "name": "SamaPos - Sistema de Restaurante y POS",
   "short_name": "SamaPos",
-  "description": "Sistema de punto de venta para restaurantes",
+  "description": "Sistema profesional de punto de venta y control operativo para restaurantes",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0ea5e9",
-  "theme_color": "#0ea5e9",
   "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0ea5e9",
+  "id": "samapos-pos-app",
   "icons": [
     {
-      "src": "/icons/icon-512x512.svg",
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/favicon.svg",
@@ -21,7 +47,7 @@
       "purpose": "any"
     }
   ],
-  "categories": ["food", "business", "productivity"],
+  "categories": ["business", "food", "productivity"],
   "lang": "es",
   "dir": "ltr"
 }

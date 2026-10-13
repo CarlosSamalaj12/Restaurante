@@ -24,8 +24,11 @@ export function useSocket(eventHandlers = {}) {
   const [isConnected, setIsConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState(null);
   const handlersRef = useRef(eventHandlers);
-  handlersRef.current = eventHandlers;
+  useEffect(() => {
+    handlersRef.current = eventHandlers;
+  }, [eventHandlers]);
 
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     const socket = getSharedSocket();
 
@@ -51,8 +54,17 @@ export function useSocket(eventHandlers = {}) {
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
 
-    // Escuchar eventos de ventas clave
-    const events = ['sales:payment', 'sales:closed', 'sales:order'];
+    // Escuchar eventos de ventas clave y sistema/mantenimiento
+    const events = [
+      'sales:payment', 
+      'sales:closed', 
+      'sales:order',
+      'system:maintenance_warning',
+      'system:maintenance_start',
+      'system:maintenance_abort',
+      'system:maintenance_end',
+      'system:version_published'
+    ];
     const listeners = {};
 
     events.forEach((ev) => {

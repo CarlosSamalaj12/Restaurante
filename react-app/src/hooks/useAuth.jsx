@@ -8,6 +8,15 @@ export function AuthProvider({ children }) {
   // Migra keys legacy → versionadas la primera vez que se monta el provider.
   useEffect(() => {
     tokenStorage.migrateLegacy();
+
+    const onUnauthorized = () => {
+      setUser(null);
+      setToken('');
+      setModules([]);
+      setSelectedTerminal(null);
+    };
+    window.addEventListener('auth:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', onUnauthorized);
   }, []);
 
   const [user, setUser] = useState(() => tokenStorage.getUser());
@@ -18,6 +27,7 @@ export function AuthProvider({ children }) {
   const [restaurantName, setRestaurantName] = useState('SamaPos');
   const [logoUrl, setLogoUrl] = useState('');
   const [currencySymbol, setCurrencySymbol] = useState('$');
+  const [businessProfile, setBusinessProfile] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,7 +53,10 @@ export function AuthProvider({ children }) {
       const data = await api.bootstrap();
       if (data.restaurantName) setRestaurantName(data.restaurantName);
       if (data.logoUrl) setLogoUrl(data.logoUrl);
-      if (data.businessProfile?.currency_symbol) setCurrencySymbol(data.businessProfile.currency_symbol);
+      if (data.businessProfile) {
+        setBusinessProfile(data.businessProfile);
+        if (data.businessProfile.currency_symbol) setCurrencySymbol(data.businessProfile.currency_symbol);
+      }
     } catch (e) {
       // ignore
     }
@@ -97,6 +110,7 @@ export function AuthProvider({ children }) {
     if ((viewName === 'executive-dashboard' || viewName === 'executive') && 
         (hasPermission('views.executive') || hasPermission('dashboard.executive'))) return true;
     if (viewName === 'accounts' && (hasPermission('views.shifts') || hasPermission('views.cxc') || hasPermission('views.accounts'))) return true;
+    if (viewName === 'cxc' && (['superadmin', 'admin', 'manager', 'cashier'].includes(user.role) || hasPermission('views.cxc'))) return true;
     if (viewName === 'settings' && ['superadmin', 'admin', 'manager'].includes(user.role)) return true;
     return false;
   };
@@ -107,9 +121,10 @@ export function AuthProvider({ children }) {
     () => ({
       user, token, modules, selectedTerminal, selectTerminal,
       login, logout, loading, restaurantName, logoUrl, currencySymbol,
+      businessProfile, reloadBranding: loadBranding,
       hasPermission, canView,
     }),
-    [user, token, modules, selectedTerminal, loading, restaurantName, logoUrl, currencySymbol],
+    [user, token, modules, selectedTerminal, loading, restaurantName, logoUrl, currencySymbol, businessProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

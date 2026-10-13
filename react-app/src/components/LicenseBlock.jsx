@@ -1,27 +1,59 @@
 /**
  * LicenseBlock.jsx
  *
- * Pantalla de bloqueo cuando la terminal no puede operar.
- *
- * Mejoras visuales:
- *  - Íconos custom SVG (no Lucide) — más identidad de marca
- *  - Glassmorphism en el card principal
- *  - Stepper visual con íconos custom
- *  - Campo "Bootstrap con PIN de admin" (auto-aprueba la propia terminal)
+ * Pantalla de control de acceso y licencias de terminales.
+ * Flujo intuitivo y minimalista:
+ *  - Solicitud interactiva de acceso con nombre personalizado de PC
+ *  - Espera activa con sondeo automático y stepper en tiempo real
+ *  - Bloqueo claro de terminal revocada con opción de reenviar solicitud
+ *  - Acceso inmediato con PIN de Super Admin en sitio
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Copy, Check, Wifi, WifiOff, RefreshCw, Eye, EyeOff, Sparkles, ShieldCheck } from 'lucide-react';
+import {
+  Copy,
+  Check,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Sparkles,
+  ShieldCheck,
+  ShieldAlert,
+  Monitor,
+  Send,
+  ArrowRight,
+  AlertTriangle
+} from 'lucide-react';
 import api from '../api';
 import { tokenStorage } from '../lib/tokenStorage';
 import { CustomIcon, StepIcon } from './icons/CustomIcons';
 
-const PENDING_AUTO_REFRESH_MS = 15_000; // 15s
+const PENDING_AUTO_REFRESH_MS = 5000; // Sondeo cada 5s
 
-export function LicenseBlock({ status, reason, online, onRetry, serial, firstSeenAt, ipAddress }) {
+export function LicenseBlock({
+  status,
+  reason,
+  online,
+  onRetry,
+  serial,
+  label: initialLabel,
+  firstSeenAt,
+  ipAddress,
+  onRequestAccess
+}) {
   const [copied, setCopied] = useState(false);
   const [autoRetrying, setAutoRetrying] = useState(false);
   const [countdown, setCountdown] = useState(PENDING_AUTO_REFRESH_MS / 1000);
+
+  // Modo solicitud interactiva
+  const [requestMode, setRequestMode] = useState(status === 'revoked' ? false : !initialLabel && status === 'pending');
+  const [terminalName, setTerminalName] = useState(initialLabel || '');
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [requestError, setRequestError] = useState(null);
+
+  // Modo PIN de administrador
   const [pinMode, setPinMode] = useState(false);
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
@@ -42,25 +74,33 @@ export function LicenseBlock({ status, reason, online, onRetry, serial, firstSee
       el.value = serial;
       document.body.appendChild(el);
       el.select();
-      try { document.execCommand('copy'); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch {}
+      try {
+        document.execCommand('copy');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      } catch {}
       document.body.removeChild(el);
     }
   }, [serial]);
 
-  // Auto-refresh cuando está esperando aprobación.
+  // Auto-refresh cuando está esperando aprobación (cada 5s)
   useEffect(() => {
     if (status !== 'pending' || !onRetry) return;
     let cancelled = false;
     const tick = async () => {
       if (cancelled) return;
       setAutoRetrying(true);
-      try { await onRetry(); } catch {}
+      try {
+        await onRetry();
+      } catch {}
       if (cancelled) return;
       setAutoRetrying(false);
     };
-    const initialId = setTimeout(tick, 5_000);
     const id = setInterval(tick, PENDING_AUTO_REFRESH_MS);
-    return () => { cancelled = true; clearTimeout(initialId); clearInterval(id); };
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [status, onRetry]);
 
   useEffect(() => {
@@ -72,234 +112,332 @@ export function LicenseBlock({ status, reason, online, onRetry, serial, firstSee
     return () => clearInterval(id);
   }, [status, autoRetrying]);
 
-  // Abrir input de PIN → autofocus
+  // Enfocar input de PIN
   useEffect(() => {
     if (pinMode && pinInputRef.current) pinInputRef.current.focus();
   }, [pinMode]);
 
+  // Enviar solicitud de acceso
+  const handleRequestSubmit = async (e) => {
+    e?.preventDefault();
+    if (!terminalName.trim()) {
+      setRequestError('Por favor ingresa un nombre para identificar esta terminal');
+      return;
+    }
+    setRequestBusy(true);
+    setRequestError(null);
+    try {
+      if (onRequestAccess) {
+        const ok = await onRequestAccess(terminalName.trim());
+        if (ok) {
+          setRequestMode(false);
+        } else {
+          setRequestError('No se pudo enviar la solicitud. Revisa la conexión.');
+        }
+      } else {
+        await api.license.requestAccess({
+          serial,
+          label: terminalName.trim(),
+        });
+        setRequestMode(false);
+        onRetry && onRetry();
+      }
+    } catch (err) {
+      setRequestError(err?.data?.error || err?.message || 'Error al enviar solicitud');
+    } finally {
+      setRequestBusy(false);
+    }
+  };
+
+  // Aprobación local con PIN de Super Admin
   const handlePinSubmit = async (e) => {
-    e?.preventDefault?.();
+    e?.preventDefault();
     if (!pin || !serial) return;
     setPinBusy(true);
     setPinError(null);
     try {
       const result = await api.licenseAdmin.approveSelf({ pin, serial });
       if (result?.authToken && result?.user) {
-        // Guardar sesión admin y recargar
         tokenStorage.setToken(result.authToken);
         tokenStorage.setUser(result.user);
-        // Recargar para que useAuth tome el nuevo token
         window.location.reload();
         return;
       }
     } catch (err) {
-      setPinError(err?.data?.error || err?.message || 'No se pudo aprobar');
+      setPinError(err?.data?.error || err?.message || 'PIN incorrecto o no pertenece a un administrador');
     } finally {
       setPinBusy(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-950 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
-      {/* Animated blobs */}
-      <div className="absolute top-0 -left-32 w-[28rem] h-[28rem] bg-indigo-500 rounded-full mix-blend-screen opacity-10 blur-3xl animate-pulse" />
-      <div className="absolute bottom-0 -right-32 w-[28rem] h-[28rem] bg-purple-500 rounded-full mix-blend-screen opacity-10 blur-3xl animate-pulse" style={{ animationDelay: '1.5s' }} />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-500 rounded-full mix-blend-screen opacity-[0.05] blur-3xl animate-pulse" style={{ animationDelay: '0.8s' }} />
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
+      {/* Luces sutiles de fondo */}
+      <div className="absolute top-0 -left-32 w-96 h-96 bg-blue-600 rounded-full mix-blend-screen opacity-10 blur-3xl animate-pulse" />
+      <div className="absolute bottom-0 -right-32 w-96 h-96 bg-indigo-600 rounded-full mix-blend-screen opacity-10 blur-3xl animate-pulse" style={{ animationDelay: '1.5s' }} />
 
       <div className="relative w-full max-w-md">
-        {/* Top brand badge */}
-        <div className="flex justify-center mb-4">
-          <div className="inline-flex items-center gap-1.5 bg-white/5 backdrop-blur-md border border-white/10 rounded-full px-3 py-1 text-xs text-indigo-200">
-            <Sparkles className="w-3 h-3" />
-            <span className="font-medium">SamaPos · Licencias</span>
+        {/* Badge superior SamaPos */}
+        <div className="flex justify-center mb-3">
+          <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-full px-3.5 py-1 text-xs text-slate-200">
+            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+            <span className="font-bold tracking-wide">SamaPos · Control de Acceso</span>
           </div>
         </div>
 
-        <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-7 sm:p-8">
-          {/* Icono principal custom */}
-          <div className="flex justify-center mb-5">
+        <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6 sm:p-8">
+          {/* Icono de estado */}
+          <div className="flex justify-center mb-4">
             <CustomIcon status={status} />
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 text-center tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 mb-2 text-center tracking-tight">
             {config.title}
           </h1>
-          <p className="text-gray-600 mb-6 text-center text-sm sm:text-base leading-relaxed">
+          <p className="text-slate-600 mb-5 text-center text-xs sm:text-sm leading-relaxed">
             {config.message}
           </p>
 
-          {/* Stepper visual solo en pending */}
-          {status === 'pending' && (
-            <div className="mb-6 px-1">
-              <div className="flex items-start justify-between gap-1">
-                <StepItem n={1} label="Registrada" state="done" />
-                <Connector active />
-                <StepItem n={2} label="Esperando admin" state="active" />
-                <Connector />
-                <StepItem n={3} label="Activa" state="pending" />
-              </div>
-            </div>
-          )}
-
-          {/* Serial + copiar */}
-          {serial && (
-            <div className="bg-gray-50 rounded-xl p-3.5 mb-4 text-left border border-gray-200">
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
-                  Serial de la terminal
+          {/* ─────────────────────────────────────────────────────────── */}
+          {/* CASO 1: FORMULARIO DE SOLICITUD INTERACTIVA */}
+          {/* ─────────────────────────────────────────────────────────── */}
+          {requestMode ? (
+            <form onSubmit={handleRequestSubmit} className="space-y-4 mb-5">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <label className="block text-xs font-bold text-slate-700">
+                  ¿Cómo identificar esta terminal en el sistema?
+                </label>
+                <div className="relative">
+                  <Monitor className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={terminalName}
+                    onChange={(e) => setTerminalName(e.target.value)}
+                    placeholder="Ej. Caja 2, Barra, Tablet Terraza..."
+                    disabled={requestBusy}
+                    className="w-full bg-white border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl pl-9 pr-3 py-2.5 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none transition-all"
+                  />
                 </div>
+                <p className="text-[11px] text-slate-400">
+                  El Super Administrador verá este nombre en su pantalla para aceptar o rechazar el acceso.
+                </p>
+              </div>
+
+              {requestError && (
+                <div className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-3">
+                  {requestError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={requestBusy || !terminalName.trim()}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer text-xs uppercase tracking-wider"
+              >
+                {requestBusy ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                <span>{requestBusy ? 'Enviando Solicitud...' : 'Enviar Solicitud al Administrador'}</span>
+              </button>
+
+              {status === 'revoked' && (
                 <button
-                  onClick={copySerial}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 transition px-2 py-0.5 rounded hover:bg-indigo-50"
-                  title="Copiar al portapapeles"
+                  type="button"
+                  onClick={() => setRequestMode(false)}
+                  className="w-full text-center text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
                 >
-                  {copied ? (
-                    <><Check className="w-3 h-3" /> Copiado</>
-                  ) : (
-                    <><Copy className="w-3 h-3" /> Copiar</>
-                  )}
+                  Volver al mensaje de bloqueo
                 </button>
-              </div>
-              <div className="font-mono text-xs sm:text-sm text-gray-800 break-all select-all leading-relaxed">
-                {serial}
-              </div>
-              <div className="mt-2.5 pt-2.5 border-t border-gray-200 space-y-1">
-                {ipAddress && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
-                    <span className="font-mono bg-gray-200 px-1.5 rounded">IP</span>
-                    <span className="font-mono">{ipAddress}</span>
-                  </div>
-                )}
-                {firstSeenAt && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
-                    <span className="font-mono bg-gray-200 px-1.5 rounded">t</span>
-                    <span>Registrada {formatRelative(firstSeenAt)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {config.showContact && (
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200/60 rounded-xl p-4 mb-4 text-left">
-              <p className="text-sm text-blue-900 leading-relaxed">
-                <strong className="flex items-center gap-1.5 mb-1.5">
-                  <ShieldCheck className="w-4 h-4 text-blue-600" />
-                  ¿Cómo destrabar esto?
-                </strong>
-                <span>{config.contactText}</span>
-              </p>
-            </div>
-          )}
-
-          {/* Estado de conexión + countdown */}
-          <div className="flex items-center justify-between mb-3 text-[11px] text-gray-500 px-1">
-            <span className="flex items-center gap-1.5">
-              {online ? <Wifi className="w-3.5 h-3.5 text-green-500" /> : <WifiOff className="w-3.5 h-3.5 text-red-500" />}
-              {online ? 'Conectado al servidor' : 'Sin conexión'}
-            </span>
-            {status === 'pending' && (
-              <span className="flex items-center gap-1.5 font-mono">
-                <span className={`w-1.5 h-1.5 rounded-full ${autoRetrying ? 'bg-indigo-500 animate-pulse' : 'bg-gray-400'}`} />
-                {autoRetrying ? 'verificando…' : `próx. check ${countdown}s`}
-              </span>
-            )}
-          </div>
-
-          {/* Botón reintentar (manual) */}
-          {onRetry && (
-            <button
-              onClick={onRetry}
-              disabled={autoRetrying}
-              className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition active:scale-[0.98]"
-            >
-              <RefreshCw className={`w-4 h-4 ${autoRetrying ? 'animate-spin' : ''}`} />
-              {autoRetrying ? 'Verificando con el servidor…' : 'Reintentar ahora'}
-            </button>
-          )}
-
-          {/* ───────── Bootstrap con PIN de admin ───────── */}
-          {status === 'pending' && (
+              )}
+            </form>
+          ) : (
             <>
-              <div className="flex items-center gap-3 my-4">
-                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
-                <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">o</span>
-                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
-              </div>
-
-              {!pinMode ? (
-                <button
-                  onClick={() => setPinMode(true)}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition active:scale-[0.98] shadow-lg shadow-indigo-500/30"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  Soy admin · aprobar esta terminal
-                </button>
-              ) : (
-                <form onSubmit={handlePinSubmit} className="space-y-2">
-                  <label className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold flex items-center gap-1.5">
-                    <ShieldCheck className="w-3 h-3" />
-                    PIN de administrador
-                  </label>
-                  <div className="relative">
-                    <input
-                      ref={pinInputRef}
-                      type={showPin ? 'text' : 'password'}
-                      inputMode="numeric"
-                      autoComplete="off"
-                      value={pin}
-                      onChange={(e) => { setPin(e.target.value.replace(/\D/g, '').slice(0, 12)); setPinError(null); }}
-                      placeholder="••••"
-                      disabled={pinBusy}
-                      className="w-full bg-white border-2 border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 rounded-xl px-4 py-3 pr-10 text-center text-2xl font-mono tracking-[0.5em] text-gray-900 placeholder-gray-300 transition outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPin((v) => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
-                      tabIndex={-1}
-                    >
-                      {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+              {/* Stepper visual solo en pending */}
+              {status === 'pending' && (
+                <div className="mb-5 px-1">
+                  <div className="flex items-start justify-between gap-1">
+                    <StepItem n={1} label="Solicitud enviada" state="done" />
+                    <Connector active />
+                    <StepItem n={2} label="Esperando al Admin" state="active" />
+                    <Connector />
+                    <StepItem n={3} label="Acceso concedido" state="pending" />
                   </div>
-                  {pinError && (
-                    <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                      {pinError}
+                </div>
+              )}
+
+              {/* Botón para enviar nueva solicitud si está revocada */}
+              {status === 'revoked' && (
+                <div className="mb-5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRequestMode(true);
+                      setTerminalName(initialLabel || '');
+                    }}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer text-xs uppercase tracking-wider"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Enviar Nueva Solicitud de Acceso</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Tarjeta de información de la terminal */}
+              {serial && (
+                <div className="bg-slate-50 rounded-2xl p-3.5 mb-4 text-left border border-slate-200">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">
+                      Identificador de Terminal
                     </div>
-                  )}
-                  <div className="flex gap-2 pt-1">
                     <button
-                      type="button"
-                      onClick={() => { setPinMode(false); setPin(''); setPinError(null); }}
-                      disabled={pinBusy}
-                      className="flex-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 font-medium py-2.5 rounded-lg transition text-sm"
+                      onClick={copySerial}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 transition px-2 py-0.5 rounded cursor-pointer"
+                      title="Copiar serial"
                     >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={pinBusy || !pin}
-                      className="flex-[2] bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition text-sm flex items-center justify-center gap-1.5"
-                    >
-                      {pinBusy ? (
-                        <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Aprobando…</>
+                      {copied ? (
+                        <>
+                          <Check className="w-3 h-3" /> Copiado
+                        </>
                       ) : (
-                        <>Aprobar y entrar</>
+                        <>
+                          <Copy className="w-3 h-3" /> Copiar Serial
+                        </>
                       )}
                     </button>
                   </div>
-                  <p className="text-[10px] text-gray-400 text-center pt-1">
-                    Solo funciona con un PIN de un usuario admin. La terminal se aprueba y se inicia sesión automáticamente.
-                  </p>
-                </form>
+
+                  <div className="font-mono text-xs text-slate-800 break-all select-all font-bold">
+                    {serial}
+                  </div>
+
+                  <div className="mt-2.5 pt-2 border-t border-slate-200 space-y-1">
+                    {initialLabel && (
+                      <div className="flex items-center justify-between text-xs text-slate-700 font-bold">
+                        <span className="text-[11px] text-slate-400 font-normal">Nombre asignado:</span>
+                        <span>{initialLabel}</span>
+                      </div>
+                    )}
+                    {ipAddress && (
+                      <div className="flex items-center justify-between text-xs text-slate-700 font-mono">
+                        <span className="text-[11px] text-slate-400 font-sans font-normal">Dirección IP:</span>
+                        <span>{ipAddress}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Estado de conexión + contador */}
+              <div className="flex items-center justify-between mb-3 text-[11px] text-slate-500 px-1 font-semibold">
+                <span className="flex items-center gap-1.5">
+                  {online ? <Wifi className="w-3.5 h-3.5 text-emerald-500" /> : <WifiOff className="w-3.5 h-3.5 text-rose-500" />}
+                  {online ? 'Conectado al servidor' : 'Sin conexión'}
+                </span>
+                {status === 'pending' && (
+                  <span className="flex items-center gap-1.5 font-mono text-blue-600 font-bold">
+                    <span className={`w-2 h-2 rounded-full ${autoRetrying ? 'bg-blue-600 animate-ping' : 'bg-blue-400'}`} />
+                    {autoRetrying ? 'verificando...' : `próximo check ${countdown}s`}
+                  </span>
+                )}
+              </div>
+
+              {/* Botón Reintentar Manual */}
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  disabled={autoRetrying}
+                  className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition active:scale-95 text-xs cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${autoRetrying ? 'animate-spin' : ''}`} />
+                  <span>{autoRetrying ? 'Comprobando autorización...' : 'Comprobar Aprobación Ahora'}</span>
+                </button>
+              )}
+
+              {/* ─────────────────────────────────────────────────────────── */}
+              {/* BOOTSTRAP / OVERRIDE CON PIN DE SUPER ADMIN */}
+              {/* ─────────────────────────────────────────────────────────── */}
+              {status === 'pending' && (
+                <>
+                  <div className="flex items-center gap-3 my-4">
+                    <div className="flex-1 h-px bg-slate-200" />
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">o bien</span>
+                    <div className="flex-1 h-px bg-slate-200" />
+                  </div>
+
+                  {!pinMode ? (
+                    <button
+                      onClick={() => setPinMode(true)}
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition active:scale-95 text-xs cursor-pointer"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-blue-600" />
+                      <span>¿Eres Admin? Autorizar en sitio con PIN</span>
+                    </button>
+                  ) : (
+                    <form onSubmit={handlePinSubmit} className="space-y-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                      <label className="text-[11px] uppercase tracking-wider text-slate-600 font-black flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                        <span>PIN de Super Administrador</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          ref={pinInputRef}
+                          type={showPin ? 'text' : 'password'}
+                          inputMode="numeric"
+                          value={pin}
+                          onChange={(e) => {
+                            setPin(e.target.value.replace(/\D/g, '').slice(0, 8));
+                            setPinError(null);
+                          }}
+                          placeholder="••••"
+                          disabled={pinBusy}
+                          className="w-full bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-4 py-2.5 text-center text-xl font-mono tracking-widest text-slate-900 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPin((v) => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+
+                      {pinError && (
+                        <div className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2 text-center">
+                          {pinError}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPinMode(false);
+                            setPin('');
+                            setPinError(null);
+                          }}
+                          disabled={pinBusy}
+                          className="flex-1 bg-white border border-slate-200 text-slate-700 font-bold py-2 rounded-xl text-xs hover:bg-slate-100"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={pinBusy || !pin}
+                          className="flex-[2] bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          {pinBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                          <span>Aprobar y Entrar</span>
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </>
               )}
             </>
           )}
         </div>
-
-        <p className="text-[10px] text-white/30 text-center mt-4 font-mono">
-          sama-pos-license-v1
-        </p>
       </div>
     </div>
   );
@@ -307,96 +445,80 @@ export function LicenseBlock({ status, reason, online, onRetry, serial, firstSee
 
 function StepItem({ n, label, state }) {
   const stateClass = {
-    done: 'text-emerald-600',
-    active: 'text-amber-600',
-    pending: 'text-gray-300',
+    done: 'text-emerald-700 font-black',
+    active: 'text-blue-700 font-black',
+    pending: 'text-slate-400 font-semibold',
   }[state];
+
   return (
     <div className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
-      <div className={`relative w-9 h-9 rounded-full flex items-center justify-center transition ${
-        state === 'done' ? 'bg-emerald-100' :
-        state === 'active' ? 'bg-amber-100' : 'bg-gray-100'
-      }`}>
-        {state === 'active' && <span className="absolute inset-0 rounded-full bg-amber-300 opacity-40 animate-ping" />}
-        <span className="relative">
-          <StepIcon state={state} />
-        </span>
+      <div
+        className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+          state === 'done'
+            ? 'bg-emerald-100 text-emerald-700'
+            : state === 'active'
+            ? 'bg-blue-100 text-blue-700 ring-4 ring-blue-50'
+            : 'bg-slate-100 text-slate-400'
+        }`}
+      >
+        <StepIcon state={state} />
       </div>
-      <div className={`text-[10px] text-center leading-tight font-medium ${stateClass}`}>
+      <div className={`text-[10px] text-center leading-tight ${stateClass}`}>
         {label}
       </div>
     </div>
   );
 }
 
-function Connector() {
+function Connector({ active }) {
   return (
-    <div className="flex-shrink-0 h-0.5 w-6 -mt-3.5 rounded-full bg-gradient-to-r from-gray-200 via-gray-200 to-gray-200" />
+    <div
+      className={`flex-shrink-0 h-0.5 w-6 mt-4 rounded-full transition-all ${
+        active ? 'bg-blue-500' : 'bg-slate-200'
+      }`}
+    />
   );
-}
-
-function formatRelative(date) {
-  try {
-    const d = new Date(date);
-    const diff = Date.now() - d.getTime();
-    const sec = Math.floor(diff / 1000);
-    if (sec < 60) return `hace ${sec}s`;
-    const min = Math.floor(sec / 60);
-    if (min < 60) return `hace ${min} min`;
-    const hr = Math.floor(min / 60);
-    if (hr < 24) return `hace ${hr} h`;
-    return d.toLocaleString();
-  } catch {
-    return '—';
-  }
 }
 
 function getBlockConfig(status, reason, online) {
   switch (status) {
     case 'pending':
       return {
-        title: 'Esperando aprobación',
-        message: 'Esta terminal está registrada pero el administrador aún no la ha aprobado.',
-        showContact: true,
-        contactText: 'Si sos el admin, usá el botón de abajo con tu PIN para aprobar esta terminal al toque. Si no, pedile al admin que la apruebe desde el panel.',
+        title: 'Esperando Aprobación',
+        message: 'Esta terminal ha solicitado acceso. El Super Administrador debe aceptarla desde el panel para autorizarla.',
       };
     case 'revoked':
       return {
-        title: 'Terminal revocada',
-        message: 'El administrador revocó el permiso de esta terminal.',
-        showContact: true,
-        contactText: 'Contacta al administrador para reactivar esta terminal o usa otra máquina autorizada.',
+        title: 'Acceso Denegado / Terminal Revocada',
+        message: 'El acceso de esta terminal fue revocado o denegado por el Administrador. No tiene autorización para ingresar al POS.',
       };
     case 'expired':
     case 'license_expired':
       return {
-        title: 'Licencia vencida',
-        message: 'La licencia de este restaurante venció. No se pueden registrar más operaciones.',
-        showContact: true,
-        contactText: 'Pídele al administrador que renueve o upgrade la licencia en Settings → Licencias.',
+        title: 'Licencia Vencida',
+        message: 'La suscripción del restaurante ha caducado. Contacta al administrador para renovarla.',
       };
     case 'license_inactive':
       return {
-        title: 'Licencia inactiva',
-        message: 'La licencia del sistema fue desactivada.',
-        showContact: true,
-        contactText: 'Contacta al administrador del sistema.',
+        title: 'Licencia Inactiva',
+        message: 'La licencia del sistema fue suspendida.',
       };
     case 'offline':
       return {
-        title: 'Modo offline',
-        message: 'No hay conexión con el servidor, pero la licencia cacheada permite seguir operando.',
-        showContact: false,
+        title: 'Modo Offline',
+        message: 'Operando sin conexión mediante licencia temporal en memoria.',
       };
     case 'unknown':
     default:
       return {
-        title: online === false ? 'Sin conexión' : 'Conectando con el servidor',
+        title: online === false
+          ? 'Sin Conexión con el Servidor'
+          : (reason === 'rate-limited' ? 'Límite de Solicitudes Temporal' : 'Verificando Autorización'),
         message: online === false
-          ? 'No se puede contactar al servidor y no hay licencia offline guardada.'
-          : 'Verificando licencia de la terminal...',
-        showContact: online === false,
-        contactText: 'Verifica la conexión de red. Si el problema persiste, contacta al administrador.',
+          ? 'No se puede contactar al servidor central del POS.'
+          : (reason === 'rate-limited'
+              ? 'Se enviaron demasiadas solicitudes al servidor. El sistema reintentará en unos segundos...'
+              : 'Comprobando el estado de licencia de este equipo...'),
       };
   }
 }

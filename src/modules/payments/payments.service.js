@@ -101,6 +101,24 @@ const paymentsService = {
       referenceNo,
     });
 
+    // Vincular la cuenta al turno activo de su centro si no tiene shift_id o si pertenecía a un turno cerrado
+    const account = await accountsRepository.findById(parsedAccountId);
+    if (account) {
+      const activeShift = await accountsRepository.findOpenShift(account.operation_center_id);
+      if (activeShift) {
+        let needsShiftUpdate = !account.shift_id;
+        if (account.shift_id) {
+          const currentAccountShift = await accountsRepository.findAccountShift(parsedAccountId);
+          if (currentAccountShift && String(currentAccountShift.status) === "closed") {
+            needsShiftUpdate = true;
+          }
+        }
+        if (needsShiftUpdate) {
+          await accountsRepository.updateAccountShift(parsedAccountId, activeShift.id);
+        }
+      }
+    }
+
     await accountsService.addAccountEvent(
       parsedAccountId,
       "payment_added",

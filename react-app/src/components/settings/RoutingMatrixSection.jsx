@@ -1,9 +1,8 @@
 /**
  * RoutingMatrixSection.jsx
  *
- * Centro de Control de la Matriz de Enrutamiento de Comandas (KDS e Impresión)
- * Permite definir qué centro de producción (Cocina, Bar A, Bar B, etc.) recibe
- * cada categoría de productos según el área física de donde se comanda.
+ * Centro de Control de Enrutamiento de Comandas (KDS e Impresión Térmica)
+ * Diseño intuitivo por Tarjetas de Categoría con Estación Principal y Excepciones por Área.
  */
 
 import { useState, useMemo } from 'react';
@@ -15,20 +14,45 @@ import {
   Check,
   X,
   Sparkles,
-  HelpCircle,
   ArrowRight,
-  Monitor,
   Printer,
   Utensils,
-  Layers,
   Store,
   RefreshCw,
   SlidersHorizontal,
   Flame,
-  Info
+  Info,
+  Search,
+  Wine,
+  Coffee,
+  Beer,
+  CupSoda,
+  Cake,
+  Salad,
+  Pizza,
+  Beef,
+  Layers,
+  MapPin,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
+
+// Selector dinámico de íconos según el nombre de la categoría
+function getCategoryIcon(name = '') {
+  const n = name.toLowerCase();
+  if (n.includes('cafe') || n.includes('café') || n.includes('caliente')) return Coffee;
+  if (n.includes('trago') || n.includes('vino') || n.includes('coctel') || n.includes('bar')) return Wine;
+  if (n.includes('cerveza') || n.includes('beer')) return Beer;
+  if (n.includes('bebida') || n.includes('fria') || n.includes('fría') || n.includes('refresco') || n.includes('jugo')) return CupSoda;
+  if (n.includes('postre') || n.includes('dulce') || n.includes('pastel') || n.includes('panader')) return Cake;
+  if (n.includes('ensalada') || n.includes('vegetal') || n.includes('verde')) return Salad;
+  if (n.includes('pizza')) return Pizza;
+  if (n.includes('carne') || n.includes('parrilla') || n.includes('steak') || n.includes('lomito')) return Beef;
+  if (n.includes('fuerte') || n.includes('caliente') || n.includes('cocina')) return Flame;
+  return Utensils;
+}
 
 export function RoutingMatrixSection({
   areas = [],
@@ -39,19 +63,43 @@ export function RoutingMatrixSection({
   onReload,
 }) {
   const toast = useToast();
-  const [savingCell, setSavingCell] = useState(null); // 'areaId-catId'
+
+  // Estados de interfaz
+  const [searchTerm, setSearchTerm] = useState('');
+  const [savingCatId, setSavingCatId] = useState(null);
 
   // Modales
   const [modalNewCat, setModalNewCat] = useState(false);
-  const [newCatName, setNewCatName] = useState('');
-  const [newCatDesc, setNewCatDesc] = useState('');
+  const [newCatForm, setNewCatForm] = useState({
+    nombre: '',
+    descripcion: '',
+    defaultCenterId: productionCenters[0]?.id ? String(productionCenters[0].id) : '',
+  });
+
   const [editingCat, setEditingCat] = useState(null);
+  const [addingExceptionCat, setAddingExceptionCat] = useState(null); // Category object
+  const [exceptionForm, setExceptionForm] = useState({
+    areaId: '',
+    centerId: '',
+  });
 
   // Simulador de Enrutamiento en Vivo
   const [simAreaId, setSimAreaId] = useState(areas[0]?.id || '');
   const [simProductId, setSimProductId] = useState(products[0]?.id || '');
 
-  // Matriz mapeada en lookup: `${areaId}_${categoriaId}` -> centroProduccionId
+  // Conteo de productos por categoría
+  const productCountByCat = useMemo(() => {
+    const map = new Map();
+    for (const p of products) {
+      const catId = p.categoria_impresion_id || p.category_id;
+      if (catId) {
+        map.set(catId, (map.get(catId) || 0) + 1);
+      }
+    }
+    return map;
+  }, [products]);
+
+  // Lookup de reglas de matriz: `${areaId}_${categoriaId}` -> centroProduccionId
   const matrixLookup = useMemo(() => {
     const map = new Map();
     for (const r of routingMatrix) {
@@ -60,44 +108,209 @@ export function RoutingMatrixSection({
     return map;
   }, [routingMatrix]);
 
-  // Manejador de cambio de celda en la matriz
-  const handleCellChange = async (areaId, catId, newCenterId) => {
-    const key = `${areaId}-${catId}`;
-    setSavingCell(key);
-    try {
-      if (!newCenterId) {
-        // Eliminar regla
-        await api.settings.deleteRoutingRule({ areaTrabajoId: areaId, categoriaImpresionId: catId });
-        toast.info('Ruta eliminada');
-      } else {
-        // Guardar regla
-        await api.settings.saveRoutingRule({
-          areaTrabajoId: areaId,
-          categoriaImpresionId: catId,
-          centroProduccionId: newCenterId,
-        });
-        toast.success('Ruta actualizada correctamente');
+  // Análisis por categoría: Determinar estación principal y excepciones por área
+  const categoryRoutingAnalysis = useMemo(() => {
+    return printCategories.map((cat) => {
+      const areaAssignments = areas.map((area) => {
+        const centerId = matrixLookup.get(`${area.id}_${cat.id}`) || null;
+        return {
+          area,
+          centerId,
+          center: productionCenters.find((pc) => pc.id === centerId) || null,
+        };
+      });
+
+      // Contar frecuencias para detectar el centro mayoritario / principal
+      const freq = new Map();
+      for (const a of areaAssignments) {
+        if (a.centerId) {
+          freq.set(a.centerId, (freq.get(a.centerId) || 0) + 1);
+        }
       }
+
+      let mainCenterId = null;
+      let maxCount = -1;
+      for (const [cId, count] of freq.entries()) {
+        if (count > maxCount) {
+          maxCount = count;
+          mainCenterId = cId;
+        }
+      }
+
+      // Si no hay ninguno configurado, sugerir el primer centro disponible
+      if (!mainCenterId && areaAssignments.length > 0 && areaAssignments[0].centerId) {
+        mainCenterId = areaAssignments[0].centerId;
+      }
+
+      const mainCenter = productionCenters.find((pc) => pc.id === mainCenterId) || null;
+
+      // Excepciones: áreas cuyo centro difiere del principal
+      const exceptions = areaAssignments.filter(
+        (a) => a.centerId && mainCenterId && a.centerId !== mainCenterId
+      );
+
+      // Áreas disponibles para agregar como excepción
+      const availableAreasForException = areas.filter(
+        (a) => !exceptions.some((e) => e.area.id === a.id)
+      );
+
+      return {
+        cat,
+        productCount: productCountByCat.get(cat.id) || 0,
+        mainCenterId,
+        mainCenter,
+        exceptions,
+        availableAreasForException,
+        allConfigured: areaAssignments.every((a) => a.centerId !== null),
+      };
+    });
+  }, [printCategories, areas, productionCenters, matrixLookup, productCountByCat]);
+
+  // Filtrado por buscador
+  const filteredCategories = useMemo(() => {
+    if (!searchTerm.trim()) return categoryRoutingAnalysis;
+    const q = searchTerm.toLowerCase();
+    return categoryRoutingAnalysis.filter(
+      (c) =>
+        c.cat.nombre.toLowerCase().includes(q) ||
+        (c.cat.descripcion && c.cat.descripcion.toLowerCase().includes(q)) ||
+        (c.mainCenter && c.mainCenter.name.toLowerCase().includes(q))
+    );
+  }, [categoryRoutingAnalysis, searchTerm]);
+
+  // ── MANEJADORES DE ACCIONES ──
+
+  // 1. Cambiar Estación Principal de una Categoría (Aplica a todas las áreas)
+  const handleSetMainCenter = async (catId, newCenterId) => {
+    if (!newCenterId) return;
+    setSavingCatId(catId);
+    try {
+      // Guardar regla para todas las áreas activas
+      await Promise.all(
+        areas.map((a) =>
+          api.settings.saveRoutingRule({
+            areaTrabajoId: a.id,
+            categoriaImpresionId: catId,
+            centroProduccionId: Number(newCenterId),
+          })
+        )
+      );
+      const targetCenter = productionCenters.find((pc) => pc.id === Number(newCenterId));
+      toast.success(`Destino principal actualizado a "${targetCenter?.name || 'Centro'}"`);
       if (onReload) await onReload();
     } catch (err) {
-      toast.error(err?.data?.error || err?.message || 'Error al guardar ruta');
+      toast.error(err?.data?.error || err?.message || 'Error al guardar destino');
     } finally {
-      setSavingCell(null);
+      setSavingCatId(null);
     }
   };
 
-  // Guardar nueva categoría de impresión
+  // 2. Abrir modal para agregar excepción
+  const openAddExceptionModal = (catItem) => {
+    const defaultArea = catItem.availableAreasForException[0]?.id || '';
+    const otherCenter = productionCenters.find((pc) => pc.id !== catItem.mainCenterId) || productionCenters[0];
+    setExceptionForm({
+      areaId: defaultArea ? String(defaultArea) : '',
+      centerId: otherCenter?.id ? String(otherCenter.id) : '',
+    });
+    setAddingExceptionCat(catItem);
+  };
+
+  // 3. Guardar Excepción por Área
+  const handleSaveException = async (e) => {
+    e?.preventDefault();
+    if (!addingExceptionCat || !exceptionForm.areaId || !exceptionForm.centerId) return;
+    setSavingCatId(addingExceptionCat.cat.id);
+    try {
+      await api.settings.saveRoutingRule({
+        areaTrabajoId: Number(exceptionForm.areaId),
+        categoriaImpresionId: addingExceptionCat.cat.id,
+        centroProduccionId: Number(exceptionForm.centerId),
+      });
+      const areaObj = areas.find((a) => a.id === Number(exceptionForm.areaId));
+      const centerObj = productionCenters.find((c) => c.id === Number(exceptionForm.centerId));
+      toast.success(`Excepción agregada: ${areaObj?.name || 'Área'} ➔ ${centerObj?.name || 'Centro'}`);
+      setAddingExceptionCat(null);
+      if (onReload) await onReload();
+    } catch (err) {
+      toast.error(err?.data?.error || err?.message || 'Error al guardar excepción');
+    } finally {
+      setSavingCatId(null);
+    }
+  };
+
+  // 4. Modificar el centro de una excepción existente
+  const handleUpdateExceptionCenter = async (catId, areaId, newCenterId) => {
+    setSavingCatId(catId);
+    try {
+      await api.settings.saveRoutingRule({
+        areaTrabajoId: Number(areaId),
+        categoriaImpresionId: catId,
+        centroProduccionId: Number(newCenterId),
+      });
+      toast.success('Excepción de área actualizada');
+      if (onReload) await onReload();
+    } catch (err) {
+      toast.error(err?.data?.error || err?.message || 'Error al actualizar excepción');
+    } finally {
+      setSavingCatId(null);
+    }
+  };
+
+  // 5. Eliminar una Excepción (Vuelve a usar el destino principal)
+  const handleRemoveException = async (catId, areaId, mainCenterId) => {
+    setSavingCatId(catId);
+    try {
+      if (mainCenterId) {
+        await api.settings.saveRoutingRule({
+          areaTrabajoId: Number(areaId),
+          categoriaImpresionId: catId,
+          centroProduccionId: Number(mainCenterId),
+        });
+      } else {
+        await api.settings.deleteRoutingRule({
+          areaTrabajoId: Number(areaId),
+          categoriaImpresionId: catId,
+        });
+      }
+      toast.info('Excepción eliminada (restablecida al destino principal)');
+      if (onReload) await onReload();
+    } catch (err) {
+      toast.error(err?.data?.error || err?.message || 'Error al eliminar excepción');
+    } finally {
+      setSavingCatId(null);
+    }
+  };
+
+  // 6. Crear Categoría de Impresión
   const handleCreateCategory = async (e) => {
     e?.preventDefault();
-    if (!newCatName.trim()) return;
+    if (!newCatForm.nombre.trim()) return;
     try {
-      await api.settings.createPrintCategory({
-        nombre: newCatName.trim(),
-        descripcion: newCatDesc.trim() || null,
+      const newId = await api.settings.createPrintCategory({
+        nombre: newCatForm.nombre.trim(),
+        descripcion: newCatForm.descripcion.trim() || null,
       });
-      toast.success('Categoría de impresión creada');
-      setNewCatName('');
-      setNewCatDesc('');
+
+      // Si seleccionó una estación inicial, aplicarla automáticamente a todas las áreas
+      if (newCatForm.defaultCenterId && areas.length > 0) {
+        await Promise.all(
+          areas.map((a) =>
+            api.settings.saveRoutingRule({
+              areaTrabajoId: a.id,
+              categoriaImpresionId: newId,
+              centroProduccionId: Number(newCatForm.defaultCenterId),
+            })
+          )
+        );
+      }
+
+      toast.success(`Categoría "${newCatForm.nombre.trim()}" creada con éxito`);
+      setNewCatForm({
+        nombre: '',
+        descripcion: '',
+        defaultCenterId: productionCenters[0]?.id ? String(productionCenters[0].id) : '',
+      });
       setModalNewCat(false);
       if (onReload) await onReload();
     } catch (err) {
@@ -105,7 +318,7 @@ export function RoutingMatrixSection({
     }
   };
 
-  // Editar categoría de impresión
+  // 7. Actualizar Categoría
   const handleUpdateCategory = async (e) => {
     e?.preventDefault();
     if (!editingCat || !editingCat.nombre.trim()) return;
@@ -118,19 +331,19 @@ export function RoutingMatrixSection({
       setEditingCat(null);
       if (onReload) await onReload();
     } catch (err) {
-      toast.error(err?.data?.error || err?.message || 'Error al actualizar categoría');
+      toast.error(err?.data?.error || err?.message || 'Error al actualizar');
     }
   };
 
-  // Eliminar categoría de impresión
+  // 8. Eliminar Categoría
   const handleDeleteCategory = async (catId, catName) => {
-    if (!window.confirm(`¿Eliminar la categoría de impresión "${catName}"? Se borrarán sus reglas en la matriz.`)) return;
+    if (!window.confirm(`¿Eliminar la categoría "${catName}"? Se borrarán sus rutas de cocina y los productos quedarán sin categoría de comanda.`)) return;
     try {
       await api.settings.deletePrintCategory(catId);
-      toast.success('Categoría eliminada');
+      toast.success(`Categoría "${catName}" eliminada`);
       if (onReload) await onReload();
     } catch (err) {
-      toast.error(err?.data?.error || err?.message || 'Error al eliminar');
+      toast.error(err?.data?.error || err?.message || 'Error al eliminar categoría');
     }
   };
 
@@ -147,8 +360,8 @@ export function RoutingMatrixSection({
       return {
         tipo: 'EXCLUSIVO',
         centro: center?.name || 'Centro Exclusivo #' + prod.centro_produccion_exclusivo_id,
-        printer: center?.printer_name || center?.printer_ip ? `${center?.printer_ip}:${center?.printer_port || 9100}` : 'Sin impresora configurada',
-        explicacion: `Este producto está fijado como exclusivo y se prepara en ${center?.name || 'su centro asignado'} sin importar desde dónde se pida.`,
+        printer: center?.printer_name || (center?.printer_ip ? `${center.printer_ip}:${center.printer_port || 9100}` : 'Impresora Local / KDS'),
+        explicacion: `Este platillo tiene estación exclusiva configurada y se prepara siempre en ${center?.name || 'su centro asignado'} sin importar desde qué mesa se ordene.`,
       };
     }
 
@@ -159,18 +372,18 @@ export function RoutingMatrixSection({
     if (centerId) {
       const center = productionCenters.find((c) => c.id === Number(centerId));
       return {
-        tipo: 'DINÁMICO (MATRIZ)',
+        tipo: 'AUTOMÁTICO',
         centro: center?.name || 'Centro #' + centerId,
-        printer: center?.printer_name || center?.printer_ip ? `${center?.printer_ip}:${center?.printer_port || 9100}` : 'Sin impresora configurada',
-        explicacion: `Regla resuelta: Área [${area.name}] + Categoría [${prod.categoria_impresion_nombre || 'Bebidas'}] ➔ ${center?.name}.`,
+        printer: center?.printer_name || (center?.printer_ip ? `${center.printer_ip}:${center.printer_port || 9100}` : 'Pantalla KDS / Impresora Térmica'),
+        explicacion: `Al pedir en "${area.name}", la categoría "${prod.categoria_impresion_nombre || 'General'}" se envía a "${center?.name}".`,
       };
     }
 
     return {
       tipo: 'SIN RUTA ASIGNADA',
-      centro: 'Ninguno (Alerta de Comanda)',
+      centro: 'Centro por Defecto (Cocina1)',
       printer: 'No configurado',
-      explicacion: `No existe una celda configurada en la matriz para el área "${area.name}" con la categoría "${prod.categoria_impresion_nombre || prod.category_name}". Se usará el centro por defecto.`,
+      explicacion: `No existe ruta para el área "${area.name}" con la categoría "${prod.categoria_impresion_nombre || 'General'}". Se usará la estación principal.`,
     };
   }, [simAreaId, simProductId, products, areas, productionCenters, matrixLookup]);
 
@@ -181,7 +394,7 @@ export function RoutingMatrixSection({
 
   return (
     <div className="space-y-6">
-      {/* ── ENCABEZADO Y EXPLICACIÓN ── */}
+      {/* ── HERO BANNER: EXPLICACIÓN CLARA Y MODERNA ── */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-7 text-white shadow-xl border border-indigo-800/40 relative overflow-hidden">
         <div className="absolute right-0 top-0 p-6 opacity-10 pointer-events-none">
           <Network className="w-36 h-36 text-indigo-400" />
@@ -191,140 +404,245 @@ export function RoutingMatrixSection({
             <Sparkles className="w-3.5 h-3.5" /> Enrutamiento Inteligente de Comandas
           </div>
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-2">
-            Matriz de Enrutamiento (KDS e Impresión)
+            Enrutamiento de Cocina y Bar
           </h2>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Resuelve automáticamente el destino de cada orden:{' '}
-            <strong className="text-white">Área de Trabajo</strong> (Piscina, Restaurante, Terraza) +{' '}
-            <strong className="text-white">Categoría de Impresión</strong> (Bebidas, Cocina Caliente, etc.){' '}
-            = <strong className="text-emerald-400">Centro de Producción Destino</strong>.
+            Configura de forma fácil a qué cocina o bar se envían tus platillos y bebidas.
+            Solo elige la <strong className="text-white">Estación Principal</strong> de cada categoría, y si alguna zona (como la <strong className="text-amber-300">Terraza</strong>) usa un bar o cocina diferente, agrega una <strong className="text-emerald-400">excepción</strong> con un solo clic.
           </p>
         </div>
       </div>
 
-      {/* ── CUADRÍCULA DE LA MATRIZ DE ENRUTAMIENTO ── */}
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-5 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <SlidersHorizontal className="w-5 h-5 text-indigo-600" />
-              Cuadrícula de Enrutamiento Local
-            </h3>
-            <p className="text-xs text-slate-500">
-              Selecciona el centro de producción para cada combinación de Área y Categoría
-            </p>
+      {/* ── BARRA DE BÚSQUEDA Y ACCIONES RÁPIDAS ── */}
+      <div className="bg-white rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* Estadísticas rápidas */}
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
+            <Layers className="w-3.5 h-3.5 text-indigo-600" />
+            <span>{printCategories.length} Categorías</span>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setModalNewCat(true)}
-              className="group bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-200 active:scale-[0.98] cursor-pointer"
-            >
-              <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-              <span>Nueva Categoría de Impresión</span>
-            </button>
-            <button
-              onClick={() => onReload && onReload()}
-              className="p-2.5 text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl transition-all duration-200 shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
-              title="Recargar matriz"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
+            <Store className="w-3.5 h-3.5 text-emerald-600" />
+            <span>{areas.length} Áreas de Salón</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
+            <Utensils className="w-3.5 h-3.5 text-amber-600" />
+            <span>{productionCenters.length} Estaciones (Cocina/Bar)</span>
           </div>
         </div>
 
-        {/* Tabla Grid interactiva */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-              <tr>
-                <th className="px-5 py-4 min-w-[180px] uppercase text-[10px] tracking-wider sticky left-0 bg-slate-50 z-10 border-r border-slate-200">
-                  Área de Consumo / Terminal
-                </th>
-                {printCategories.map((cat) => (
-                  <th key={cat.id} className="px-4 py-4 min-w-[200px] text-center">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <span className="font-bold text-slate-800 text-xs">{cat.nombre}</span>
-                      <button
-                        onClick={() => setEditingCat(cat)}
-                        className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition-all hover:scale-110 active:scale-90 cursor-pointer"
-                        title="Editar nombre de categoría"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteCategory(cat.id, cat.nombre)}
-                        className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition-all hover:scale-110 active:scale-90 cursor-pointer"
-                        title="Eliminar categoría"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                    {cat.descripcion && (
-                      <p className="text-[10px] text-slate-400 font-normal mt-0.5 truncate max-w-[180px]">
-                        {cat.descripcion}
-                      </p>
-                    )}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {areas.map((area) => (
-                <tr key={area.id} className="hover:bg-slate-50/70 transition-colors">
-                  {/* Nombre del Área */}
-                  <td className="px-5 py-4 font-bold text-slate-900 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r border-slate-200 shadow-xs">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                        <Store className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="text-sm">{area.name}</span>
-                    </div>
-                  </td>
+        {/* Buscador y Botón Nueva Categoría */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-64">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Buscar categoría..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-indigo-500 outline-none"
+            />
+          </div>
 
-                  {/* Celdas con selector de centro de producción */}
-                  {printCategories.map((cat) => {
-                    const currentCenterId = matrixLookup.get(`${area.id}_${cat.id}`);
-                    const cellKey = `${area.id}-${cat.id}`;
-                    const isSaving = savingCell === cellKey;
+          <button
+            onClick={() => setModalNewCat(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition active:scale-95 shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Nueva Categoría</span>
+          </button>
 
-                    return (
-                      <td key={cat.id} className="px-4 py-3.5 text-center">
-                        <div className="relative inline-block w-full">
-                          <select
-                            value={currentCenterId || ''}
-                            disabled={isSaving}
-                            onChange={(e) => handleCellChange(area.id, cat.id, e.target.value)}
-                            className={`w-full text-xs font-semibold px-3 py-2 rounded-xl border transition outline-none cursor-pointer ${
-                              currentCenterId
-                                ? 'bg-indigo-50/70 border-indigo-200 text-indigo-950 focus:border-indigo-500'
-                                : 'bg-slate-50 border-dashed border-slate-300 text-slate-400 hover:border-slate-400'
-                            }`}
-                          >
-                            <option value="">(Sin asignar / Default)</option>
-                            {productionCenters.map((pc) => (
-                              <option key={pc.id} value={pc.id}>
-                                ➔ {pc.name} {pc.printer_name ? `(${pc.printer_name})` : ''}
-                              </option>
-                            ))}
-                          </select>
-                          {isSaving && (
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2">
-                              <RefreshCw className="w-3 h-3 text-indigo-600 animate-spin" />
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <button
+            onClick={() => onReload && onReload()}
+            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl border border-slate-200 transition cursor-pointer"
+            title="Recargar rutas"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {/* ── SIMULADOR DE ENRUTAMIENTO EN VIVO ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* ── CUADRÍCULA DE TARJETAS INTUITIVAS POR CATEGORÍA ── */}
+      {filteredCategories.length === 0 ? (
+        <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm">
+          <SlidersHorizontal className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <p className="text-sm font-bold text-slate-700">No se encontraron categorías de impresión</p>
+          <p className="text-xs text-slate-400 mt-1">
+            {searchTerm ? 'Prueba con otro término de búsqueda.' : 'Crea tu primera categoría para comenzar a enrutar platillos.'}
+          </p>
+          <button
+            onClick={() => setModalNewCat(true)}
+            className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-xs inline-flex items-center gap-1.5 shadow-sm"
+          >
+            <Plus className="w-4 h-4" /> Crear Primera Categoría
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {filteredCategories.map(({ cat, productCount, mainCenterId, mainCenter, exceptions, availableAreasForException }) => {
+            const IconComponent = getCategoryIcon(cat.nombre);
+            const isSaving = savingCatId === cat.id;
+
+            return (
+              <div
+                key={cat.id}
+                className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-200 flex flex-col justify-between relative group"
+              >
+                {/* Indicador de guardado flotante */}
+                {isSaving && (
+                  <div className="absolute inset-0 bg-white/70 backdrop-blur-2xs rounded-3xl z-20 flex items-center justify-center gap-2">
+                    <RefreshCw className="w-5 h-5 text-indigo-600 animate-spin" />
+                    <span className="text-xs font-bold text-indigo-900">Guardando ruta...</span>
+                  </div>
+                )}
+
+                <div>
+                  {/* Encabezado de la Tarjeta */}
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                        <IconComponent className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-slate-900 text-sm truncate" title={cat.nombre}>
+                          {cat.nombre}
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {productCount} platillo{productCount === 1 ? '' : 's'} asignado{productCount === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Botones de Editar y Eliminar Categoría */}
+                    <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => setEditingCat(cat)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                        title="Editar nombre"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCategory(cat.id, cat.nombre)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                        title="Eliminar categoría"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Destino Principal (Todo el restaurante) */}
+                  <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-slate-200/70 mb-4">
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">
+                      ¿A qué estación se envía principalmente?
+                    </label>
+                    <select
+                      value={mainCenterId || ''}
+                      onChange={(e) => handleSetMainCenter(cat.id, e.target.value)}
+                      className="w-full text-xs font-bold px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 shadow-2xs outline-none focus:border-indigo-500 cursor-pointer"
+                    >
+                      <option value="">Selecciona estación de destino...</option>
+                      {productionCenters.map((pc) => (
+                        <option key={pc.id} value={pc.id}>
+                          ➔ {pc.name} {pc.printer_name ? `(${pc.printer_name})` : ''}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="flex items-center gap-1.5 mt-2 text-[11px] text-slate-500">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <span>
+                        {mainCenter
+                          ? `Por defecto va a ${mainCenter.name} para todas las áreas.`
+                          : 'Selecciona una cocina o bar predeterminado.'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Sección de Excepciones por Área */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                        Excepciones por Área
+                      </span>
+                      {exceptions.length > 0 && (
+                        <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+                          {exceptions.length} activa{exceptions.length === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Lista de excepciones activas */}
+                    {exceptions.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {exceptions.map(({ area, centerId }) => (
+                          <div
+                            key={area.id}
+                            className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-bold text-slate-800 block truncate">{area.name}</span>
+                              <span className="text-[10px] text-amber-800">Se prepara en:</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <select
+                                value={centerId || ''}
+                                onChange={(e) => handleUpdateExceptionCenter(cat.id, area.id, e.target.value)}
+                                className="text-xs font-semibold px-2 py-1 bg-white border border-amber-300 rounded-lg text-slate-800 outline-none"
+                              >
+                                {productionCenters.map((pc) => (
+                                  <option key={pc.id} value={pc.id}>
+                                    {pc.name}
+                                  </option>
+                                ))}
+                              </select>
+
+                              <button
+                                onClick={() => handleRemoveException(cat.id, area.id, mainCenterId)}
+                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition"
+                                title="Quitar excepción (usar estación principal)"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 italic bg-slate-50/50 p-2 rounded-xl">
+                        Sin excepciones. Todas las áreas usan la estación principal.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Pie de la tarjeta: Botón para agregar excepción */}
+                <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+                  {availableAreasForException.length > 0 ? (
+                    <button
+                      onClick={() => openAddExceptionModal({ cat, mainCenterId, availableAreasForException })}
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-xl transition inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Agregar excepción por área</span>
+                    </button>
+                  ) : (
+                    <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" /> Todas las áreas tienen ruta
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── SIMULADOR DE ENRUTAMIENTO EN VIVO & PRODUCTOS EXCLUSIVOS ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
         {/* Simulador Interactivo */}
         <div className="lg:col-span-2 bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
           <div className="flex items-center justify-between mb-4">
@@ -334,11 +652,11 @@ export function RoutingMatrixSection({
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">Simulador de Comanda en Vivo</h3>
-                <p className="text-xs text-slate-500">Verifica cómo resolverá el sistema antes del servicio</p>
+                <p className="text-xs text-slate-500">Prueba al instante a qué cocina o bar se enviará cualquier platillo</p>
               </div>
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
-              Prueba Instantánea
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full">
+              Verificador en Tiempo Real
             </span>
           </div>
 
@@ -350,7 +668,7 @@ export function RoutingMatrixSection({
               <select
                 value={simAreaId}
                 onChange={(e) => setSimAreaId(e.target.value)}
-                className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:border-indigo-500"
+                className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:border-indigo-500 cursor-pointer"
               >
                 {areas.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -366,7 +684,7 @@ export function RoutingMatrixSection({
               <select
                 value={simProductId}
                 onChange={(e) => setSimProductId(e.target.value)}
-                className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:border-indigo-500"
+                className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:border-indigo-500 cursor-pointer"
               >
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -381,15 +699,17 @@ export function RoutingMatrixSection({
             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Resultado del Enrutamiento
+                  Destino Calculado
                 </span>
-                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                  simulationResult.tipo === 'EXCLUSIVO'
-                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                    : simulationResult.tipo.includes('DINÁMICO')
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                    : 'bg-amber-100 text-amber-800 border border-amber-200'
-                }`}>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    simulationResult.tipo === 'EXCLUSIVO'
+                      ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                      : simulationResult.tipo === 'AUTOMÁTICO'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : 'bg-amber-100 text-amber-800 border border-amber-200'
+                  }`}
+                >
                   {simulationResult.tipo}
                 </span>
               </div>
@@ -401,7 +721,10 @@ export function RoutingMatrixSection({
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-600 mb-2">
                 <Printer className="w-3.5 h-3.5 text-slate-400" />
-                <span>Impresora de red: <strong className="font-mono text-slate-800">{simulationResult.printer}</strong></span>
+                <span>
+                  Dispositivo de salida:{' '}
+                  <strong className="font-mono text-slate-800">{simulationResult.printer}</strong>
+                </span>
               </div>
               <p className="text-[11px] text-slate-500 border-t border-slate-200/60 pt-2 mt-2">
                 {simulationResult.explicacion}
@@ -423,17 +746,20 @@ export function RoutingMatrixSection({
               </span>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed mb-3">
-              Platillos o bebidas con estación fija (ej: Coctelería de autor, Horno de Leña o Pastelería) que se preparan siempre en el mismo lugar sin importar el área.
+              Platillos o bebidas con estación fija (ej: Horno de Leña, Parrilla especial) que se preparan siempre en el mismo lugar sin importar el área.
             </p>
 
             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
               {exclusiveProducts.length === 0 ? (
                 <p className="text-xs text-slate-400 p-4 text-center bg-slate-50 rounded-xl">
-                  No hay productos con centro exclusivo fijado. Todos se resuelven dinámicamente por la matriz.
+                  No hay productos con centro exclusivo fijado. Todos se resuelven dinámicamente por la categoría.
                 </p>
               ) : (
                 exclusiveProducts.map((p) => (
-                  <div key={p.id} className="p-2.5 rounded-xl bg-purple-50/50 border border-purple-100 flex items-center justify-between">
+                  <div
+                    key={p.id}
+                    className="p-2.5 rounded-xl bg-purple-50/50 border border-purple-100 flex items-center justify-between"
+                  >
                     <div>
                       <p className="text-xs font-bold text-slate-800">{p.name}</p>
                       <p className="text-[10px] text-purple-700 font-medium">
@@ -447,10 +773,86 @@ export function RoutingMatrixSection({
           </div>
 
           <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-400">
-            Puedes configurar exclusividad al editar cualquier producto en el apartado de Productos.
+            Puedes configurar exclusividad al editar un platillo en la sección de Productos.
           </div>
         </div>
       </div>
+
+      {/* ── MODAL AGREGAR EXCEPCIÓN POR ÁREA ── */}
+      {addingExceptionCat && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 animate-scale-in">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Agregar Excepción de Área</h3>
+                <p className="text-xs text-slate-500">
+                  Para categoría: <strong>{addingExceptionCat.cat.nombre}</strong>
+                </p>
+              </div>
+              <button onClick={() => setAddingExceptionCat(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveException} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  1. ¿En qué Área del restaurante?
+                </label>
+                <select
+                  required
+                  value={exceptionForm.areaId}
+                  onChange={(e) => setExceptionForm({ ...exceptionForm, areaId: e.target.value })}
+                  className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-indigo-500 outline-none cursor-pointer"
+                >
+                  <option value="">Selecciona el área...</option>
+                  {addingExceptionCat.availableAreasForException.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  2. ¿A qué Estación se debe enviar en esta área?
+                </label>
+                <select
+                  required
+                  value={exceptionForm.centerId}
+                  onChange={(e) => setExceptionForm({ ...exceptionForm, centerId: e.target.value })}
+                  className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-indigo-500 outline-none cursor-pointer"
+                >
+                  <option value="">Selecciona cocina o bar...</option>
+                  {productionCenters.map((pc) => (
+                    <option key={pc.id} value={pc.id}>
+                      ➔ {pc.name} {pc.printer_name ? `(${pc.printer_name})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAddingExceptionCat(null)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={!exceptionForm.areaId || !exceptionForm.centerId}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl"
+                >
+                  Guardar Excepción
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL NUEVA CATEGORÍA DE IMPRESIÓN ── */}
       {modalNewCat && (
@@ -468,22 +870,44 @@ export function RoutingMatrixSection({
                 <input
                   type="text"
                   required
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  placeholder="Ej: Bebidas, Cocina Caliente, Postres"
+                  value={newCatForm.nombre}
+                  onChange={(e) => setNewCatForm({ ...newCatForm, nombre: e.target.value })}
+                  placeholder="Ej: Bebidas, Cocina Caliente, Postres, Entradas"
                   className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-indigo-500 outline-none"
                 />
               </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Estación Inicial de Destino (Cocina o Bar)
+                </label>
+                <select
+                  value={newCatForm.defaultCenterId}
+                  onChange={(e) => setNewCatForm({ ...newCatForm, defaultCenterId: e.target.value })}
+                  className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-indigo-500 outline-none cursor-pointer"
+                >
+                  {productionCenters.map((pc) => (
+                    <option key={pc.id} value={pc.id}>
+                      ➔ {pc.name} {pc.printer_name ? `(${pc.printer_name})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Se configurará automáticamente para todas las áreas del restaurante.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Descripción (Opcional)</label>
                 <input
                   type="text"
-                  value={newCatDesc}
-                  onChange={(e) => setNewCatDesc(e.target.value)}
+                  value={newCatForm.descripcion}
+                  onChange={(e) => setNewCatForm({ ...newCatForm, descripcion: e.target.value })}
                   placeholder="Ej: Tragos directos, cerveza y refrescos"
                   className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-indigo-500 outline-none"
                 />
               </div>
+
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
@@ -494,10 +918,10 @@ export function RoutingMatrixSection({
                 </button>
                 <button
                   type="submit"
-                  disabled={!newCatName.trim()}
+                  disabled={!newCatForm.nombre.trim()}
                   className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl"
                 >
-                  Crear Categoría
+                  Crear y Enrutar
                 </button>
               </div>
             </form>
@@ -558,3 +982,5 @@ export function RoutingMatrixSection({
     </div>
   );
 }
+
+export default RoutingMatrixSection;

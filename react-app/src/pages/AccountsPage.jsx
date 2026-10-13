@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import api from '../api';
 import { BackButton } from '../components/BackButton';
+import { printPrecheckThermal } from '../utils/printReceipts';
 import { 
   Receipt, 
   Printer, 
@@ -27,7 +28,7 @@ import {
   LogOut
 } from 'lucide-react';
 
-export function AccountsPage({ onBack, onSelectAccount }) {
+export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
   const { user, logout } = useAuth();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState('open'); // 'open' | 'closed'
@@ -43,6 +44,7 @@ export function AccountsPage({ onBack, onSelectAccount }) {
   const [selected, setSelected] = useState([]);
   const [joining, setJoining] = useState(false);
   const [printing, setPrinting] = useState(null);
+  const [businessProfile, setBusinessProfile] = useState(null);
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,6 +75,9 @@ export function AccountsPage({ onBack, onSelectAccount }) {
       if (bootstrapRes.status === 'fulfilled') {
         const bCenters = bootstrapRes.value?.centers || [];
         setCenters(bCenters);
+        if (bootstrapRes.value?.businessProfile) {
+          setBusinessProfile(bootstrapRes.value.businessProfile);
+        }
         if (bCenters.length > 0 && !selectedCenterId) {
           setSelectedCenterId(bCenters[0].id);
         }
@@ -184,64 +189,12 @@ export function AccountsPage({ onBack, onSelectAccount }) {
     setPrinting(accountId);
     try {
       const data = await api.printPrecheck(accountId);
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        const account = data.account;
-        const items = data.items || [];
-        const subtotal = items.reduce((sum, i) => sum + Number(i.line_total || 0), 0);
-        const tax = subtotal * 0.12;
-        const total = subtotal + tax;
-        
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Precuenta - ${account.check_number}</title>
-            <style>
-              body { font-family: 'Consolas', 'Courier New', monospace; padding: 20px; max-width: 300px; margin: auto; }
-              h2 { text-align: center; margin-bottom: 5px; }
-              p { margin: 3px 0; text-align: center; }
-              hr { border: 1px dashed #000; }
-              .item { display: flex; justify-content: space-between; margin: 5px 0; }
-              .total { font-weight: bold; font-size: 1.2em; }
-              .center { text-align: center; }
-            </style>
-          </head>
-          <body>
-            <h2>${account.center_name || 'Restaurante'}</h2>
-            <p class="center">${new Date().toLocaleString()}</p>
-            <p class="center"><strong>Check: ${account.check_number}</strong></p>
-            <p class="center">Mesa: ${account.table_code}</p>
-            <p class="center">Mesero: ${account.waiter_name}</p>
-            <p class="center">Comensales: ${account.guest_count || 1}</p>
-            <hr>
-            ${items.map(item => `
-              <div class="item">
-                <span>${item.qty}x ${item.product_name}</span>
-                <span>Q${Number(item.line_total || 0).toFixed(2)}</span>
-              </div>
-            `).join('')}
-            <hr>
-            <div class="item">
-              <span>Subtotal</span>
-              <span>Q${subtotal.toFixed(2)}</span>
-            </div>
-            <div class="item">
-              <span>Impuesto (12%)</span>
-              <span>Q${tax.toFixed(2)}</span>
-            </div>
-            <div class="item total">
-              <span>TOTAL</span>
-              <span>Q${total.toFixed(2)}</span>
-            </div>
-            <hr>
-            <p class="center" style="font-size: 0.8em; margin-top: 20px;">¡Gracias por su visita!</p>
-            <script>window.print();</script>
-          </body>
-          </html>
-        `);
-        printWindow.document.close();
-      }
+      printPrecheckThermal({
+        account: data.account,
+        items: data.items,
+        businessProfile
+      });
+      toast.success('Precuenta enviada a imprimir');
     } catch (err) {
       toast.error('Error al imprimir precuenta');
     } finally {
@@ -476,29 +429,42 @@ export function AccountsPage({ onBack, onSelectAccount }) {
 
         {/* Tab switch row */}
         <div className="px-4 lg:px-6 pb-2.5 pt-1 max-w-[1600px] mx-auto flex items-center justify-between flex-wrap gap-2 border-t border-slate-100">
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80">
-            <button
-              onClick={() => setActiveTab('open')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
-                activeTab === 'open'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Receipt className="w-3.5 h-3.5" />
-              <span>Abiertas ({accounts.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('closed')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
-                activeTab === 'closed'
-                  ? 'bg-[#0a4855] text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Cerradas (Hoy) ({closedAccounts.length})</span>
-            </button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+              <button
+                onClick={() => setActiveTab('open')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'open'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                <span>Abiertas ({accounts.length})</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('closed')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'closed'
+                    ? 'bg-[#0a4855] text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Cerradas (Hoy) ({closedAccounts.length})</span>
+              </button>
+            </div>
+
+            {onNavigate && (
+              <button
+                onClick={() => onNavigate('cxc')}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all shadow-2xs cursor-pointer"
+                title="Abrir Cuentas por Cobrar (Clientes, Créditos y Folios)"
+              >
+                <Users className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Cuentas por Cobrar (CXC)</span>
+              </button>
+            )}
           </div>
 
           {activeTab === 'closed' && centers.length > 0 && (

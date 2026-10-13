@@ -96,12 +96,21 @@ const paymentsRepository = {
   },
 
   /**
-   * Marca una cuenta como pagada y cerrada.
+   * Marca una cuenta como pagada y cerrada, vinculándola al turno activo si no tenía o si pertenecía a uno cerrado.
    */
   async markAccountAsPaid(accountId, closedAt = nowSql(), conn) {
     const q = conn ? conn.query.bind(conn) : query;
     await q(
-      `UPDATE accounts SET status = 'paid', closed_at = ? WHERE id = ?`,
+      `UPDATE accounts a
+       LEFT JOIN shifts s ON s.id = a.shift_id
+       LEFT JOIN shifts active_s ON active_s.operation_center_id = a.operation_center_id AND active_s.status = 'open'
+       SET a.status = 'paid',
+           a.closed_at = ?,
+           a.shift_id = CASE
+             WHEN a.shift_id IS NULL OR s.status = 'closed' THEN COALESCE(active_s.id, a.shift_id)
+             ELSE a.shift_id
+           END
+       WHERE a.id = ?`,
       [closedAt, accountId]
     );
   },

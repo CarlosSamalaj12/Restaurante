@@ -9,6 +9,7 @@ const PAYMENT_METHOD_DEFAULTS = [
   { code: "transfer", label: "Transferencia" },
   { code: "cxc", label: "Cuentas por Cobrar" },
   { code: "credit_folio", label: "Crédito Folio" },
+  { code: "room_charge", label: "Cargo a Habitación" },
   { code: "other", label: "Otros" },
 ];
 
@@ -205,6 +206,17 @@ async function ensureConfigTables() {
       ]
     );
   }
+
+  await safeExec(`ALTER TABLE business_profile ADD COLUMN business_subtitle VARCHAR(150) NULL DEFAULT 'POS RESTAURANTE & BAR'`);
+  await safeExec(`ALTER TABLE business_profile ADD COLUMN receipt_logo_url TEXT NULL`);
+  await safeExec(`ALTER TABLE business_profile ADD COLUMN shift_receipt_footer TEXT NULL`);
+  await safeExec(`
+    UPDATE business_profile 
+    SET business_subtitle = COALESCE(business_subtitle, 'POS RESTAURANTE & BAR'),
+        receipt_footer = COALESCE(receipt_footer, '¡Gracias por su preferencia!'),
+        shift_receipt_footer = COALESCE(shift_receipt_footer, '💡 Arqueo parcial completado: Todos los cheques han sido consolidados según las formas de pago configuradas en el turno actual.')
+    WHERE id > 0
+  `);
 
   await safeExec(`ALTER TABLE modifier_groups MODIFY COLUMN group_type VARCHAR(50) NOT NULL DEFAULT 'multiple'`);
 
@@ -676,6 +688,166 @@ async function ensureConfigTables() {
     `);
   } catch (viewPermErr) {
     console.warn("[MIGRATION] Error asegurando permisos de vistas:", viewPermErr.message);
+  }
+
+  // Asegurar tabla y catálogo central de impresoras
+  try {
+    await ensurePrintersTable();
+  } catch (printerErr) {
+    console.warn("[MIGRATION] Error asegurando tabla printers:", printerErr.message);
+  }
+}
+
+async function ensurePrintersTable() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS printers (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      ip VARCHAR(50) NOT NULL,
+      port INT NOT NULL DEFAULT 9100,
+      type ENUM('production', 'receipt', 'both') NOT NULL DEFAULT 'production',
+      paper_width VARCHAR(20) NOT NULL DEFAULT '80mm',
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      description VARCHAR(255) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_printers_active (is_active)
+    )
+  `);
+
+  await safeExec(`ALTER TABLE production_centers ADD COLUMN printer_id INT NULL`);
+  await safeExec(`ALTER TABLE terminals ADD COLUMN printer_id INT NULL`);
+
+  // Migración automática de impresoras existentes si la tabla printers está vacía
+  try {
+    const [existingPrinters] = await query(`SELECT COUNT(*) AS total FROM printers`);
+    if (Number(existingPrinters?.[0]?.total || 0) === 0) {
+      // 1. Obtener impresoras desde production_centers
+      const [prodPrinters] = await query(`
+        SELECT DISTINCT printer_name, printer_ip, printer_port
+        FROM production_centers
+        WHERE printer_ip IS NOT NULL AND TRIM(printer_ip) != ''
+      `);
+
+      for (const p of prodPrinters) {
+        const pName = p.printer_name?.trim() || `Impresora ${p.printer_ip}`;
+        const pPort = Number(p.printer_port) || 9100;
+        const [res] = await query(
+          `INSERT INTO printers (name, ip, port, type, paper_width, is_active, description)
+           VALUES (?, ?, ?, 'production', '80mm', 1, 'Importada automáticamente desde Centros de Producción')`,
+          [pName, p.printer_ip.trim(), pPort]
+        );
+        const newPrinterId = res.insertId;
+        await query(
+          `UPDATE production_centers SET printer_id = ? WHERE printer_ip = ?`,
+          [newPrinterId, p.printer_ip.trim()]
+        );
+      }
+
+      // 2. Obtener impresoras desde terminals
+      const [termPrinters] = await query(`
+        SELECT DISTINCT printer_name, printer_ip, printer_port
+        FROM terminals
+        WHERE printer_ip IS NOT NULL AND TRIM(printer_ip) != ''
+      `);
+
+      for (const t of termPrinters) {
+        const ip = t.printer_ip.trim();
+        const [match] = await query(`SELECT id, type FROM printers WHERE ip = ? LIMIT 1`, [ip]);
+        if (match && match.length > 0) {
+          await query(`UPDATE printers SET type = 'both' WHERE id = ?`, [match[0].id]);
+          await query(`UPDATE terminals SET printer_id = ? WHERE printer_ip = ?`, [match[0].id, ip]);
+        } else {
+          const tName = t.printer_name?.trim() || `Impresora Caja ${ip}`;
+          const tPort = Number(t.printer_port) || 9100;
+          const [res] = await query(
+            `INSERT INTO printers (name, ip, port, type, paper_width, is_active, description)
+             VALUES (?, ?, ?, 'receipt', '80mm', 1, 'Importada automáticamente desde Terminales POS')`,
+            [tName, ip, tPort]
+          );
+          await query(`UPDATE terminals SET printer_id = ? WHERE printer_ip = ?`, [res.insertId, ip]);
+        }
+      }
+
+      // 3. Si aún así no hay ninguna impresora registrada, sembrar ejemplos por defecto
+      const [checkAgain] = await query(`SELECT COUNT(*) AS total FROM printers`);
+      if (Number(checkAgain?.[0]?.total || 0) === 0) {
+        await query(`
+          INSERT INTO printers (name, ip, port, type, paper_width, is_active, description) VALUES
+          ('Ticketera Cocina', '192.168.1.51', 9100, 'production', '80mm', 1, 'Impresora térmica para comandas de cocina y parrilla'),
+          ('Impresora Caja Principal', '192.168.1.50', 9100, 'receipt', '80mm', 1, 'Impresora térmica para tickets de cuenta y cobro')
+        `);
+      }
+    }
+  } catch (migErr) {
+    console.warn("[MIGRATION] Error en auto-migración de impresoras:", migErr.message);
+  }
+
+  // ─── Migración y aseguramiento de tablas para Hotel PMS ───
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS pms_config (
+        id INT PRIMARY KEY DEFAULT 1,
+        is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+        base_url VARCHAR(255) NULL,
+        api_key VARCHAR(255) NULL,
+        sandbox_mode TINYINT(1) NOT NULL DEFAULT 1,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await query(`INSERT IGNORE INTO pms_config (id, is_enabled, sandbox_mode) VALUES (1, 1, 1)`);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS pms_sandbox_rooms (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        room_number VARCHAR(10) NOT NULL UNIQUE,
+        room_type VARCHAR(50) NOT NULL DEFAULT 'Standard',
+        guest_name VARCHAR(120) NOT NULL,
+        doc_number VARCHAR(50) NULL,
+        check_in DATETIME NOT NULL,
+        check_out DATETIME NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'checked_in',
+        post_allowed TINYINT(1) NOT NULL DEFAULT 1,
+        credit_limit DECIMAL(12,2) NOT NULL DEFAULT 1500.00,
+        current_balance DECIMAL(12,2) NOT NULL DEFAULT 0.00
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    // Sembrar habitaciones de prueba en sandbox si está vacía
+    const [roomsCount] = await query(`SELECT COUNT(*) AS total FROM pms_sandbox_rooms`);
+    if (Number(roomsCount?.[0]?.total || 0) === 0) {
+      await query(`
+        INSERT INTO pms_sandbox_rooms 
+        (room_number, room_type, guest_name, doc_number, check_in, check_out, status, post_allowed, credit_limit, current_balance)
+        VALUES 
+        ('101', 'Standard Doble', 'Juan Carlos Pérez', '2849102830101', NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 3 DAY, 'checked_in', 1, 1500.00, 350.00),
+        ('102', 'Standard King', 'Sofía Martínez', '1948201940101', NOW(), NOW() + INTERVAL 2 DAY, 'checked_in', 1, 2000.00, 0.00),
+        ('204', 'Suite Deluxe', 'Carlos Samalaj', '3029182930101', NOW() - INTERVAL 2 DAY, NOW() + INTERVAL 4 DAY, 'checked_in', 1, 3500.00, 450.00),
+        ('305', 'Junior Suite', 'Roberto Alvarado', '1092837460101', NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 DAY, 'checked_in', 1, 500.00, 480.00),
+        ('401', 'Standard Single', 'Mario Gómez (No-Post)', '9283746150101', NOW(), NOW() + INTERVAL 2 DAY, 'checked_in', 0, 0.00, 0.00)
+      `);
+    }
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS pms_folio_charges (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        transaction_id VARCHAR(80) NOT NULL UNIQUE,
+        room_number VARCHAR(20) NOT NULL,
+        guest_name VARCHAR(120) NOT NULL,
+        account_id INT NOT NULL,
+        check_number VARCHAR(50) NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        subtotal_food DECIMAL(12,2) DEFAULT 0.00,
+        subtotal_beverage DECIMAL(12,2) DEFAULT 0.00,
+        subtotal_other DECIMAL(12,2) DEFAULT 0.00,
+        tip_amount DECIMAL(12,2) DEFAULT 0.00,
+        tax_amount DECIMAL(12,2) DEFAULT 0.00,
+        status VARCHAR(20) NOT NULL DEFAULT 'applied',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+  } catch (pmsErr) {
+    console.warn("[MIGRATION] Error en auto-migración de PMS:", pmsErr.message);
   }
 }
 

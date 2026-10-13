@@ -5,6 +5,7 @@ import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { MacDock } from '../components/MacDock';
 import { BackButton } from '../components/BackButton';
+import { printPrecheckThermal } from '../utils/printReceipts';
 import {
   ArrowLeft,
   Users,
@@ -164,7 +165,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
   const [printingId, setPrintingId] = useState(null);
 
   const toast = useToast();
-  const { user, selectedTerminal, restaurantName, logoUrl, currencySymbol = '$', canView, logout } = useAuth();
+  const { user, selectedTerminal, restaurantName, logoUrl, currencySymbol = '$', canView, logout, businessProfile } = useAuth();
 
   const isKioskMode = user?.default_view === 'tables' && !canView('dashboard');
   const lockedCenterId = selectedTerminal?.operation_center_id || user?.operation_center_id;
@@ -320,7 +321,12 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
     e.stopPropagation();
     setPrintingId(accountId);
     try {
-      await api.printPrecheck(accountId);
+      const data = await api.printPrecheck(accountId);
+      printPrecheckThermal({
+        account: data.account,
+        items: data.items,
+        businessProfile
+      });
       toast.success('Pre-cuenta enviada a imprimir');
     } catch (error) {
       toast.error(error.message || 'Error al imprimir pre-cuenta');
@@ -683,20 +689,22 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
               className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-gray-100"
             >
               <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-[#EAF8F5] border border-[#BCECE0] text-[#0D8267] flex items-center justify-center font-black text-lg">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-12 min-w-[56px] px-3.5 rounded-2xl bg-[#EAF8F5] border border-[#BCECE0] text-[#0D8267] flex items-center justify-center font-black text-base whitespace-nowrap shrink-0 shadow-xs tracking-tight">
                     {activeTable.code}
                   </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900 text-base">Abrir Mesa</h3>
-                    <p className="text-xs text-gray-500 font-medium">
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-gray-900 text-base leading-tight truncate">
+                      Abrir Mesa {activeTable.code}
+                    </h3>
+                    <p className="text-xs text-gray-500 font-medium truncate mt-0.5">
                       {activeTable.area_name} · Capacidad: {activeTable.seats}p
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowQuickOpen(false)}
-                  className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0 ml-2"
                 >
                   <X className="w-5 h-5" />
                 </button>

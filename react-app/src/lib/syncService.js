@@ -76,7 +76,12 @@ export const syncService = {
       }
 
       // 3. Turno activo
-      const shiftRes = await api.getActiveShift().catch(() => null);
+      let shiftRes = null;
+      if (typeof api.getActiveShift === 'function') {
+        shiftRes = await api.getActiveShift(1).catch(() => null);
+      } else if (typeof api.checkActiveShift === 'function') {
+        shiftRes = await api.checkActiveShift(1).catch(() => null);
+      }
       if (shiftRes) {
         await offlineDb.saveActiveShift(shiftRes);
       }

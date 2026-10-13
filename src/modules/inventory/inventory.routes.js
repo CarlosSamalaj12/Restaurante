@@ -3,8 +3,11 @@
 
 const express = require("express");
 const inventoryController = require("./inventory.controller");
+const authService = require("../auth/auth.service");
 
+const requireAuth = authService.requireAuth();
 const inventoryRouter = express.Router();
+inventoryRouter.use(requireAuth);
 
 inventoryRouter.get("/items", inventoryController.getAllItems);
 inventoryRouter.post("/items", inventoryController.createItem);
