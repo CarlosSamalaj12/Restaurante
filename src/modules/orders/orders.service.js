@@ -185,6 +185,8 @@ const ordersService = {
       check_number: account.check_number,
       table_code: account.table_code,
       waiter_name: account.waiter_name,
+      waiter_id: account.waiter_id,
+      order_source: account.order_source,
     };
 
     for (const ticket of tickets) {

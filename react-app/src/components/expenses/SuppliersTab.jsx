@@ -17,6 +17,7 @@ import {
 import { SupplierFormModal } from './SupplierFormModal';
 import { SupplierStatementModal } from './SupplierStatementModal';
 import { SupplierPaymentModal } from './SupplierPaymentModal';
+import { ConfirmDialog } from '../ConfirmDialog';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
 
@@ -30,6 +31,23 @@ export function SuppliersTab({ suppliers = [], onReload }) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [statementSupplierId, setStatementSupplierId] = useState(null);
   const [payingSupplier, setPayingSupplier] = useState(null);
+
+  // Diálogo de confirmación moderno con diseño
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Eliminar Proveedor',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
 
   const filtered = suppliers.filter((s) => {
     const matchesSearch =
@@ -45,20 +63,34 @@ export function SuppliersTab({ suppliers = [], onReload }) {
   const totalDebt = suppliers.reduce((acc, s) => acc + Number(s.pending_balance || 0), 0);
   const suppliersWithDebt = suppliers.filter((s) => Number(s.pending_balance || 0) > 0).length;
 
-  const handleDelete = async (id, name, balance) => {
+  const handleDelete = (id, name, balance) => {
     if (balance > 0) {
-      toast.show('No puedes eliminar un proveedor con saldo deudor pendiente', { type: 'error' });
+      toast.error('No puedes eliminar un proveedor con saldo deudor pendiente');
       return;
     }
-    if (!window.confirm(`¿Estás seguro de eliminar el proveedor "${name}"?`)) return;
 
-    try {
-      await api.expenses.deleteSupplier(id);
-      toast.show('Proveedor eliminado', { type: 'success' });
-      onReload?.();
-    } catch (err) {
-      toast.show(err.message || 'Error al eliminar', { type: 'error' });
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Eliminar este proveedor?',
+      message: 'El proveedor se removerá de tu catálogo comercial. El historial contable ya cerrado no se modificará.',
+      itemName: name,
+      itemDetail: 'Sin deuda pendiente',
+      variant: 'danger',
+      confirmText: 'Eliminar Proveedor',
+      loading: false,
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          await api.expenses.deleteSupplier(id);
+          toast.success('Proveedor eliminado exitosamente');
+          onReload?.();
+          closeConfirm();
+        } catch (err) {
+          toast.error(err.message || 'Error al eliminar');
+          closeConfirm();
+        }
+      },
+    });
   };
 
   return (
@@ -285,6 +317,20 @@ export function SuppliersTab({ suppliers = [], onReload }) {
         onClose={() => setPayingSupplier(null)}
         supplier={payingSupplier}
         onSaved={onReload}
+      />
+
+      {/* Modal de confirmación estilizado */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
       />
     </div>
   );

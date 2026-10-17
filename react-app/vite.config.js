@@ -9,16 +9,19 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3000',
-        changeOrigin: true
+        changeOrigin: true,
+        xfwd: true
       },
       '/uploads': {
         target: 'http://127.0.0.1:3000',
-        changeOrigin: true
+        changeOrigin: true,
+        xfwd: true
       },
       '/socket.io': {
         target: 'http://127.0.0.1:3000',
         ws: true,
-        changeOrigin: true
+        changeOrigin: true,
+        xfwd: true
       }
     }
   }

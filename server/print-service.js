@@ -186,7 +186,11 @@ function buildKitchenTicket(ticket, center, account) {
     if (account?.check_number) {
       printer.style("b").size(1, 1).text(`PEDIDO: #${account.check_number}`).style("normal");
     }
-    if (account?.waiter_name) {
+    if (account?.order_source === "qr_guest" || account?.waiter_id === 9999) {
+      printer.style("b").size(1, 1).text("ORIGEN: CLIENTE QR (SIN MESERO)").style("normal");
+    } else if (account?.order_source === "kiosk") {
+      printer.style("b").size(1, 1).text("ORIGEN: KIOSCO AUTOSERVICIO").style("normal");
+    } else if (account?.waiter_name) {
       printer.size(1, 1).text(`MESERO: ${account.waiter_name}`);
     }
     printer.size(1, 1).text(`HORA:   ${time}`);

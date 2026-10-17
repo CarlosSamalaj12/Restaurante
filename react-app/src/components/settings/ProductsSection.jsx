@@ -18,6 +18,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { ProductIconBadge } from '../../utils/productIcons';
+import { ImageUploadField } from '../common/ImageUploadField';
 
 // Products Section
 export function ProductsSection({ products, categories, productionCenters, productProductionCenters, modifierGroups, productModifierGroups, centers, printCategories = [], printers = [], onReload }) {
@@ -91,11 +92,17 @@ export function ProductsSection({ products, categories, productionCenters, produ
               className="bg-white rounded-xl p-4 shadow-sm border border-gray-100/80 hover:shadow-md transition-shadow duration-200"
             >
               <div className="flex items-center gap-3">
-                <ProductIconBadge
-                  productName={product.name}
-                  categoryName={product.category_name}
-                  size="md"
-                />
+                {product.image_url ? (
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                    <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <ProductIconBadge
+                    productName={product.name}
+                    categoryName={product.category_name}
+                    size="md"
+                  />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-medium text-gray-900 truncate">{product.name}</p>
@@ -247,6 +254,9 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
     basePrice: editingProduct?.base_price ?? 0,
     allowDiscount: editingProduct?.allow_discount ?? true,
     trackInventory: editingProduct?.track_inventory ?? false,
+    image_url: editingProduct?.image_url || '',
+    description: editingProduct?.description || '',
+    estimated_prep_min: editingProduct?.estimated_prep_min || '',
     productionCenterIds: existingProductionCenters,
     modifierGroupIds: existingModifierGroupIds,
     recipe: [],
@@ -331,6 +341,11 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
         centerId: form.operationCenterId || null,
         categoriaImpresionId: form.categoriaImpresionId ? Number(form.categoriaImpresionId) : null,
         centroProduccionExclusivoId: form.centroProduccionExclusivoId ? Number(form.centroProduccionExclusivoId) : null,
+        imageUrl: form.image_url || null,
+        image_url: form.image_url || null,
+        description: form.description || null,
+        estimatedPrepMin: form.estimated_prep_min ? Number(form.estimated_prep_min) : null,
+        estimated_prep_min: form.estimated_prep_min ? Number(form.estimated_prep_min) : null,
       };
       if (isEditing) {
         await api.settings.updateProduct(editingProduct.id, payload);
@@ -446,6 +461,18 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                 placeholder="Ej: Hamburguesa clasica"
                 autoFocus
               />
+
+              {/* Foto Opcional al crear */}
+              <div className="pt-2">
+                <ImageUploadField
+                  label="Foto del Platillo (Opcional)"
+                  value={form.image_url}
+                  onChange={(url) => setForm({ ...form, image_url: url })}
+                  type="products"
+                  aspectRatio="square"
+                  helperText="Formatos: PNG, JPG o WebP (conversión automática a WebP optimizado)"
+                />
+              </div>
             </div>
           )}
 
@@ -924,6 +951,49 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                       ? form.modifierGroupIds.map(id => modifierGroups?.find(g => g.id === id)?.name).join(', ')
                       : 'Ninguno'}
                   </span>
+                </div>
+
+                {/* Multimedia y Presencia en Menú Digital */}
+                <div className="pt-3 border-t border-gray-200 space-y-3">
+                  <span className="text-xs font-bold text-gray-800 block">
+                    Foto y Presencia en Menú Digital (Auto-Comanda y QR)
+                  </span>
+                  <ImageUploadField
+                    label="Foto del Platillo"
+                    value={form.image_url}
+                    onChange={(url) => setForm({ ...form, image_url: url })}
+                    type="products"
+                    aspectRatio="square"
+                    helperText="PNG, JPG o WebP (se optimiza y guarda en formato WebP de alta fidelidad)"
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Descripción para comensales:
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={form.description}
+                        onChange={(e) => setForm({ ...form, description: e.target.value })}
+                        placeholder="Descripción atractiva de ingredientes..."
+                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Tiempo aprox. de preparación (min):
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="180"
+                        value={form.estimated_prep_min}
+                        onChange={(e) => setForm({ ...form, estimated_prep_min: e.target.value })}
+                        placeholder="Ej: 15"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

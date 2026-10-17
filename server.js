@@ -12,6 +12,7 @@ const apiRoutes = require("./src/routes");
 const { traceMiddleware, errorHandler } = require("./src/common/middlewares");
 const { ensureConfigTables } = require("./src/modules/settings/settings.migration");
 const { ensureExpensesTables } = require("./src/modules/expenses/expenses.migration");
+const { ensureDigitalMenuTables } = require("./src/modules/digital_menu/digital_menu.migration");
 const { initSocket } = require("./src/common/sockets");
 const maintenanceService = require("./src/modules/maintenance/maintenance.service");
 
@@ -173,6 +174,13 @@ const maintenanceService = require("./src/modules/maintenance/maintenance.servic
   } catch (e) {
     console.warn("[MIGRATION] Error al asegurar tablas de gastos:", e.message);
   }
+
+  // Digital Menu & Auto-Comanda (QR / NFC / Kiosco)
+  try {
+    await ensureDigitalMenuTables();
+  } catch (e) {
+    console.warn("[MIGRATION] Error al asegurar tablas de Menú Digital:", e.message);
+  }
 })();
 
 const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
@@ -222,15 +230,13 @@ if (require("fs").existsSync(reactDistPath)) {
 app.use(express.static(path.join(__dirname, "public")));
 
 // Middleware global de licenciamiento
+// /api/license/* y /api/public/* están exentos para comensales y enrollment
 const LICENSE_EXEMPT_PATHS = [
   "/api/license",
-  "/api/bootstrap",
+  "/api/public",
 ];
 app.use("/api", (req, res, next) => {
   const fullPath = req.originalUrl.split("?")[0];
-  if (fullPath.startsWith("/api/settings") || fullPath.startsWith("/api/admin")) {
-    return next();
-  }
   if (LICENSE_EXEMPT_PATHS.some((p) => fullPath.startsWith(p))) {
     return next();
   }
@@ -243,6 +249,7 @@ const MAINTENANCE_EXEMPT_PATHS = [
   "/api/auth/login",
   "/api/bootstrap",
   "/api/license",
+  "/api/public",
 ];
 app.use("/api", async (req, res, next) => {
   try {

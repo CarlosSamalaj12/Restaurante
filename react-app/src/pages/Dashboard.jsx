@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
 import api from '../api';
 import { MacDock } from '../components/MacDock';
 import { CenterSelectorBar } from '../components/CenterSelectorBar';
@@ -35,6 +36,7 @@ import {
 
 export function Dashboard({ onNavigate, onSelectTable }) {
   const { user, logout, restaurantName, logoUrl, canView, hasPermission } = useAuth();
+  const toast = useToast();
 
   // Estados principales
   const [centers, setCenters] = useState([]);
@@ -265,7 +267,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
       }
     } catch (err) {
       console.error('Error al abrir mesa rápida:', err);
-      alert(err.message || 'No se pudo abrir la mesa');
+      toast.error(err.message || 'No se pudo abrir la mesa');
     } finally {
       setQuickLoading(false);
     }

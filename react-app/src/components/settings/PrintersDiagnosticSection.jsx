@@ -670,6 +670,7 @@ export function PrintersDiagnosticSection({
 // COMPONENTE MODAL: FORMULARIO DE IMPRESORA
 // ─────────────────────────────────────────────────────────────
 function PrinterFormModal({ printer, onClose, onSave, loading }) {
+  const toast = useToast();
   const [form, setForm] = useState({
     name: printer?.name || '',
     ip: printer?.ip || '',
@@ -682,8 +683,8 @@ function PrinterFormModal({ printer, onClose, onSave, loading }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.name.trim()) return alert('Ingresa un nombre para la impresora');
-    if (!form.ip.trim()) return alert('Ingresa la dirección IP de la impresora');
+    if (!form.name.trim()) return toast.error('Ingresa un nombre para la impresora');
+    if (!form.ip.trim()) return toast.error('Ingresa la dirección IP de la impresora');
     onSave(form);
   };
 

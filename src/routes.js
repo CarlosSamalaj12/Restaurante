@@ -89,6 +89,14 @@ router.use("/maintenance", maintenanceRouter);
 const expensesRouter = require("./modules/expenses/expenses.routes");
 router.use("/expenses", expensesRouter);
 
+// 17. Módulo de Menú Digital, Auto-Comanda (QR/NFC) y Kiosco
+const {
+  publicMenuRouter,
+  adminDigitalMenuRouter,
+} = require("./modules/digital_menu/digital_menu.routes");
+router.use("/public", publicMenuRouter);
+router.use("/admin/digital-menu", adminDigitalMenuRouter);
+
 module.exports = router;
 
 

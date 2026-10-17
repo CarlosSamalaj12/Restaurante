@@ -15,7 +15,9 @@ const tablesRepository = {
         (SELECT MIN(ac.opened_at) FROM accounts ac WHERE ac.table_id = t.id AND ac.status = 'open') AS opened_at,
         (SELECT MAX(oi.created_at) FROM accounts ac JOIN order_items oi ON oi.account_id = ac.id AND oi.status = 'active' WHERE ac.table_id = t.id AND ac.status = 'open') AS last_activity_at,
         (SELECT COALESCE(SUM(oi.line_total), 0) FROM accounts ac JOIN order_items oi ON oi.account_id = ac.id AND oi.status = 'active' WHERE ac.table_id = t.id AND ac.status = 'open') AS total,
-        (SELECT u.full_name FROM accounts ac JOIN staff_users u ON u.id = ac.waiter_id WHERE ac.table_id = t.id AND ac.status = 'open' ORDER BY ac.opened_at DESC LIMIT 1) AS waiter_name
+        (SELECT u.full_name FROM accounts ac JOIN staff_users u ON u.id = ac.waiter_id WHERE ac.table_id = t.id AND ac.status = 'open' ORDER BY ac.opened_at DESC LIMIT 1) AS waiter_name,
+        (SELECT ac.order_source FROM accounts ac WHERE ac.table_id = t.id AND ac.status = 'open' ORDER BY ac.opened_at DESC LIMIT 1) AS order_source,
+        (SELECT CASE WHEN SUM(CASE WHEN ac.call_waiter_status = 'requested' THEN 1 ELSE 0 END) > 0 THEN 'requested' ELSE 'none' END FROM accounts ac WHERE ac.table_id = t.id AND ac.status = 'open') AS call_waiter_status
        FROM restaurant_tables t
        INNER JOIN dining_areas a ON a.id = t.area_id
        WHERE t.is_active = 1 AND (? = 0 OR t.operation_center_id = ?)
@@ -27,12 +29,12 @@ const tablesRepository = {
     const occupiedTableIds = rows.filter((r) => Number(r.open_accounts) > 0).map((r) => r.id);
     if (occupiedTableIds.length > 0) {
       const [acctRows] = await query(
-        `SELECT ac.id, ac.table_id, ac.check_number, ac.guest_count, ac.opened_at,
+        `SELECT ac.id, ac.table_id, ac.check_number, ac.guest_count, ac.opened_at, ac.order_source, ac.call_waiter_status,
                 COALESCE(SUM(oi.line_total), 0) AS total
          FROM accounts ac
          LEFT JOIN order_items oi ON oi.account_id = ac.id AND oi.status = 'active'
          WHERE ac.table_id IN (${occupiedTableIds.map(() => '?').join(',')}) AND ac.status = 'open'
-         GROUP BY ac.id, ac.table_id, ac.check_number, ac.guest_count, ac.opened_at
+         GROUP BY ac.id, ac.table_id, ac.check_number, ac.guest_count, ac.opened_at, ac.order_source, ac.call_waiter_status
          ORDER BY ac.opened_at ASC`,
         occupiedTableIds,
         conn
@@ -46,6 +48,8 @@ const tablesRepository = {
           check_number: acc.check_number,
           guest_count: acc.guest_count,
           opened_at: acc.opened_at,
+          order_source: acc.order_source,
+          call_waiter_status: acc.call_waiter_status,
           total: Number(acc.total) || 0,
         });
       }

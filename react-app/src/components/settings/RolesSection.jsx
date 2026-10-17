@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
+import { ConfirmDialog } from '../ConfirmDialog';
 import {
   Loader2,
   Plus,
@@ -74,6 +75,45 @@ export function RolesSection({ roles, permissions, permByRole, rolesByUser, staf
   const [showUserAssign, setShowUserAssign] = useState(false);
   const toast = useToast();
 
+  // Diálogo de confirmación moderno con diseño
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Confirmar',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
+
+  const handleSelectRole = (role) => {
+    if (hasChanges) {
+      setConfirmDialog({
+        isOpen: true,
+        title: '¿Descartar cambios sin guardar?',
+        message: 'Tienes modificaciones pendientes en los permisos de este rol que se perderán si cambias de rol.',
+        itemName: selectedRole?.name || 'Rol actual',
+        itemDetail: 'Los cambios no guardados se revertirán a la configuración anterior.',
+        variant: 'warning',
+        confirmText: 'Descartar Cambios',
+        loading: false,
+        onConfirm: () => {
+          setHasChanges(false);
+          setSelectedRole(role);
+          closeConfirm();
+        },
+      });
+      return;
+    }
+    setSelectedRole(role);
+  };
+
   // Organizar permisos por módulo
   const permsByModule = {};
   for (const p of permissions) {
@@ -144,20 +184,35 @@ export function RolesSection({ roles, permissions, permByRole, rolesByUser, staf
     }
   };
 
-  const handleDeleteRole = async (role) => {
+  const handleDeleteRole = (role) => {
     if (role.is_system) {
       toast.error('No se pueden eliminar roles protegidos del sistema');
       return;
     }
-    if (!window.confirm(`¿Eliminar el rol "${role.name}"? Los usuarios perderán esta asignación.`)) return;
-    try {
-      await api.roles.delete(role.id);
-      toast.success('Rol eliminado');
-      setSelectedRole(null);
-      onReload();
-    } catch (e) {
-      toast.error(e.message || 'Error al eliminar rol');
-    }
+
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Eliminar este rol de usuario?',
+      message: 'Los usuarios asignados a este rol perderán inmediatamente sus permisos asociados.',
+      itemName: role.name,
+      itemDetail: `Identificador: ${role.slug}`,
+      variant: 'danger',
+      confirmText: 'Eliminar Rol',
+      loading: false,
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          await api.roles.delete(role.id);
+          toast.success('Rol eliminado');
+          setSelectedRole(null);
+          onReload();
+          closeConfirm();
+        } catch (e) {
+          toast.error(e.message || 'Error al eliminar rol');
+          closeConfirm();
+        }
+      },
+    });
   };
 
   if (showCreate) {
@@ -203,12 +258,7 @@ export function RolesSection({ roles, permissions, permByRole, rolesByUser, staf
               return (
                 <button
                   key={role.id}
-                  onClick={() => {
-                    if (hasChanges && !window.confirm('Tienes cambios sin guardar en este rol. ¿Deseas descartarlos y cambiar de rol?')) {
-                      return;
-                    }
-                    setSelectedRole(role);
-                  }}
+                  onClick={() => handleSelectRole(role)}
                   className={`w-full text-left p-3.5 rounded-xl transition-all border ${
                     isSelected
                       ? 'bg-primary-50/80 border-primary-500 shadow-xs ring-1 ring-primary-500/20'
@@ -473,6 +523,20 @@ export function RolesSection({ roles, permissions, permByRole, rolesByUser, staf
           onAssigned={onReload}
         />
       )}
+
+      {/* Modal de confirmación estilizado */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
+      />
     </div>
   );
 }

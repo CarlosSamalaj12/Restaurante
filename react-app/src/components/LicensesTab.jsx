@@ -15,6 +15,19 @@ import {
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import { getOrCreateSerial } from '../lib/terminalSerial';
+import { ConfirmDialog } from './ConfirmDialog';
+
+function formatDeviceName(t) {
+  if (!t) return 'Terminal';
+  if (t.label && t.label.trim()) return t.label.trim();
+  if (t.os_info) {
+    const osClean = t.os_info.split('|')[0]?.trim();
+    if (osClean && !osClean.includes('unknown')) {
+      return `${osClean} (${t.ip_address || 'Red local'})`;
+    }
+  }
+  return `Terminal #${t.id || (t.serial ? t.serial.slice(0, 8) : '')}`;
+}
 
 function fmtDate(d) {
   if (!d) return 'Sin vencimiento (Permanente)';
@@ -116,6 +129,7 @@ export function LicensesTab() {
 
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   const loadData = useCallback(async (isSilent = false) => {
     if (!isSilent) setLoading(true);
@@ -219,18 +233,30 @@ export function LicensesTab() {
     }
   };
 
-  const handleRejectTerminal = async (t) => {
-    if (!window.confirm(`¿Rechazar la solicitud de acceso para "${t.label || t.hostname || t.serial.slice(0, 8)}"?`)) return;
-    setActionBusy(true);
-    try {
-      await api.licenseTerminals.reject(t.id, 'Rechazada por el administrador');
-      toast.success(`Solicitud de "${t.label || t.hostname || 'Terminal'}" rechazada`);
-      await loadData(true);
-    } catch (err) {
-      toast.error(err?.data?.error || err?.message || 'Error al rechazar solicitud');
-    } finally {
-      setActionBusy(false);
-    }
+  const handleRejectTerminal = (t) => {
+    setConfirmDialog({
+      title: '¿Rechazar solicitud de acceso?',
+      message: 'Esta terminal quedará bloqueada en la pantalla de control de acceso y no podrá acceder al sistema.',
+      itemName: formatDeviceName(t),
+      itemDetail: `Serial: ${t.serial} · IP: ${t.ip_address || 'Red local'}`,
+      confirmText: 'Rechazar Acceso',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+      icon: ShieldAlert,
+      onConfirm: async () => {
+        setActionBusy(true);
+        try {
+          await api.licenseTerminals.reject(t.id, 'Rechazada por el administrador');
+          toast.success(`Solicitud de "${formatDeviceName(t)}" rechazada`);
+          setConfirmDialog(null);
+          await loadData(true);
+        } catch (err) {
+          toast.error(err?.data?.error || err?.message || 'Error al rechazar solicitud');
+        } finally {
+          setActionBusy(false);
+        }
+      },
+    });
   };
 
   const openEditModal = (t) => {
@@ -281,18 +307,30 @@ export function LicensesTab() {
     }
   };
 
-  const handleReplaceTerminal = async (t) => {
-    if (!window.confirm(`¿Marcar "${t.label || t.id}" como reemplazada? Esto liberará su cupo para un nuevo dispositivo.`)) return;
-    setActionBusy(true);
-    try {
-      await api.licenseTerminals.replace(t.id);
-      toast.success('Terminal marcada como reemplazada. Cupo liberado.');
-      await loadData(true);
-    } catch (err) {
-      toast.error(err?.data?.error || err?.message || 'Error al reemplazar terminal');
-    } finally {
-      setActionBusy(false);
-    }
+  const handleReplaceTerminal = (t) => {
+    setConfirmDialog({
+      title: '¿Reemplazar esta terminal?',
+      message: 'Al marcar este equipo como reemplazado, se liberará el cupo de tu licencia activa para que puedas autorizar una nueva pantalla.',
+      itemName: formatDeviceName(t),
+      itemDetail: `Serial: ${t.serial} · IP: ${t.ip_address || 'Red local'}`,
+      confirmText: 'Liberar Cupo',
+      cancelText: 'Cancelar',
+      variant: 'warning',
+      icon: RotateCcw,
+      onConfirm: async () => {
+        setActionBusy(true);
+        try {
+          await api.licenseTerminals.replace(t.id);
+          toast.success('Terminal marcada como reemplazada. Cupo liberado.');
+          setConfirmDialog(null);
+          await loadData(true);
+        } catch (err) {
+          toast.error(err?.data?.error || err?.message || 'Error al reemplazar terminal');
+        } finally {
+          setActionBusy(false);
+        }
+      },
+    });
   };
 
   const handlePresetSelect = (presetId) => {
@@ -329,18 +367,30 @@ export function LicensesTab() {
     }
   };
 
-  const handleRevokeLicense = async (licId) => {
-    if (!window.confirm('ADVERTENCIA: ¿Revocar esta licencia activa? Todas las terminales asociadas pasarán a estado revocado.')) return;
-    setActionBusy(true);
-    try {
-      await api.licenses.revoke(licId);
-      toast.success('Licencia revocada');
-      await loadData(true);
-    } catch (err) {
-      toast.error(err?.data?.error || err?.message || 'Error al revocar licencia');
-    } finally {
-      setActionBusy(false);
-    }
+  const handleRevokeLicense = (licId) => {
+    setConfirmDialog({
+      title: '¿Revocar licencia activa?',
+      message: 'ADVERTENCIA: Todas las terminales asociadas a esta licencia pasarán a estado revocado y se suspenderá su operación de inmediato.',
+      itemName: `Licencia del Sistema #${licId}`,
+      itemDetail: 'Acción administrativa de alta seguridad',
+      confirmText: 'Revocar Licencia',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+      icon: ShieldOff,
+      onConfirm: async () => {
+        setActionBusy(true);
+        try {
+          await api.licenses.revoke(licId);
+          toast.success('Licencia revocada con éxito');
+          setConfirmDialog(null);
+          await loadData(true);
+        } catch (err) {
+          toast.error(err?.data?.error || err?.message || 'Error al revocar licencia');
+        } finally {
+          setActionBusy(false);
+        }
+      },
+    });
   };
 
   // Cálculo de progreso de cupo
@@ -703,11 +753,15 @@ export function LicensesTab() {
                             <Copy className="w-3 h-3" />
                           </button>
                         </div>
-                        {t.hostname && (
+                        {t.os_info ? (
+                          <p className="text-[10px] text-slate-400 mt-1 truncate max-w-[180px]" title={t.os_info}>
+                            {t.os_info.split('|')[0]?.trim()}
+                          </p>
+                        ) : t.hostname && !/^[A-Za-z0-9+/=]{20,}$/.test(t.hostname) ? (
                           <p className="text-[10px] text-slate-400 mt-1 truncate max-w-[180px]" title={t.hostname}>
                             Host: {t.hostname.slice(0, 24)}
                           </p>
-                        )}
+                        ) : null}
                       </td>
 
                       {/* Red & IP */}
@@ -1278,6 +1332,24 @@ export function LicensesTab() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── MODAL GENÉRICO DE CONFIRMACIÓN CON DISEÑO PREMIUM ── */}
+      {confirmDialog && (
+        <ConfirmDialog
+          isOpen={Boolean(confirmDialog)}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          itemName={confirmDialog.itemName}
+          itemDetail={confirmDialog.itemDetail}
+          confirmText={confirmDialog.confirmText}
+          cancelText={confirmDialog.cancelText}
+          variant={confirmDialog.variant}
+          icon={confirmDialog.icon}
+          loading={actionBusy}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => !actionBusy && setConfirmDialog(null)}
+        />
       )}
     </div>
   );

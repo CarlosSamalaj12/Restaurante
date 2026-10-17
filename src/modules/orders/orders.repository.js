@@ -75,7 +75,7 @@ const ordersRepository = {
 
   async findAccountSummaryForSend(accountId, conn = null) {
     const [rows] = await query(
-      `SELECT a.id, a.check_number, a.status, a.waiter_id,
+      `SELECT a.id, a.check_number, a.status, a.waiter_id, a.order_source,
               t.code AS table_code,
               u.full_name AS waiter_name,
               oc.id AS center_id, oc.name AS center_name

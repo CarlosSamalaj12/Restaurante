@@ -204,7 +204,7 @@ const catalogService = {
   },
 
   // Product management
-  async createProduct({ categoryId, name, basePrice = 0, allowDiscount = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null }) {
+  async createProduct({ categoryId, name, basePrice = 0, allowDiscount = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null, imageUrl = null, image_url = null, description = null, estimatedPrepMin = null, estimated_prep_min = null }) {
     if (!categoryId || !name || !String(name).trim()) {
       throw new BadRequestError("categoryId y name son requeridos");
     }
@@ -216,11 +216,14 @@ const catalogService = {
       trackInventory,
       categoriaImpresionId,
       centroProduccionExclusivoId,
+      imageUrl: imageUrl || image_url || null,
+      description: description || null,
+      estimatedPrepMin: estimatedPrepMin || estimated_prep_min || null,
     });
     return { productId };
   },
 
-  async updateProduct(productId, { categoryId, name, basePrice = 0, allowDiscount = 1, isActive = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null }) {
+  async updateProduct(productId, { categoryId, name, basePrice = 0, allowDiscount = 1, isActive = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null, imageUrl = null, image_url = null, description = null, estimatedPrepMin = null, estimated_prep_min = null }) {
     const id = Number(productId);
     if (!id || id <= 0 || !categoryId || !name || !String(name).trim()) {
       throw new BadRequestError("productId, categoryId y name son requeridos");
@@ -234,6 +237,9 @@ const catalogService = {
       trackInventory,
       categoriaImpresionId,
       centroProduccionExclusivoId,
+      imageUrl: imageUrl !== undefined ? imageUrl : image_url,
+      description,
+      estimatedPrepMin: estimatedPrepMin !== undefined ? estimatedPrepMin : estimated_prep_min,
     });
     return { ok: true };
   },

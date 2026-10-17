@@ -14,7 +14,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { useSocket } from '../hooks/useSocket';
 import { printPrecheckThermal } from '../utils/printReceipts';
+import { ConfirmDialog } from './ConfirmDialog';
 import api from '../api';
 
 export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }) {
@@ -28,6 +30,23 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
   const [joining, setJoining] = useState(false);
   const [printing, setPrinting] = useState(null);
 
+  // Diálogo de confirmación moderno con diseño
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Unir Cuentas',
+    variant: 'info',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
+
   const loadAccounts = useCallback(async () => {
     setLoading(true);
     try {
@@ -39,6 +58,13 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
       setLoading(false);
     }
   }, [selectedCenter, toast]);
+
+  useSocket({
+    'orders:self_service_new': () => loadAccounts(),
+    'table:call_waiter': () => loadAccounts(),
+    'table:request_bill': () => loadAccounts(),
+    'table:call_waiter_dismissed': () => loadAccounts(),
+  });
 
   useEffect(() => {
     let isCancelled = false;
@@ -69,36 +95,49 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
     );
   };
 
-  const handleJoin = async () => {
+  const handleJoin = () => {
     if (selected.length < 2) {
       toast.error('Selecciona al menos 2 cuentas para unir');
       return;
     }
-    
-    const confirm = window.confirm(
-      `¿Unir ${selected.length} cuentas en una sola?\n\n` +
-      selected.map(id => {
-        const acc = accounts.find(a => a.id === id);
-        return acc ? `• Mesa ${acc.table_code} (Q${Number(acc.total || 0).toFixed(2)})` : '';
-      }).join('\n')
-    );
-    if (!confirm) return;
 
-    setJoining(true);
-    try {
-      // Join all accounts into the first one (the target)
-      const [targetId, ...sourceIds] = selected;
-      await Promise.all(sourceIds.map(sourceId => api.joinAccounts(targetId, sourceId)));
-      toast.success(`${selected.length} cuentas unidas exitosamente`);
-      setSelected([]);
-      setSelectMode(false);
-      loadAccounts();
-      if (onRefresh) onRefresh();
-    } catch (err) {
-      toast.error(err.message || 'Error al unir cuentas');
-    } finally {
-      setJoining(false);
-    }
+    const selectedDetails = selected
+      .map((id) => {
+        const acc = accounts.find((a) => a.id === id);
+        return acc ? `Mesa ${acc.table_code} (Q${Number(acc.total || 0).toFixed(2)})` : '';
+      })
+      .filter(Boolean)
+      .join(' • ');
+
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Unir cuentas en una sola?',
+      message: `Se unificarán las ${selected.length} cuentas seleccionadas en una única cuenta con todos sus consumos consolidados.`,
+      itemName: `${selected.length} cuentas seleccionadas para fusión`,
+      itemDetail: selectedDetails,
+      variant: 'info',
+      confirmText: 'Unir Cuentas',
+      loading: false,
+      onConfirm: async () => {
+        setJoining(true);
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          const [targetId, ...sourceIds] = selected;
+          await Promise.all(sourceIds.map((sourceId) => api.joinAccounts(targetId, sourceId)));
+          toast.success(`${selected.length} cuentas unidas exitosamente`);
+          setSelected([]);
+          setSelectMode(false);
+          loadAccounts();
+          if (onRefresh) onRefresh();
+          closeConfirm();
+        } catch (err) {
+          toast.error(err.message || 'Error al unir cuentas');
+          closeConfirm();
+        } finally {
+          setJoining(false);
+        }
+      },
+    });
   };
 
   const handlePrint = async (accountId) => {
@@ -259,6 +298,25 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
                   </div>
                 )}
 
+                {/* Auto-Comanda (Sin Mesero) & Kiosco Badges */}
+                {account.order_source === 'qr_guest' && !selectMode && (
+                  <div className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-sm">
+                    QR AUTO
+                  </div>
+                )}
+                {account.order_source === 'kiosk' && !selectMode && (
+                  <div className="absolute -top-1.5 -right-1.5 bg-purple-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-sm">
+                    KIOSCO
+                  </div>
+                )}
+
+                {/* Alerta de Llamado a Mesero en Mesa */}
+                {account.call_waiter_status === 'requested' && (
+                  <div className="absolute -bottom-2 inset-x-2 bg-amber-500 text-slate-950 text-[9px] font-black px-2 py-0.5 rounded-md text-center shadow-md animate-pulse">
+                    🔔 LLAMANDO A MESERO
+                  </div>
+                )}
+
                 {/* Card content */}
                 <div className="flex items-start justify-between mb-2">
                   <div>
@@ -284,8 +342,12 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
 
                 {/* Waiter & Time */}
                 <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                  <span className={isMine ? 'font-semibold text-cyan-700' : ''}>
-                    {account.waiter_name}
+                  <span className={
+                    account.order_source === 'qr_guest' 
+                      ? 'font-bold text-rose-600' 
+                      : (isMine ? 'font-semibold text-cyan-700' : '')
+                  }>
+                    {account.order_source === 'qr_guest' ? 'Auto-Comanda (Sin Mesero)' : account.waiter_name}
                   </span>
                   <div className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
@@ -333,6 +395,21 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
           })}
         </div>
       )}
+
+      {/* Modal de confirmación estilizado */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
+      />
     </div>
   );
 }
+

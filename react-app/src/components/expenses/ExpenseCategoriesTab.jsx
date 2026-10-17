@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Edit2, Trash2, Tag, Search, DollarSign, Layers } from 'lucide-react';
 import { CategoryFormModal } from './CategoryFormModal';
+import { ConfirmDialog } from '../ConfirmDialog';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
 
@@ -11,30 +12,56 @@ export function ExpenseCategoriesTab({ categories = [], onReload }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
+  // Diálogo de confirmación moderno con diseño
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Eliminar Categoría',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
+
   const filtered = categories.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     (c.description && c.description.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const handleDelete = async (id, name, count) => {
-    if (count > 0) {
-      if (!window.confirm(`Esta categoría tiene ${count} gastos registrados. ¿Estás seguro de que deseas eliminarla?`)) {
-        return;
-      }
-    } else {
-      if (!window.confirm(`¿Eliminar la categoría "${name}"?`)) return;
-    }
-
-    setDeletingId(id);
-    try {
-      await api.expenses.deleteCategory(id);
-      toast.show('Categoría eliminada', { type: 'success' });
-      onReload?.();
-    } catch (err) {
-      toast.show(err.message || 'Error al eliminar categoría', { type: 'error' });
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (id, name, count) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Eliminar categoría de gastos?',
+      message: count > 0 
+        ? `Esta categoría tiene ${count} gastos registrados vinculados. ¿Deseas eliminarla de todas formas?`
+        : 'Esta categoría se eliminará permanentemente de tu catálogo.',
+      itemName: name,
+      itemDetail: count > 0 ? `${count} gastos registrados` : 'Sin gastos registrados',
+      variant: 'danger',
+      confirmText: 'Eliminar Categoría',
+      loading: false,
+      onConfirm: async () => {
+        setDeletingId(id);
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          await api.expenses.deleteCategory(id);
+          toast.success('Categoría eliminada');
+          onReload?.();
+          closeConfirm();
+        } catch (err) {
+          toast.error(err.message || 'Error al eliminar categoría');
+          closeConfirm();
+        } finally {
+          setDeletingId(null);
+        }
+      },
+    });
   };
 
   return (
@@ -149,6 +176,20 @@ export function ExpenseCategoriesTab({ categories = [], onReload }) {
         onClose={() => setIsModalOpen(false)}
         initialData={selectedCategory}
         onSaved={onReload}
+      />
+
+      {/* Modal de confirmación estilizado */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
       />
     </div>
   );

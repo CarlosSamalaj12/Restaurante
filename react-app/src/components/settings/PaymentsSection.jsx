@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 const SYSTEM_METHODS = ['cash', 'card', 'cxc'];
 
@@ -48,6 +49,7 @@ function slugify(text) {
 }
 
 export function PaymentsSection({ methods = [], onReload }) {
+  const toast = useToast();
   const [localMethods, setLocalMethods] = useState(methods || []);
   const [modalOpen, setModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -56,6 +58,23 @@ export function PaymentsSection({ methods = [], onReload }) {
   const [togglingCode, setTogglingCode] = useState(null);
   const [codeManuallyEdited, setCodeManuallyEdited] = useState(false);
 
+  // Diálogo de confirmación estilizado
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Eliminar Forma de Pago',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
+
   const [formData, setFormData] = useState({
     code: '',
     label: '',
@@ -63,8 +82,6 @@ export function PaymentsSection({ methods = [], onReload }) {
     sortOrder: 1,
     appliesTip: true,
   });
-
-  const toast = useToast();
 
   const fetchMethods = useCallback(async () => {
     try {
@@ -179,28 +196,39 @@ export function PaymentsSection({ methods = [], onReload }) {
     }
   };
 
-  const handleDelete = async (method) => {
+  const handleDelete = (method) => {
     if (SYSTEM_METHODS.includes(method.code)) {
       toast.error(`La forma de pago '${method.label}' es del sistema y no puede eliminarse. Puedes desactivarla.`);
       return;
     }
 
-    if (!window.confirm(`¿Estás seguro de eliminar la forma de pago "${method.label}" (${method.code})?`)) {
-      return;
-    }
-
-    setDeletingCode(method.code);
-    try {
-      await api.settings.deletePaymentMethod(method.code);
-      toast.success('Forma de pago eliminada');
-      await fetchMethods();
-      if (onReload) await onReload();
-    } catch (err) {
-      console.error('Error deleting payment method:', err);
-      toast.error(err.message || 'Error al eliminar');
-    } finally {
-      setDeletingCode(null);
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Eliminar forma de pago?',
+      message: 'Los cajeros ya no podrán registrar cobros con este método. Los registros históricos se preservarán.',
+      itemName: method.label,
+      itemDetail: `Código interno: ${method.code}`,
+      variant: 'danger',
+      confirmText: 'Eliminar Forma de Pago',
+      loading: false,
+      onConfirm: async () => {
+        setDeletingCode(method.code);
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          await api.settings.deletePaymentMethod(method.code);
+          toast.success('Forma de pago eliminada');
+          await fetchMethods();
+          if (onReload) await onReload();
+          closeConfirm();
+        } catch (err) {
+          console.error('Error deleting payment method:', err);
+          toast.error(err.message || 'Error al eliminar');
+          closeConfirm();
+        } finally {
+          setDeletingCode(null);
+        }
+      },
+    });
   };
 
   return (
@@ -508,6 +536,20 @@ export function PaymentsSection({ methods = [], onReload }) {
           </div>
         </div>
       )}
+
+      {/* Modal de confirmación estilizado */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
+      />
     </div>
   );
 }

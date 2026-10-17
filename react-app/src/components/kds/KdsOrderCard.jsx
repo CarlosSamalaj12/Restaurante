@@ -58,9 +58,21 @@ export function KdsOrderCard({
             <p className="text-xs text-gray-400">#{order.checkNumber}</p>
           </div>
           {order.waiterName && (
-            <div className="flex items-center gap-1.5 bg-purple-100 px-2.5 py-1 rounded-lg">
-              <User className="w-3.5 h-3.5 text-purple-600" />
-              <span className="text-xs font-medium text-purple-700">{order.waiterName}</span>
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg ${
+              order.orderSource === 'qr_guest' || String(order.waiterName).toLowerCase().includes('auto-comanda')
+                ? 'bg-rose-100 text-rose-700 font-bold border border-rose-200 shadow-2xs'
+                : 'bg-purple-100 text-purple-700 font-medium'
+            }`}>
+              <User className={`w-3.5 h-3.5 ${
+                order.orderSource === 'qr_guest' || String(order.waiterName).toLowerCase().includes('auto-comanda')
+                  ? 'text-rose-600'
+                  : 'text-purple-600'
+              }`} />
+              <span className="text-xs">
+                {order.orderSource === 'qr_guest' || String(order.waiterName).toLowerCase().includes('auto-comanda')
+                  ? 'CLIENTE QR (SIN MESERO)'
+                  : order.waiterName}
+              </span>
             </div>
           )}
         </div>

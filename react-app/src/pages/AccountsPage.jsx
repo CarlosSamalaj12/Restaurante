@@ -5,6 +5,7 @@ import { useToast } from '../hooks/useToast';
 import api from '../api';
 import { BackButton } from '../components/BackButton';
 import { printPrecheckThermal } from '../utils/printReceipts';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { 
   Receipt, 
   Printer, 
@@ -45,6 +46,23 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
   const [joining, setJoining] = useState(false);
   const [printing, setPrinting] = useState(null);
   const [businessProfile, setBusinessProfile] = useState(null);
+
+  // Diálogo de confirmación moderno con diseño
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Confirmar',
+    variant: 'warning',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -109,36 +127,46 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
     }
   }, [activeTab, selectedCenterId]);
 
-  const handleReopenAccount = async (account) => {
+  const handleReopenAccount = (account) => {
     if (account.shift_status === 'closed') {
       toast.error('No se puede reabrir: el turno de caja ya fue cerrado para mantener la integridad contable.');
       return;
     }
-    const confirmReopen = window.confirm(
-      `¿Deseas reabrir la cuenta #${account.check_number} (Mesa ${account.table_code || ''})?\n\n` +
-      `Se transferirá nuevamente a cuentas activas para que puedas modificar platillos y ajustar/eliminar formas de pago.`
-    );
-    if (!confirmReopen) return;
 
-    setReopeningId(account.id);
-    try {
-      const res = await api.reopenAccount(account.id, 'Reapertura para modificación desde Cuentas');
-      toast.success(res.message || 'Cuenta reabierta correctamente');
-      if (onSelectAccount) {
-        onSelectAccount({
-          id: res.accountId || account.id,
-          table_code: res.tableCode || account.table_code,
-          table_id: res.tableId || account.table_id
-        });
-      } else {
-        loadAccounts();
-        loadClosedAccounts();
-      }
-    } catch (e) {
-      toast.error(e.message || 'Error al reabrir cuenta');
-    } finally {
-      setReopeningId(null);
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Reabrir esta cuenta?',
+      message: 'Se transferirá nuevamente a cuentas activas para que puedas modificar platillos y ajustar o registrar formas de pago.',
+      itemName: `Cuenta #${account.check_number} — Mesa ${account.table_code || 'S/N'}`,
+      itemDetail: `Monto total acumulado: Q${Number(account.total || 0).toFixed(2)}`,
+      variant: 'warning',
+      confirmText: 'Reabrir Cuenta',
+      loading: false,
+      onConfirm: async () => {
+        setReopeningId(account.id);
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          const res = await api.reopenAccount(account.id, 'Reapertura para modificación desde Cuentas');
+          toast.success(res.message || 'Cuenta reabierta correctamente');
+          closeConfirm();
+          if (onSelectAccount) {
+            onSelectAccount({
+              id: res.accountId || account.id,
+              table_code: res.tableCode || account.table_code,
+              table_id: res.tableId || account.table_id
+            });
+          } else {
+            loadAccounts();
+            loadClosedAccounts();
+          }
+        } catch (e) {
+          toast.error(e.message || 'Error al reabrir cuenta');
+          closeConfirm();
+        } finally {
+          setReopeningId(null);
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -153,36 +181,50 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
     );
   };
 
-  const handleJoin = async () => {
+  const handleJoin = () => {
     if (selected.length < 2) {
       toast.error('Selecciona al menos 2 cuentas para unir');
       return;
     }
-    
-    const confirm = window.confirm(
-      `¿Unir ${selected.length} cuentas en una sola?\n\n` +
-      selected.map((id) => {
-        const acc = accounts.find((a) => a.id === id);
-        return acc ? `• Mesa ${acc.table_code} (Q${Number(acc.total || 0).toFixed(2)})` : '';
-      }).join('\n')
-    );
-    if (!confirm) return;
 
-    setJoining(true);
-    try {
-      const [targetId, ...sourceIds] = selected;
-      for (const sourceId of sourceIds) {
-        await api.joinAccounts(targetId, sourceId);
-      }
-      toast.success(`${selected.length} cuentas unidas exitosamente`);
-      setSelected([]);
-      setSelectMode(false);
-      loadAccounts();
-    } catch (err) {
-      toast.error(err.message || 'Error al unir cuentas');
-    } finally {
-      setJoining(false);
-    }
+    const selectedDetails = selected
+      .map((id) => {
+        const acc = accounts.find((a) => a.id === id);
+        return acc ? `Mesa ${acc.table_code} (Q${Number(acc.total || 0).toFixed(2)})` : null;
+      })
+      .filter(Boolean)
+      .join(' • ');
+
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Unir cuentas en una sola?',
+      message: `Se unificarán las ${selected.length} cuentas seleccionadas en una sola cuenta activa con todos sus consumos.`,
+      itemName: `${selected.length} cuentas seleccionadas para fusión`,
+      itemDetail: selectedDetails,
+      variant: 'info',
+      confirmText: 'Unir Cuentas',
+      loading: false,
+      onConfirm: async () => {
+        setJoining(true);
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          const [targetId, ...sourceIds] = selected;
+          for (const sourceId of sourceIds) {
+            await api.joinAccounts(targetId, sourceId);
+          }
+          toast.success(`${selected.length} cuentas unidas exitosamente`);
+          setSelected([]);
+          setSelectMode(false);
+          loadAccounts();
+          closeConfirm();
+        } catch (err) {
+          toast.error(err.message || 'Error al unir cuentas');
+          closeConfirm();
+        } finally {
+          setJoining(false);
+        }
+      },
+    });
   };
 
   const handlePrint = async (accountId) => {
@@ -1050,6 +1092,20 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
           </div>
         )}
       </main>
+
+      {/* Modal de confirmación estilizado */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
+      />
     </div>
   );
 }

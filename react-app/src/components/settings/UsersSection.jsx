@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { m } from 'framer-motion';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
+import { ConfirmDialog } from '../ConfirmDialog';
 import {
   Loader2,
   Plus,
@@ -16,20 +17,50 @@ export function UsersSection({ centers, roles, staffUsers, onReload }) {
   const [editingUser, setEditingUser] = useState(null);
   const toast = useToast();
 
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Eliminar Usuario',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
+
   const handleCreated = () => {
     setShowWizard(false);
     onReload();
   };
 
-  const handleDelete = async (user) => {
-    if (!window.confirm(`¿Eliminar usuario "${user.full_name}"?`)) return;
-    try {
-      await api.settings.deleteStaffUser(user.id);
-      toast.success('Usuario eliminado');
-      onReload();
-    } catch (e) {
-      toast.error(e.message || 'Error al eliminar usuario');
-    }
+  const handleDelete = (user) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Eliminar usuario del sistema?',
+      message: 'El usuario perderá el acceso a las terminales y su PIN quedará deshabilitado.',
+      itemName: user.full_name,
+      itemDetail: `Rol asignado: ${user.role || 'Staff'}`,
+      variant: 'danger',
+      confirmText: 'Eliminar Usuario',
+      loading: false,
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          await api.settings.deleteStaffUser(user.id);
+          toast.success('Usuario eliminado');
+          onReload();
+          closeConfirm();
+        } catch (e) {
+          toast.error(e.message || 'Error al eliminar usuario');
+          closeConfirm();
+        }
+      },
+    });
   };
 
   return (
@@ -132,6 +163,20 @@ export function UsersSection({ centers, roles, staffUsers, onReload }) {
           onSaved={onReload}
         />
       )}
+
+      {/* Modal de confirmación estilizado */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
+      />
     </div>
   );
 }

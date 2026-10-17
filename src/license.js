@@ -73,7 +73,6 @@ function isLocalhostIp(ip) {
 }
 
 function isDevBypass(serial, ip = null) {
-  if (ip && isLocalhostIp(ip)) return true;
   if (!serial || typeof serial !== 'string') return false;
   const devMode = ['1', 'true', 'yes', 'on'].includes(
     String(process.env.LICENSE_DEV_MODE || '').trim().toLowerCase(),
@@ -415,8 +414,7 @@ async function enroll(req, res) {
     return res.status(400).json({ error: 'terminal_type debe ser "pos" o "kds"' });
   }
 
-  // Dev-bypass: la máquina del creador / localhost se autoriza sola, sin esperar
-  // aprobación del admin, aunque estuviera pending/revoked y NUNCA se limita por rate limit.
+  // Dev-bypass: solo si LICENSE_DEV_MODE=true o serial en LICENSE_DEV_SERIALS
   if (isDevBypass(serial, ip)) {
     try {
       const { terminal, license: devLic } = await upsertTerminalActive(query, {
@@ -424,7 +422,7 @@ async function enroll(req, res) {
         hostname,
         osInfo,
         terminalType,
-        label: label || (isLocalhostIp(ip) ? 'Servidor Principal (Esta PC)' : null),
+        label: label || 'Terminal Dev Bypass',
         ip,
       });
       return res.json({
@@ -436,12 +434,42 @@ async function enroll(req, res) {
         last_seen_at: terminal.last_seen_at,
         license_id: devLic.id,
         dev_bypass: true,
-        message: 'Terminal local/creador: siempre autorizada',
+        message: 'Terminal autorizada por dev-bypass',
       });
     } catch (e) {
       console.error('[license.enroll.dev-bypass]', e);
       return res.status(500).json({ error: 'Error en dev-bypass de terminal' });
     }
+  }
+
+  // Si no hay NINGUNA terminal activa registrada en el sistema (primer arranque inicial del servidor)
+  // y la solicitud proviene de localhost, autorizar automáticamente la primera terminal como Servidor Principal.
+  try {
+    const [activeTerms] = await query(
+      `SELECT COUNT(*) AS c FROM licensed_terminals WHERE status = 'active'`
+    );
+    if (Number(activeTerms[0]?.c || 0) === 0 && isLocalhostIp(ip)) {
+      const { terminal, license: devLic } = await upsertTerminalActive(query, {
+        serial,
+        hostname,
+        osInfo,
+        terminalType,
+        label: label || 'Servidor Principal (Esta PC)',
+        ip,
+      });
+      return res.json({
+        status: 'active',
+        terminal_id: terminal.id,
+        label: terminal.label,
+        ip_address: terminal.ip_address,
+        first_seen_at: terminal.first_seen_at,
+        last_seen_at: terminal.last_seen_at,
+        license_id: devLic.id,
+        message: 'Servidor Principal inicial registrado y autorizado',
+      });
+    }
+  } catch (initErr) {
+    console.error('[license.enroll.initial]', initErr);
   }
 
   // Para terminales remotas, aplicar rate limit
@@ -541,30 +569,6 @@ async function requestAccess(req, res) {
     return res.status(400).json({ error: 'Serial inválido' });
   }
 
-  // Si la petición proviene de localhost (la máquina donde corre el servidor),
-  // se auto-autoriza como Servidor Central de forma inmediata.
-  if (isLocalhostIp(ip)) {
-    try {
-      const { terminal, license: devLic } = await upsertTerminalActive(query, {
-        serial,
-        hostname,
-        osInfo,
-        terminalType,
-        label: label || 'Servidor Principal (Esta PC)',
-        ip,
-      });
-      return res.json({
-        ok: true,
-        status: 'active',
-        terminal_id: terminal.id,
-        label: terminal.label,
-        message: 'Servidor Central autorizado automáticamente',
-      });
-    } catch (e) {
-      console.error('[license.requestAccess.localhost]', e);
-      return res.status(500).json({ error: 'Error al autorizar servidor local' });
-    }
-  }
 
   try {
     const [existingRows] = await query(
@@ -727,22 +731,13 @@ async function status(req, res) {
   const serial = String(req.headers['x-terminal-serial'] || '').trim();
   const ip = clientIp(req);
   if (!serial) {
-    if (isLocalhostIp(ip)) {
-      return res.json({
-        status: 'active',
-        license_status: 'active',
-        label: 'Servidor Principal (Esta PC)',
-        terminal_type: 'pos',
-        dev_bypass: true,
-      });
-    }
     return res.status(400).json({ error: 'missing-serial' });
   }
   if (isDevBypass(serial, ip)) {
     return res.json({
       status: 'active',
       license_status: 'active',
-      label: 'Servidor Principal (Esta PC)',
+      label: 'Terminal Dev Bypass',
       terminal_type: 'pos',
       dev_bypass: true,
     });
@@ -771,19 +766,14 @@ async function status(req, res) {
 async function requireLicensedTerminal(req, res, next) {
   const serial = String(req.headers['x-terminal-serial'] || '').trim();
   const ip = clientIp(req);
-  // Máquina del creador o localhost: siempre autorizada, sin pasar por bloqueo.
+  // Dev bypass (solo si LICENSE_DEV_MODE=true o serial en LICENSE_DEV_SERIALS)
   if (isDevBypass(serial, ip)) {
     req.terminal = {
       id: null,
-      serial: serial || 'localhost-server',
-      label: 'Servidor Principal (Esta PC)',
+      serial: serial || 'dev-bypass-terminal',
+      label: 'Terminal Dev Bypass',
       type: 'pos',
     };
-    if (serial) {
-      upsertTerminalActive(query, { serial, ip, label: 'Servidor Principal (Esta PC)' }).catch((e) =>
-        console.error('[license.dev-bypass] upsert falló:', e.message),
-      );
-    }
     return next();
   }
   if (!serial) {

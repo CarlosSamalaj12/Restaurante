@@ -20,6 +20,7 @@ import { KitchenDisplay } from './pages/KitchenDisplay';
 import { ExecutiveDashboard } from './pages/ExecutiveDashboard';
 import { CXCPage } from './pages/CXC';
 import { ExpensesPage } from './pages/ExpensesPage';
+import { PublicMenuPage } from './pages/PublicMenuPage';
 import { PendingTerminalsNotification } from './components/PendingTerminalsNotification';
 import { useMaintenance } from './hooks/useMaintenance';
 import { MaintenanceCountdownBanner } from './components/MaintenanceCountdownBanner';
@@ -341,6 +342,25 @@ function MaintenanceGate({ children }) {
 }
 
 export default function App() {
+  const pathname = window.location.pathname;
+  const isPublicMenu = pathname.startsWith('/m') || pathname.startsWith('/kiosk');
+
+  if (isPublicMenu) {
+    const isKiosk = pathname.startsWith('/kiosk');
+    return (
+      <LazyMotion features={domMax}>
+        <MotionConfig reducedMotion="user">
+          <ErrorBoundary>
+            <ToastProvider>
+              <PublicMenuPage isKiosk={isKiosk} />
+              <Toast />
+            </ToastProvider>
+          </ErrorBoundary>
+        </MotionConfig>
+      </LazyMotion>
+    );
+  }
+
   return (
     <LazyMotion features={domMax}>
       <MotionConfig reducedMotion="user">

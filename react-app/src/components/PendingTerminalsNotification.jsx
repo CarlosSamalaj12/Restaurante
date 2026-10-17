@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import api from '../api';
+import { ConfirmDialog } from './ConfirmDialog';
 import {
   Monitor,
   Check,
@@ -17,6 +18,18 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
+function formatPendingTerminalName(t) {
+  if (!t) return 'Terminal';
+  if (t.label && t.label.trim()) return t.label.trim();
+  if (t.os_info) {
+    const osClean = t.os_info.split('|')[0]?.trim();
+    if (osClean && !osClean.includes('unknown')) {
+      return `${osClean} (${t.ip_address || 'Red local'})`;
+    }
+  }
+  return `Terminal #${t.id || (t.serial ? t.serial.slice(0, 8) : '')}`;
+}
+
 const POLL_INTERVAL_MS = 8000; // 8 segundos
 
 export function PendingTerminalsNotification() {
@@ -26,6 +39,7 @@ export function PendingTerminalsNotification() {
   const [pendingList, setPendingList] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [actionBusyId, setActionBusyId] = useState(null);
+  const [confirmReject, setConfirmReject] = useState(null);
 
   // Solo los administradores reciben estas notificaciones
   const isAdmin = user?.role === 'admin';
@@ -69,16 +83,18 @@ export function PendingTerminalsNotification() {
     }
   };
 
-  const handleReject = async (terminal) => {
-    if (!window.confirm(`¿Rechazar el acceso a la terminal "${terminal.label || terminal.id}"? Esta PC quedará bloqueada.`)) {
-      return;
-    }
+  const handleReject = (terminal) => {
+    setConfirmReject(terminal);
+  };
+
+  const executeReject = async (terminal) => {
     setActionBusyId(terminal.id);
     try {
       await api.licenseTerminals.reject(terminal.id, 'Rechazado por el Administrador');
-      toast.info(`Acceso rechazado para "${terminal.label || terminal.id}"`);
+      toast.info(`Acceso rechazado para "${formatPendingTerminalName(terminal)}"`);
       const updated = pendingList.filter((t) => t.id !== terminal.id);
       setPendingList(updated);
+      setConfirmReject(null);
       if (updated.length === 0) {
         setModalOpen(false);
       }
@@ -160,7 +176,7 @@ export function PendingTerminalsNotification() {
                         <div className="flex items-center gap-2">
                           <Monitor className="w-4 h-4 text-blue-600 shrink-0" />
                           <span className="font-extrabold text-slate-900 text-sm">
-                            {t.label || `Terminal #${t.id}`}
+                            {formatPendingTerminalName(t)}
                           </span>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
                             Pendiente
@@ -217,6 +233,24 @@ export function PendingTerminalsNotification() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de confirmación para rechazar acceso */}
+      {confirmReject && (
+        <ConfirmDialog
+          isOpen={Boolean(confirmReject)}
+          title="¿Rechazar solicitud de acceso?"
+          message="Esta terminal quedará bloqueada en la pantalla de control de acceso y no podrá acceder al sistema."
+          itemName={formatPendingTerminalName(confirmReject)}
+          itemDetail={`Serial: ${confirmReject.serial} · IP: ${confirmReject.ip_address || 'Red local'}`}
+          confirmText="Rechazar Acceso"
+          cancelText="Cancelar"
+          variant="danger"
+          icon={ShieldAlert}
+          loading={Boolean(actionBusyId)}
+          onConfirm={() => executeReject(confirmReject)}
+          onCancel={() => !actionBusyId && setConfirmReject(null)}
+        />
       )}
     </>
   );

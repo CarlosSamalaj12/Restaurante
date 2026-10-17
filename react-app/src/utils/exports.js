@@ -540,7 +540,9 @@ export function exportToPDF({ title, subtitle, tables }) {
 </html>`;
 
   const win = window.open('', '_blank');
-  if (!win) { alert('Permite ventanas emergentes para imprimir'); return; }
+  if (!win) {
+    throw new Error('Permite ventanas emergentes en tu navegador para imprimir el reporte');
+  }
   win.document.write(html);
   win.document.close();
 }

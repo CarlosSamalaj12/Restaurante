@@ -25,6 +25,7 @@ import api from '../../api';
 import { useToast } from '../../hooks/useToast';
 import { ExpenseFormModal } from './ExpenseFormModal';
 import { VoucherPreviewModal } from './VoucherPreviewModal';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 export function ExpensesListTab({ categories = [], suppliers = [], onReload }) {
   const toast = useToast();
@@ -37,6 +38,23 @@ export function ExpensesListTab({ categories = [], suppliers = [], onReload }) {
     cashAmount: 0,
     totalCount: 0,
   });
+
+  // Diálogo de confirmación moderno con diseño
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Eliminar Gasto',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
 
   // Filters
   const [datePreset, setDatePreset] = useState('month'); // 'today' | 'week' | 'month' | 'all' | 'custom'
@@ -116,20 +134,33 @@ export function ExpensesListTab({ categories = [], suppliers = [], onReload }) {
     }
   };
 
-  const handleDelete = async (id, desc) => {
-    if (!window.confirm(`¿Estás seguro de eliminar el gasto "${desc}"?`)) return;
-
-    setDeletingId(id);
-    try {
-      await api.expenses.deleteExpense(id);
-      toast.show('Gasto eliminado exitosamente', { type: 'success' });
-      fetchExpenses();
-      onReload?.();
-    } catch (err) {
-      toast.show(err.message || 'Error al eliminar el gasto', { type: 'error' });
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (id, desc) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Eliminar este registro de gasto?',
+      message: 'El movimiento contable y su comprobante asociado serán eliminados.',
+      itemName: desc || 'Gasto',
+      itemDetail: 'Esta acción no se puede deshacer.',
+      variant: 'danger',
+      confirmText: 'Eliminar Gasto',
+      loading: false,
+      onConfirm: async () => {
+        setDeletingId(id);
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          await api.expenses.deleteExpense(id);
+          toast.success('Gasto eliminado exitosamente');
+          fetchExpenses();
+          onReload?.();
+          closeConfirm();
+        } catch (err) {
+          toast.error(err.message || 'Error al eliminar el gasto');
+          closeConfirm();
+        } finally {
+          setDeletingId(null);
+        }
+      },
+    });
   };
 
   const handleExportExcel = () => {
@@ -532,6 +563,20 @@ export function ExpensesListTab({ categories = [], suppliers = [], onReload }) {
         onClose={() => setPreviewVoucherUrl(null)}
         voucherUrl={previewVoucherUrl}
         title="Comprobante de Gasto / Factura"
+      />
+
+      {/* Modal de confirmación estilizado */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
       />
     </div>
   );

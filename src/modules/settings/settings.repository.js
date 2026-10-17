@@ -931,7 +931,9 @@ const settingsRepository = {
     );
     const [paymentMethods] = await query(`SELECT code, label, is_active, sort_order FROM payment_methods ORDER BY sort_order, label`);
     const [products] = await query(
-      `SELECT p.id, p.name, p.category_id, p.base_price, p.allow_discount, p.is_active, c.name AS category_name
+      `SELECT p.id, p.name, p.category_id, p.base_price, p.allow_discount, p.is_active,
+              p.image_url, p.description, p.estimated_prep_min,
+              c.name AS category_name
        FROM products p
        INNER JOIN product_categories c ON c.id = p.category_id
        ORDER BY p.name`
@@ -1024,6 +1026,7 @@ const settingsRepository = {
     const [products] = await query(
       `SELECT p.id, p.name, p.category_id, p.base_price, p.allow_discount, p.is_active, p.track_inventory,
               p.categoria_impresion_id, p.centro_produccion_exclusivo_id,
+              p.image_url, p.description, p.estimated_prep_min,
               c.name AS category_name, ci.nombre AS categoria_impresion_nombre, cp_excl.name AS centro_exclusivo_nombre
        FROM products p
        INNER JOIN product_categories c ON c.id = p.category_id

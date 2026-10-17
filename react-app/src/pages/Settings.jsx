@@ -23,6 +23,7 @@ import { FelSection } from '../components/settings/FelSection';
 import { PmsSection } from '../components/settings/PmsSection';
 import { KitchenNotesSection } from '../components/settings/KitchenNotesSection';
 import { VersionMaintenanceSection } from '../components/settings/VersionMaintenanceSection';
+import { DigitalMenuSection } from '../components/settings/DigitalMenuSection';
 import { BackButton } from '../components/BackButton';
 import {
   FileText,
@@ -52,7 +53,8 @@ import {
   LogOut,
   ChefHat,
   BedDouble,
-  GitBranch
+  GitBranch,
+  QrCode
 } from 'lucide-react';
 
 const GROUPS = [
@@ -96,6 +98,15 @@ const GROUPS = [
         color: 'text-amber-600 bg-amber-50 border-amber-200/80',
         keywords: ['cocina', 'observaciones', 'notas', 'atajos', 'sin cebolla', 'termino medio', 'para llevar'],
         getBadge: (d) => d.kitchenNotes?.length,
+      },
+      {
+        id: 'digital-menu',
+        label: 'Menú Digital y QR',
+        shortDesc: 'Multi-menús, auto-comanda y Kioscos',
+        icon: QrCode,
+        color: 'text-rose-600 bg-rose-50 border-rose-200/80',
+        keywords: ['qr', 'nfc', 'menu digital', 'kiosco', 'auto-comanda', 'comensal', 'temas', 'colores'],
+        requiresRole: ['superadmin', 'admin', 'manager'],
       },
     ],
   },
@@ -754,6 +765,10 @@ export function SettingsPage({ onBack, initialTab }) {
               notes={data.kitchenNotes || []}
               onReload={loadData}
             />
+          )}
+
+          {activeTab === 'digital-menu' && (
+            <DigitalMenuSection authUser={user} />
           )}
 
           {activeTab === 'users' && (

@@ -124,25 +124,52 @@ const catalogRepository = {
   },
 
   // Product management
-  async createProduct({ categoryId, name, basePrice = 0, allowDiscount = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null }, conn = null) {
+  async createProduct({ categoryId, name, basePrice = 0, allowDiscount = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null, imageUrl = null, description = null, estimatedPrepMin = null }, conn = null) {
     const runner = conn || query;
     const catImpId = categoriaImpresionId ? Number(categoriaImpresionId) : Number(categoryId);
     const [result] = await runner(
-      `INSERT INTO products (category_id, name, base_price, allow_discount, is_active, track_inventory, categoria_impresion_id, centro_produccion_exclusivo_id)
-       VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
-      [Number(categoryId), String(name).trim(), Number(basePrice) || 0, Number(allowDiscount) ? 1 : 0, Number(trackInventory) ? 1 : 0, catImpId, centroProduccionExclusivoId ? Number(centroProduccionExclusivoId) : null]
+      `INSERT INTO products (category_id, name, base_price, allow_discount, is_active, track_inventory, categoria_impresion_id, centro_produccion_exclusivo_id, image_url, description, estimated_prep_min)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+      [
+        Number(categoryId),
+        String(name).trim(),
+        Number(basePrice) || 0,
+        Number(allowDiscount) ? 1 : 0,
+        Number(trackInventory) ? 1 : 0,
+        catImpId,
+        centroProduccionExclusivoId ? Number(centroProduccionExclusivoId) : null,
+        imageUrl || null,
+        description || null,
+        estimatedPrepMin ? Number(estimatedPrepMin) : null,
+      ]
     );
     return result.insertId;
   },
 
-  async updateProduct(productId, { categoryId, name, basePrice = 0, allowDiscount = 1, isActive = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null }) {
+  async updateProduct(productId, { categoryId, name, basePrice = 0, allowDiscount = 1, isActive = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null, imageUrl = null, description = null, estimatedPrepMin = null }) {
     const catImpId = categoriaImpresionId ? Number(categoriaImpresionId) : Number(categoryId);
     await query(
       `UPDATE products
        SET category_id = ?, name = ?, base_price = ?, allow_discount = ?, is_active = ?, track_inventory = ?,
-           categoria_impresion_id = ?, centro_produccion_exclusivo_id = ?
+           categoria_impresion_id = ?, centro_produccion_exclusivo_id = ?,
+           image_url = COALESCE(?, image_url),
+           description = COALESCE(?, description),
+           estimated_prep_min = COALESCE(?, estimated_prep_min)
        WHERE id = ?`,
-      [Number(categoryId), String(name).trim(), Number(basePrice) || 0, Number(allowDiscount) ? 1 : 0, Number(isActive) ? 1 : 0, Number(trackInventory) ? 1 : 0, catImpId, centroProduccionExclusivoId ? Number(centroProduccionExclusivoId) : null, productId]
+      [
+        Number(categoryId),
+        String(name).trim(),
+        Number(basePrice) || 0,
+        Number(allowDiscount) ? 1 : 0,
+        Number(isActive) ? 1 : 0,
+        Number(trackInventory) ? 1 : 0,
+        catImpId,
+        centroProduccionExclusivoId ? Number(centroProduccionExclusivoId) : null,
+        imageUrl !== undefined ? (imageUrl || null) : null,
+        description !== undefined ? (description || null) : null,
+        estimatedPrepMin !== undefined ? (estimatedPrepMin ? Number(estimatedPrepMin) : null) : null,
+        productId,
+      ]
     );
   },
 

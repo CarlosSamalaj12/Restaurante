@@ -917,6 +917,65 @@ export const api = {
       return request(`/expenses/financial-summary${str ? `?${str}` : ''}`);
     },
   },
+
+  // ─── Módulo Menú Digital, Auto-Comanda (QR/NFC) y Kiosco ───
+  digitalMenu: {
+    // Público (Comensales)
+    getPublicMenu: (slug = 'default', token = '') =>
+      request(`/public/menu/${slug}${token ? `?t=${encodeURIComponent(token)}` : ''}`),
+    getProductDetail: (productId) => request(`/public/products/${productId}`),
+    bindDeviceSession: (data, token = '') =>
+      request(`/public/session/bind${token ? `?t=${encodeURIComponent(token)}` : ''}`, {
+        method: 'POST',
+        body: data,
+      }),
+    checkSessionStatus: (sessionToken) => request(`/public/session/${sessionToken}/status`),
+    sendGuestOrder: (data, token = '') =>
+      request(`/public/orders/send${token ? `?t=${encodeURIComponent(token)}` : ''}`, {
+        method: 'POST',
+        body: data,
+      }),
+    callWaiter: (data, token = '') =>
+      request(`/public/table/call-waiter${token ? `?t=${encodeURIComponent(token)}` : ''}`, {
+        method: 'POST',
+        body: data,
+      }),
+    requestBill: (data, token = '') =>
+      request(`/public/table/request-bill${token ? `?t=${encodeURIComponent(token)}` : ''}`, {
+        method: 'POST',
+        body: data,
+      }),
+    createReview: (data) => request('/public/reviews', { method: 'POST', body: data }),
+
+    // Administración POS & Superadmin
+    getStatus: () => request('/admin/digital-menu/status'),
+    toggleModule: (enabled) =>
+      request('/admin/digital-menu/toggle', { method: 'POST', body: { enabled } }),
+    getMenus: () => request('/admin/digital-menu/menus'),
+    createMenu: (data) => request('/admin/digital-menu/menus', { method: 'POST', body: data }),
+    updateMenu: (id, data) =>
+      request(`/admin/digital-menu/menus/${id}`, { method: 'PUT', body: data }),
+    deleteMenu: (id) => request(`/admin/digital-menu/menus/${id}`, { method: 'DELETE' }),
+    getTableTokens: (menuId) => request(`/admin/digital-menu/menus/${menuId}/qr-tokens`),
+    regenerateQRToken: (tableId, menuId) =>
+      request('/admin/digital-menu/regenerate-qr', { method: 'POST', body: { tableId, menuId } }),
+    getPromotions: (menuId) => request(`/admin/digital-menu/menus/${menuId}/promotions`),
+    createPromotion: (data) =>
+      request('/admin/digital-menu/promotions', { method: 'POST', body: data }),
+    deletePromotion: (id) => request(`/admin/digital-menu/promotions/${id}`, { method: 'DELETE' }),
+    attendWaiterCall: (tableId) =>
+      request(`/admin/digital-menu/table/${tableId}/attend-call`, { method: 'POST' }),
+    uploadImage: (imageData, type = 'logos') =>
+      request('/admin/digital-menu/upload-image', {
+        method: 'POST',
+        body: { imageData, type },
+      }),
+    updateProductInfo: (id, data) =>
+      request(`/admin/digital-menu/products/${id}`, {
+        method: 'PUT',
+        body: data,
+      }),
+  },
 };
 
 export default api;

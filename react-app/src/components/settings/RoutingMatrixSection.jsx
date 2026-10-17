@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 // Selector dinámico de íconos según el nombre de la categoría
 function getCategoryIcon(name = '') {
@@ -63,6 +64,23 @@ export function RoutingMatrixSection({
   onReload,
 }) {
   const toast = useToast();
+
+  // Diálogo de confirmación moderno con diseño
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Eliminar Categoría',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
 
   // Estados de interfaz
   const [searchTerm, setSearchTerm] = useState('');
@@ -336,15 +354,29 @@ export function RoutingMatrixSection({
   };
 
   // 8. Eliminar Categoría
-  const handleDeleteCategory = async (catId, catName) => {
-    if (!window.confirm(`¿Eliminar la categoría "${catName}"? Se borrarán sus rutas de cocina y los productos quedarán sin categoría de comanda.`)) return;
-    try {
-      await api.settings.deletePrintCategory(catId);
-      toast.success(`Categoría "${catName}" eliminada`);
-      if (onReload) await onReload();
-    } catch (err) {
-      toast.error(err?.data?.error || err?.message || 'Error al eliminar categoría');
-    }
+  const handleDeleteCategory = (catId, catName) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Eliminar categoría de comanda?',
+      message: 'Se eliminarán sus rutas de cocina asociadas y los productos quedarán sin categoría de impresión.',
+      itemName: catName,
+      itemDetail: 'Esta acción no puede revertirse automáticamente.',
+      variant: 'danger',
+      confirmText: 'Eliminar Categoría',
+      loading: false,
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          await api.settings.deletePrintCategory(catId);
+          toast.success(`Categoría "${catName}" eliminada`);
+          if (onReload) await onReload();
+          closeConfirm();
+        } catch (err) {
+          toast.error(err?.data?.error || err?.message || 'Error al eliminar categoría');
+          closeConfirm();
+        }
+      },
+    });
   };
 
   // Cálculo del Simulador en Vivo
@@ -979,6 +1011,20 @@ export function RoutingMatrixSection({
           </div>
         </div>
       )}
+
+      {/* Modal de confirmación estilizado */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
+      />
     </div>
   );
 }

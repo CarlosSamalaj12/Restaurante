@@ -74,7 +74,8 @@ const accountsRepository = {
 
   async findOpenAccountsByTableId(tableId, conn = null) {
     const [rows] = await query(
-      `SELECT a.id, a.check_number, a.guest_count, a.waiter_id, u.full_name AS waiter_name, a.opened_at
+      `SELECT a.id, a.check_number, a.guest_count, a.waiter_id, u.full_name AS waiter_name, a.opened_at,
+              a.order_source, a.call_waiter_status, a.requested_payment_method
        FROM accounts a
        INNER JOIN staff_users u ON u.id = a.waiter_id
        WHERE a.table_id = ? AND a.status = 'open'
@@ -88,6 +89,7 @@ const accountsRepository = {
   async findOpenAccounts(centerId = 0, conn = null) {
     const [rows] = await query(
       `SELECT a.id, a.check_number, a.status, a.table_id, a.waiter_id, a.guest_count, a.opened_at,
+              a.order_source, a.call_waiter_status, a.requested_payment_method,
               t.code AS table_code, t.operation_center_id,
               da.name AS area_name,
               u.full_name AS waiter_name,

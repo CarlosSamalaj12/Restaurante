@@ -3,6 +3,7 @@ import { m } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import { BackButton } from '../components/BackButton';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   ArrowLeft,
   Plus,
@@ -13,6 +14,7 @@ import {
   History,
   Loader2,
   Edit3,
+  Trash2,
   X
 } from 'lucide-react';
 
@@ -42,6 +44,22 @@ export function InventoryPage({ onBack }) {
   const [movementsLoading, setMovementsLoading] = useState(false);
   const toast = useToast();
 
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Desactivar',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
+
   const loadItems = async () => {
     setLoading(true);
     try {
@@ -68,13 +86,29 @@ export function InventoryPage({ onBack }) {
     } catch { toast.error('Error al guardar'); }
   };
 
-  const handleDeleteItem = async (id) => {
-    if (!window.confirm('¿Desactivar este insumo?')) return;
-    try {
-      await api.inventory.remove(id);
-      toast.success('Insumo desactivado');
-      loadItems();
-    } catch { toast.error('Error al desactivar'); }
+  const handleDeleteItem = (id, itemName) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Desactivar este insumo?',
+      message: 'El insumo dejará de estar disponible en el inventario activo.',
+      itemName: itemName || 'Insumo',
+      itemDetail: 'Podrás reactivarlo o ajustarlo en cualquier momento.',
+      variant: 'danger',
+      confirmText: 'Desactivar Insumo',
+      loading: false,
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          await api.inventory.remove(id);
+          toast.success('Insumo desactivado');
+          loadItems();
+          closeConfirm();
+        } catch {
+          toast.error('Error al desactivar');
+          closeConfirm();
+        }
+      },
+    });
   };
 
   const handleAddEntry = async (data) => {
@@ -172,6 +206,9 @@ export function InventoryPage({ onBack }) {
                     <button onClick={() => { setEditingItem(item); setShowForm(true); }} className="p-1.5 hover:bg-gray-100 rounded-lg" title="Editar">
                       <Edit3 className="w-4 h-4 text-gray-400" />
                     </button>
+                    <button onClick={() => handleDeleteItem(item.id, item.name)} className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-lg transition-colors" title="Desactivar insumo">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -247,6 +284,20 @@ export function InventoryPage({ onBack }) {
           onClose={() => setShowAdjust(null)}
         />
       )}
+
+      {/* Modal de confirmación estilizado */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
+      />
     </div>
   );
 }

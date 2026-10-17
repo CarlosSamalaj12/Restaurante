@@ -28,6 +28,7 @@ import {
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
+import { ConfirmDialog } from './ConfirmDialog';
 
 const DEFAULT_METHODS = [
   { code: 'cash', label: 'Efectivo', icon: Banknote, color: 'bg-emerald-600', activeBorder: 'border-emerald-500', lightBg: 'bg-emerald-50 text-emerald-800' },
@@ -47,6 +48,23 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
   const [currentTotals, setCurrentTotals] = useState(totals || {});
   const [existingPayments, setExistingPayments] = useState([]);
   const [deletingPaymentId, setDeletingPaymentId] = useState(null);
+
+  // Diálogo de confirmación con diseño para eliminar pagos
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Eliminar Pago',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
 
   const pending = useMemo(() => {
     const val = Number(currentTotals?.pending ?? currentTotals?.total ?? 0);
@@ -586,23 +604,32 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
   };
 
   // Eliminar un pago individual ya registrado
-  const handleDeleteExistingPayment = async (payment) => {
-    const confirmDel = window.confirm(
-      `¿Deseas eliminar el pago de ${currencySymbol} ${Number(payment.amount).toFixed(2)} (${payment.method_label || payment.method})?\n\n` +
-      `El saldo pendiente aumentará para que puedas registrar la forma de pago correcta.`
-    );
-    if (!confirmDel) return;
-
-    setDeletingPaymentId(payment.id);
-    try {
-      await api.deleteAccountPayment(accountId, payment.id);
-      toast.success('Pago eliminado exitosamente');
-      await loadAccountPayments();
-    } catch (err) {
-      toast.error(err.message || 'Error al eliminar pago');
-    } finally {
-      setDeletingPaymentId(null);
-    }
+  const handleDeleteExistingPayment = (payment) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '¿Eliminar este pago?',
+      message: 'El saldo pendiente aumentará inmediatamente para que puedas registrar la forma de pago correcta.',
+      itemName: `Pago de ${currencySymbol} ${Number(payment.amount).toFixed(2)}`,
+      itemDetail: `Método: ${payment.method_label || payment.method}`,
+      variant: 'danger',
+      confirmText: 'Eliminar Pago',
+      loading: false,
+      onConfirm: async () => {
+        setDeletingPaymentId(payment.id);
+        setConfirmDialog((prev) => ({ ...prev, loading: true }));
+        try {
+          await api.deleteAccountPayment(accountId, payment.id);
+          toast.success('Pago eliminado exitosamente');
+          await loadAccountPayments();
+          closeConfirm();
+        } catch (err) {
+          toast.error(err.message || 'Error al eliminar pago');
+          closeConfirm();
+        } finally {
+          setDeletingPaymentId(null);
+        }
+      },
+    });
   };
 
   // Cerrar cuenta directamente si ya está liquidada al 100%
@@ -1949,6 +1976,20 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
           )}
         </AnimatePresence>
       </m.div>
+
+      {/* Modal de confirmación estilizado para eliminación de pagos */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
+      />
     </div>
   );
 }

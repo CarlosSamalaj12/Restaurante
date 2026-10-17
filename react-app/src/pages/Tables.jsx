@@ -3,6 +3,8 @@ import { m, AnimatePresence } from 'framer-motion';
 import api from '../api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
+import { useSocket } from '../hooks/useSocket';
+import { playNewOrderChime, playCallWaiterChime } from '../utils/soundAlerts';
 import { MacDock } from '../components/MacDock';
 import { BackButton } from '../components/BackButton';
 import { printPrecheckThermal } from '../utils/printReceipts';
@@ -20,7 +22,10 @@ import {
   Receipt,
   User,
   Check,
-  Lock
+  Lock,
+  BellRing,
+  Smartphone,
+  Monitor
 } from 'lucide-react';
 
 // Formato de tiempo transcurrido desde opened_at (ej. "42m", "1h 15m")
@@ -204,6 +209,50 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
       toast.error('Error al cargar mesas');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Socket listeners para eventos en vivo de Auto-Comanda y Asistencia en Mesa
+  const handleSelfServiceOrder = (data) => {
+    playNewOrderChime();
+    toast.success(`📱 ¡Nueva auto-comanda en Mesa ${data.tableCode || ''}! (Sin Mesero)`);
+    loadTables();
+  };
+
+  const handleCallWaiter = (data) => {
+    playCallWaiterChime();
+    toast.warning(`🔔 Mesa ${data.tableCode || ''}: Cliente solicita mesero (${data.guestAlias || 'Comensal'})`);
+    loadTables();
+  };
+
+  const handleRequestBill = (data) => {
+    playCallWaiterChime();
+    toast.info(`💳 Mesa ${data.tableCode || ''}: Cuenta solicitada (${data.paymentMethod || 'Efectivo/Tarjeta'})`);
+    loadTables();
+  };
+
+  const handleCallWaiterDismissed = () => {
+    loadTables();
+  };
+
+  useSocket({
+    'orders:self_service_new': handleSelfServiceOrder,
+    'table:call_waiter': handleCallWaiter,
+    'table:request_bill': handleRequestBill,
+    'table:call_waiter_dismissed': handleCallWaiterDismissed,
+  });
+
+  const handleAttendWaiterCall = async (e, table) => {
+    e?.stopPropagation?.();
+    try {
+      await api.digitalMenu.attendWaiterCall(table.id);
+      toast.success(`Llamado de Mesa ${table.code} atendido`);
+      loadTables();
+      if (showAccountsModal && activeTable?.id === table.id) {
+        fetchTableAccounts(table.id);
+      }
+    } catch (err) {
+      toast.error('Error al marcar llamado como atendido');
     }
   };
 
@@ -497,6 +546,9 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
                       const elapsedTime = formatElapsedTime(table.opened_at);
                       const tableTotal = Number(table.total) || 0;
                       const accountsList = table.accounts || [];
+                      const hasWaiterCall = table.call_waiter_status === 'requested' || accountsList.some((a) => a.call_waiter_status === 'requested');
+                      const isSelfOrder = table.order_source === 'qr_guest' || accountsList.some((a) => a.order_source === 'qr_guest');
+                      const isKioskOrder = table.order_source === 'kiosk' || accountsList.some((a) => a.order_source === 'kiosk');
 
                       return (
                         <m.div
@@ -517,7 +569,9 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
                             relative flex flex-col justify-between p-3.5 rounded-2xl cursor-pointer
                             transition-all duration-200 border shadow-xs hover:shadow-md
                             ${
-                              isOccupied
+                              hasWaiterCall
+                                ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400 text-amber-950'
+                                : isOccupied
                                 ? 'bg-[#FDF2F0] border-[#FED7D2] text-[#931D14]'
                                 : 'bg-[#EAF8F5] border-[#BCECE0] text-[#095C48]'
                             }
@@ -530,14 +584,45 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
                             </div>
                           )}
 
+                          {/* Banner de alerta si el cliente llama a mesero */}
+                          {hasWaiterCall && (
+                            <div className="w-full mb-2 flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-amber-500 text-white text-[11px] font-black shadow-sm animate-pulse z-10">
+                              <span className="flex items-center gap-1.5 truncate">
+                                <BellRing className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">¡Llaman Mesero!</span>
+                              </span>
+                              <button
+                                onClick={(e) => handleAttendWaiterCall(e, table)}
+                                className="px-2 py-0.5 bg-white text-amber-900 text-[10px] font-black rounded-md hover:bg-amber-100 transition shadow-2xs shrink-0 active:scale-95"
+                                title="Marcar como atendido"
+                              >
+                                Atender
+                              </button>
+                            </div>
+                          )}
+
                           {/* Fila Superior de la Tarjeta: Badges e Info */}
                           <div className="flex items-center justify-between w-full mb-1">
                             {isOccupied ? (
                               <>
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#FDE2DF] text-[#D13B2C]">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[#D13B2C] animate-pulse" />
-                                  {elapsedTime || '1m'}
-                                </span>
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#FDE2DF] text-[#D13B2C]">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#D13B2C] animate-pulse" />
+                                    {elapsedTime || '1m'}
+                                  </span>
+                                  {isSelfOrder && (
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200">
+                                      <Smartphone className="w-3 h-3 text-blue-600" />
+                                      QR
+                                    </span>
+                                  )}
+                                  {isKioskOrder && (
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">
+                                      <Monitor className="w-3 h-3 text-purple-600" />
+                                      Kiosco
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="text-xs font-black text-[#D13B2C]">
                                   {currencySymbol}
                                   {tableTotal.toFixed(2)}
@@ -578,7 +663,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
                             {isOccupied ? (
                               <div className="space-y-1 mt-0.5">
                                 <p className="text-[11px] font-medium text-[#C02E20]/80 truncate">
-                                  {table.waiter_name || 'Sin mesero'}
+                                  {isSelfOrder ? 'Auto-Comanda (Sin Mesero)' : (table.waiter_name || 'Sin mesero')}
                                 </p>
 
                                 {/* Desglose de cuentas */}
@@ -934,13 +1019,34 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
                 {modalAccounts.map((account, index) => {
                   const accTotal = Number(account.totals?.total ?? account.total ?? 0);
                   const isPrintingThis = printingId === account.id;
-                  const waiterName = account.waiter_name || activeTable.waiter_name || 'Mesero';
+                  const isQrAccount = account.order_source === 'qr_guest';
+                  const isKioskAccount = account.order_source === 'kiosk';
+                  const isCallingWaiter = account.call_waiter_status === 'requested';
+                  const waiterName = isQrAccount
+                    ? 'Auto-Comanda (Sin Mesero)'
+                    : (account.waiter_name || activeTable.waiter_name || 'Mesero');
 
                   return (
                     <div
                       key={account.id}
-                      className="p-4 bg-white hover:bg-slate-50/80 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-sm transition-all space-y-3.5"
+                      className="p-4 bg-white hover:bg-slate-50/80 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-sm transition-all space-y-3"
                     >
+                      {/* Banner de llamado de mesero en la cuenta */}
+                      {isCallingWaiter && (
+                        <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-amber-500 text-white text-xs font-bold shadow-xs animate-pulse">
+                          <span className="flex items-center gap-1.5">
+                            <BellRing className="w-3.5 h-3.5" />
+                            <span>¡Comensal solicita mesero!</span>
+                          </span>
+                          <button
+                            onClick={(e) => handleAttendWaiterCall(e, activeTable)}
+                            className="px-2.5 py-0.5 bg-white text-amber-900 text-[10px] font-black rounded-md hover:bg-amber-100 transition shadow-2xs"
+                          >
+                            Atender
+                          </button>
+                        </div>
+                      )}
+
                       {/* Cabecera de la cuenta: Número, Nombre de responsable / mesero, comensales y monto */}
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
@@ -948,7 +1054,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
                             {index + 1}
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-extrabold text-slate-900 text-sm tracking-tight">
                                 {account.check_number || `Cuenta #${index + 1}`}
                               </span>
@@ -956,6 +1062,23 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
                                 <Users className="w-3 h-3 text-slate-500" />
                                 {account.guest_count || 1} {Number(account.guest_count) === 1 ? 'comensal' : 'comensales'}
                               </span>
+                              {isQrAccount && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200">
+                                  <Smartphone className="w-3 h-3 text-blue-600" />
+                                  QR Auto
+                                </span>
+                              )}
+                              {isKioskAccount && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">
+                                  <Monitor className="w-3 h-3 text-purple-600" />
+                                  Kiosco
+                                </span>
+                              )}
+                              {account.requested_payment_method && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  💳 Pide: {account.requested_payment_method === 'cash' ? 'Efectivo' : 'Tarjeta'}
+                                </span>
+                              )}
                             </div>
 
                             {/* Fila del Nombre del Mesero / Responsable */}
