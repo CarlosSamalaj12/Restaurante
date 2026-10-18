@@ -150,13 +150,12 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
 
           {/* Badges Glassmorphism Flotantes en la esquina inferior izquierda */}
           <div className="absolute bottom-5 left-5 z-20 flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full text-xs font-black bg-black/50 backdrop-blur-md border border-white/20 text-amber-300 flex items-center gap-1 shadow-md">
+            <span className="px-3 py-1 rounded-full text-xs font-black bg-black/50 backdrop-blur-md border border-white/20 text-amber-300 flex items-center gap-1.5 shadow-md">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              {Number(product.rating_avg || 5.0).toFixed(1)}
-            </span>
-            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-black/50 backdrop-blur-md border border-white/20 text-slate-200 flex items-center gap-1 shadow-md">
-              <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
-              {product.rating_count || 0}
+              {Number(product.rating_avg || 4.0).toFixed(1)}
+              <span className="text-slate-300 font-normal text-[11px]">
+                ({product.sales_count ?? product.rating_count ?? 0} {(product.sales_count ?? product.rating_count ?? 0) === 1 ? 'pedido' : 'pedidos'})
+              </span>
             </span>
           </div>
         </div>
@@ -272,10 +271,10 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1 text-amber-400 font-black text-base">
                     <Star className="w-5 h-5 fill-amber-400" />
-                    <span>{Number(product.rating_avg || 5.0).toFixed(1)}</span>
+                    <span>{Number(product.rating_avg || 4.0).toFixed(1)}</span>
                   </div>
                   <span className="text-xs text-slate-400">
-                    ({product.rating_count || product.reviews?.length || 0} valoraciones)
+                    ({product.sales_count ?? product.rating_count ?? 0} pedidos registrados)
                   </span>
                 </div>
 

@@ -5,6 +5,8 @@ const { query } = require("../../common/db");
 const { nowSql, money } = require("../../common/utils");
 
 const accountsRepository = {
+  query,
+
   async findById(accountId, conn = null) {
     const [rows] = await query(
       `SELECT a.id, a.table_id, a.operation_center_id, a.waiter_id, a.shift_id,
@@ -455,6 +457,30 @@ const accountsRepository = {
         conn
       );
     }
+  },
+
+  async updateCallWaiterStatus(accountId, status = "requested", conn = null) {
+    await query(
+      `UPDATE accounts SET call_waiter_status = ? WHERE id = ?`,
+      [status, Number(accountId)],
+      conn
+    );
+  },
+
+  async updateRequestedPaymentMethod(accountId, paymentMethod, conn = null) {
+    await query(
+      `UPDATE accounts SET requested_payment_method = ? WHERE id = ?`,
+      [paymentMethod, Number(accountId)],
+      conn
+    );
+  },
+
+  async dismissWaiterCallByTable(tableId, conn = null) {
+    await query(
+      `UPDATE accounts SET call_waiter_status = 'attended' WHERE table_id = ? AND status = 'open'`,
+      [Number(tableId)],
+      conn
+    );
   },
 };
 

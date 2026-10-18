@@ -105,4 +105,40 @@ describe("Digital Menu Service Validation & Security Tests", () => {
       (err) => err instanceof BadRequestError && err.status === 400
     );
   });
+
+  test("callWaiter throws BadRequestError if sessionToken is missing", async () => {
+    await assert.rejects(
+      async () => {
+        await digitalMenuService.callWaiter("");
+      },
+      (err) => err instanceof BadRequestError && err.status === 400
+    );
+  });
+
+  test("requestBill throws BadRequestError if sessionToken is missing", async () => {
+    await assert.rejects(
+      async () => {
+        await digitalMenuService.requestBill("");
+      },
+      (err) => err instanceof BadRequestError && err.status === 400
+    );
+  });
+
+  test("attendWaiterCall throws BadRequestError if tableId is missing", async () => {
+    await assert.rejects(
+      async () => {
+        await digitalMenuService.attendWaiterCall(null);
+      },
+      (err) => err instanceof BadRequestError && err.status === 400
+    );
+  });
+
+  test("accountsRepository exposes query and waiter call/payment request methods", () => {
+    const accountsRepository = require("../../src/modules/accounts/accounts.repository");
+    assert.strictEqual(typeof accountsRepository.query, "function", "accountsRepository.query must be a function");
+    assert.strictEqual(typeof accountsRepository.updateCallWaiterStatus, "function", "updateCallWaiterStatus must be a function");
+    assert.strictEqual(typeof accountsRepository.updateRequestedPaymentMethod, "function", "updateRequestedPaymentMethod must be a function");
+    assert.strictEqual(typeof accountsRepository.dismissWaiterCallByTable, "function", "dismissWaiterCallByTable must be a function");
+  });
 });
+

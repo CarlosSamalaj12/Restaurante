@@ -320,10 +320,15 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
                 {/* Card content */}
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-lg font-bold text-gray-900">
                         Mesa {account.table_code}
                       </span>
+                      {account.requested_payment_method && !selectMode && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          💳 Pide: {account.requested_payment_method === 'cash' ? 'Efectivo' : (account.requested_payment_method === 'transfer' || account.requested_payment_method === 'bank_transfer') ? 'Transferencia' : 'Tarjeta'}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <Users className="w-3 h-3 text-gray-400" />

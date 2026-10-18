@@ -32,7 +32,7 @@ export function CartDrawer({
   onRequestBill,
 }) {
   const toast = useToast();
-  const [paymentMethod, setPaymentMethod] = useState('card_pos');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
   const [isSending, setIsSending] = useState(false);
   const [successInfo, setSuccessInfo] = useState(null);
   const [requestingBill, setRequestingBill] = useState(false);
@@ -41,13 +41,14 @@ export function CartDrawer({
 
   const handleSendOrder = async () => {
     if (!cart.length) return;
+    const finalMethod = paymentMethod || 'cash';
     try {
       setIsSending(true);
 
       const payload = {
         sessionToken: sessionData?.sessionToken,
         isKiosk,
-        paymentMethod,
+        paymentMethod: finalMethod,
         items: cart.map((it) => ({
           productId: it.productId,
           seatNo: 1,
@@ -70,13 +71,14 @@ export function CartDrawer({
 
   const handleBill = async () => {
     if (!sessionData?.sessionToken) return;
+    const finalMethod = paymentMethod || 'cash';
     try {
       setRequestingBill(true);
       await api.digitalMenu.requestBill(
-        { sessionToken: sessionData.sessionToken, paymentMethod },
+        { sessionToken: sessionData.sessionToken, paymentMethod: finalMethod },
         window.location.search.replace('?t=', '')
       );
-      if (onRequestBill) onRequestBill(paymentMethod);
+      if (onRequestBill) onRequestBill(finalMethod);
       toast.success('¡Cuenta solicitada! Un mesero se acercará a tu mesa con el cobro.');
       onClose();
     } catch (err) {
@@ -221,9 +223,9 @@ export function CartDrawer({
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('cash')}
-                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition ${
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
                         paymentMethod === 'cash'
-                          ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300 shadow'
+                          ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300 ring-2 ring-emerald-500/40 shadow-md'
                           : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
                       }`}
                     >
@@ -233,10 +235,10 @@ export function CartDrawer({
 
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('card_pos')}
-                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition ${
-                        paymentMethod === 'card_pos'
-                          ? 'border-sky-500 bg-sky-500/15 text-sky-300 shadow'
+                      onClick={() => setPaymentMethod('card')}
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                        paymentMethod === 'card'
+                          ? 'border-sky-500 bg-sky-500/20 text-sky-300 ring-2 ring-sky-500/40 shadow-md'
                           : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
                       }`}
                     >
@@ -246,10 +248,10 @@ export function CartDrawer({
 
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('bank_transfer')}
-                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition ${
-                        paymentMethod === 'bank_transfer'
-                          ? 'border-amber-500 bg-amber-500/15 text-amber-300 shadow'
+                      onClick={() => setPaymentMethod('transfer')}
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                        paymentMethod === 'transfer'
+                          ? 'border-amber-500 bg-amber-500/20 text-amber-300 ring-2 ring-amber-500/40 shadow-md'
                           : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
                       }`}
                     >
@@ -288,7 +290,53 @@ export function CartDrawer({
 
             {/* Opción de Solicitar la Cuenta en Mesa si no hay items pendientes pero la sesión existe */}
             {cart.length === 0 && sessionData?.accountId && (
-              <div className="p-4 bg-[#090C14] border-t border-white/10 space-y-2">
+              <div className="p-4 bg-[#090C14] border-t border-white/10 space-y-3">
+                <div>
+                  <span className="text-xs font-bold text-slate-300 block mb-2">
+                    ¿Cómo deseas pagar la cuenta?
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('cash')}
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                        paymentMethod === 'cash'
+                          ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300 ring-2 ring-emerald-500/40 shadow-md'
+                          : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Banknote className="w-4 h-4 text-emerald-400" />
+                      <span>Efectivo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('card')}
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                        paymentMethod === 'card'
+                          ? 'border-sky-500 bg-sky-500/20 text-sky-300 ring-2 ring-sky-500/40 shadow-md'
+                          : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <CreditCard className="w-4 h-4 text-sky-400" />
+                      <span>POS Tarjeta</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('transfer')}
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                        paymentMethod === 'transfer'
+                          ? 'border-amber-500 bg-amber-500/20 text-amber-300 ring-2 ring-amber-500/40 shadow-md'
+                          : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <QrCode className="w-4 h-4 text-amber-400" />
+                      <span>Transferencia</span>
+                    </button>
+                  </div>
+                </div>
+
                 <button
                   disabled={requestingBill}
                   onClick={handleBill}

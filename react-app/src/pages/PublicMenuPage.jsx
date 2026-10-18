@@ -76,6 +76,7 @@ export function PublicMenuPage({ isKiosk = false }) {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [guestAliasInput, setGuestAliasInput] = useState('');
   const [accountClosedNotice, setAccountClosedNotice] = useState(false);
+  const wasActiveRef = useRef(false);
 
   // Monitorear si la cuenta de la mesa fue cerrada en el POS (pagada)
   useEffect(() => {
@@ -83,11 +84,20 @@ export function PublicMenuPage({ isKiosk = false }) {
     const interval = setInterval(async () => {
       try {
         const status = await api.digitalMenu.checkSessionStatus(sessionData.sessionToken);
-        if (status && !status.valid) {
+        const isActive = Boolean(status?.active ?? status?.valid);
+        if (isActive) {
+          wasActiveRef.current = true;
+        } else if (wasActiveRef.current) {
+          // Solo si la cuenta estuvo activa en esta sesión y ahora fue cerrada en el POS
           setAccountClosedNotice(true);
           localStorage.removeItem(`sama_diner_session_${slug}`);
           setSessionData(null);
           setCart([]);
+          wasActiveRef.current = false;
+        } else {
+          // Si era una sesión expirada previa, limpiar en silencio sin interrumpir al comensal
+          localStorage.removeItem(`sama_diner_session_${slug}`);
+          setSessionData(null);
         }
       } catch (e) {
         // En caso de corte momentáneo de red, no hacer nada
@@ -358,7 +368,15 @@ export function PublicMenuPage({ isKiosk = false }) {
         onSelectPromotion={(promo) => {
           if (promo.target_id) {
             const found = products.find((p) => p.id === Number(promo.target_id));
-            if (found) setSelectedProduct(found);
+            if (found) {
+              setSelectedProduct(found);
+              return;
+            }
+          }
+          // Si la promoción es informativa o general, desplazamiento suave hacia los platillos
+          const menuSection = document.querySelector('main');
+          if (menuSection) {
+            menuSection.scrollIntoView({ behavior: 'smooth' });
           }
         }}
       />
@@ -488,7 +506,7 @@ export function PublicMenuPage({ isKiosk = false }) {
               setCart((prev) => [...prev, customizedItem]);
               if (navigator.vibrate) navigator.vibrate(15);
               setSelectedProduct(null);
-              setIsCartOpen(true);
+              toast.success(`✓ ${customizedItem.name} añadido a tu orden`);
             }}
           />
         )}
@@ -548,12 +566,29 @@ export function PublicMenuPage({ isKiosk = false }) {
 
       {/* Modal de Despedida cuando la Cuenta se Cierra en el POS */}
       {accountClosedNotice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md select-none">
-          <div className="bg-[#101726] border border-emerald-500/30 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl text-center">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto text-3xl">
-              ✨
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md select-none animate-in fade-in duration-300">
+          <div className="bg-[#101726] border border-emerald-500/30 rounded-3xl p-6 sm:p-7 max-w-sm w-full space-y-4 shadow-2xl text-center">
+            {menu?.logo_url ? (
+              <div className="w-20 h-20 rounded-2xl bg-white/5 border border-white/10 p-2 mx-auto flex items-center justify-center shadow-lg">
+                <img
+                  src={menu.logo_url}
+                  alt={menu?.name || 'Logo'}
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto text-3xl">
+                ✨
+              </div>
+            )}
+            <div>
+              <h3 className="text-xl font-black text-white">¡Gracias por tu visita!</h3>
+              {menu?.name && (
+                <p className="text-xs font-bold text-[var(--menu-primary,#3B82F6)] mt-0.5">
+                  {menu.name}
+                </p>
+              )}
             </div>
-            <h3 className="text-xl font-black text-white">¡Gracias por tu visita!</h3>
             <p className="text-xs text-slate-300 leading-relaxed">
               La cuenta de tu mesa ha sido cerrada y procesada con éxito. Esperamos que hayas disfrutado tu comida y verte pronto de nuevo.
             </p>
@@ -562,7 +597,7 @@ export function PublicMenuPage({ isKiosk = false }) {
                 setAccountClosedNotice(false);
                 loadMenuData();
               }}
-              className="w-full py-3 px-4 rounded-xl bg-[var(--menu-primary)] text-white text-xs font-black shadow-lg hover:brightness-110 transition active:scale-95"
+              className="w-full py-3.5 px-4 rounded-xl bg-[var(--menu-primary)] text-white text-xs font-black shadow-lg shadow-[var(--menu-primary)]/25 hover:brightness-110 transition active:scale-95"
             >
               Volver a la Carta
             </button>

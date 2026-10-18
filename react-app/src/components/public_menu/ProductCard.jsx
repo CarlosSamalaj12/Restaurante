@@ -7,7 +7,8 @@ import { Star, MessageSquare, Plus, Clock, Sparkles } from 'lucide-react';
 
 export function ProductCard({ product, onSelect }) {
   const isCustomizable = product.modifier_groups && product.modifier_groups.length > 0;
-  const rating = Number(product.rating_avg || 5.0).toFixed(1);
+  const rating = Number(product.rating_avg || 4.0).toFixed(1);
+  const salesCount = product.sales_count ?? product.rating_count ?? 0;
 
   return (
     <m.div
@@ -32,11 +33,11 @@ export function ProductCard({ product, onSelect }) {
             </div>
           )}
 
-          {/* Calificación Promedio en esquina inferior izquierda (Glassmorphism) */}
-          <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/10 text-[11px] font-bold text-amber-300 shadow">
+          {/* Calificación y Popularidad por Pedidos en esquina inferior izquierda (Glassmorphism) */}
+          <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-0.5 rounded-full border border-white/10 text-[11px] font-bold text-amber-300 shadow">
             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
             <span>{rating}</span>
-            <span className="text-slate-400 font-normal">({product.rating_count || 0})</span>
+            <span className="text-slate-300 font-medium text-[10px]">({salesCount} {salesCount === 1 ? 'pedido' : 'pedidos'})</span>
           </div>
 
           {/* Badge de Destacado si aplica */}

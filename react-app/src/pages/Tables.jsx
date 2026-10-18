@@ -227,7 +227,13 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
 
   const handleRequestBill = (data) => {
     playCallWaiterChime();
-    toast.info(`💳 Mesa ${data.tableCode || ''}: Cuenta solicitada (${data.paymentMethod || 'Efectivo/Tarjeta'})`);
+    const methodLabel =
+      data.paymentMethod === 'cash'
+        ? 'Efectivo'
+        : data.paymentMethod === 'bank_transfer'
+        ? 'Transferencia'
+        : 'Tarjeta';
+    toast.info(`💳 Mesa ${data.tableCode || ''}: Cuenta solicitada (${methodLabel})`);
     loadTables();
   };
 
@@ -1076,7 +1082,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
                               )}
                               {account.requested_payment_method && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                  💳 Pide: {account.requested_payment_method === 'cash' ? 'Efectivo' : 'Tarjeta'}
+                                  💳 Pide: {account.requested_payment_method === 'cash' ? 'Efectivo' : (account.requested_payment_method === 'transfer' || account.requested_payment_method === 'bank_transfer') ? 'Transferencia' : 'Tarjeta'}
                                 </span>
                               )}
                             </div>

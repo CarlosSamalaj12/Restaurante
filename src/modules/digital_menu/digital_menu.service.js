@@ -16,6 +16,7 @@ const ordersService = require("../orders/orders.service");
 const accountsRepository = require("../accounts/accounts.repository");
 const accountsService = require("../accounts/accounts.service");
 const tablesRepository = require("../tables/tables.repository");
+const settingsRepository = require("../settings/settings.repository");
 const { generateTableToken, generateRandomSalt } = require("./middleware/validateTableToken");
 const { withTransaction } = require("../../common/db");
 const { money } = require("../../common/utils");
@@ -72,6 +73,13 @@ const digitalMenuService = {
       };
     }
 
+    let logoUrl = menu.logo_url;
+    if (!logoUrl) {
+      try {
+        logoUrl = await settingsRepository.getLogoUrl();
+      } catch (_) {}
+    }
+
     return {
       menu: {
         id: menu.id,
@@ -84,7 +92,7 @@ const digitalMenuService = {
         bg_color: menu.bg_color,
         text_color: menu.text_color,
         font_family: menu.font_family,
-        logo_url: menu.logo_url,
+        logo_url: logoUrl || null,
         banner_url: menu.banner_url,
         social_links: menu.social_links || {},
       },
@@ -200,9 +208,9 @@ const digitalMenuService = {
   },
 
   async checkSessionStatus(sessionToken) {
-    if (!sessionToken) return { active: false };
+    if (!sessionToken) return { active: false, valid: false };
     const session = await digitalMenuRepository.findSessionByToken(sessionToken);
-    if (!session) return { active: false };
+    if (!session) return { active: false, valid: false };
 
     const isOpen = String(session.account_status) === "open" && String(session.status) === "active";
     if (!isOpen && session.status === "active") {
@@ -211,6 +219,7 @@ const digitalMenuService = {
 
     return {
       active: isOpen,
+      valid: isOpen,
       accountId: session.account_id,
       checkNumber: session.check_number,
       tableCode: session.table_code,
@@ -279,6 +288,10 @@ const digitalMenuService = {
       accountId = session.account_id;
       tableCode = session.table_code;
       guestAlias = session.guest_alias;
+
+      if (paymentMethod) {
+        await accountsRepository.updateRequestedPaymentMethod(accountId, paymentMethod);
+      }
     }
 
     // Insertar cada ítem recalculando su precio en el servidor
@@ -322,13 +335,14 @@ const digitalMenuService = {
 
   // ─── Acciones de Comensal en Mesa ───
   async callWaiter(sessionToken, reason = "Asistencia en mesa") {
+    if (!sessionToken) throw new BadRequestError("Token de sesión de mesa requerido");
     const session = await digitalMenuRepository.findSessionByToken(sessionToken);
     if (!session) throw new NotFoundError("Sesión de mesa inválida");
+    if (session.account_status && session.account_status !== "open") {
+      throw new BadRequestError("La sesión de esta mesa ya no se encuentra activa");
+    }
 
-    await accountsRepository.query(
-      `UPDATE accounts SET call_waiter_status = 'requested' WHERE id = ?`,
-      [session.account_id]
-    );
+    await accountsRepository.updateCallWaiterStatus(session.account_id, "requested");
 
     emitEvent("table:call_waiter", {
       tableId: session.table_id,
@@ -342,13 +356,14 @@ const digitalMenuService = {
   },
 
   async requestBill(sessionToken, paymentMethod = "card_pos") {
+    if (!sessionToken) throw new BadRequestError("Token de sesión de mesa requerido");
     const session = await digitalMenuRepository.findSessionByToken(sessionToken);
     if (!session) throw new NotFoundError("Sesión de mesa inválida");
+    if (session.account_status && session.account_status !== "open") {
+      throw new BadRequestError("La cuenta de esta mesa ya no se encuentra abierta");
+    }
 
-    await accountsRepository.query(
-      `UPDATE accounts SET requested_payment_method = ? WHERE id = ?`,
-      [paymentMethod, session.account_id]
-    );
+    await accountsRepository.updateRequestedPaymentMethod(session.account_id, paymentMethod);
 
     emitEvent("table:request_bill", {
       tableId: session.table_id,
@@ -363,10 +378,8 @@ const digitalMenuService = {
   },
 
   async attendWaiterCall(tableId) {
-    await accountsRepository.query(
-      `UPDATE accounts SET call_waiter_status = 'attended' WHERE table_id = ? AND status = 'open'`,
-      [Number(tableId)]
-    );
+    if (!tableId) throw new BadRequestError("ID de mesa requerido");
+    await accountsRepository.dismissWaiterCallByTable(Number(tableId));
     emitEvent("table:call_waiter_dismissed", { tableId: Number(tableId) });
     return { ok: true, message: "Llamado de mesero marcado como atendido." };
   },
