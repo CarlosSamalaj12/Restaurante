@@ -91,27 +91,35 @@ export function CartDrawer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm select-none">
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/80 backdrop-blur-md select-none">
       <m.div
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
-        transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-        className="w-full max-w-md bg-[#0D121D] h-full shadow-2xl flex flex-col border-l border-white/10"
+        transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+        className="relative w-full max-w-md bg-[#0B101B] h-full shadow-2xl flex flex-col border-l border-slate-800/80 overflow-hidden"
       >
+        {/* Glow difuminado ambiental */}
+        <div className="absolute top-0 right-0 w-72 h-72 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-72 h-72 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+
         {/* Cabecera del Carrito */}
-        <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between">
+        <div className="relative z-10 p-4 sm:p-5 border-b border-slate-800/80 bg-[#0E1524]/80 backdrop-blur-md flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-[var(--menu-primary)]/15 text-[var(--menu-primary)] border border-[var(--menu-primary)]/30">
+            <div className="p-2.5 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-inner">
               <ShoppingBag className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-extrabold text-base text-white">
+              <h2 className="font-black text-base text-white tracking-tight">
                 {isKiosk ? 'Tu Pedido en Kiosco' : `Comanda ${tableCode ? `Mesa ${tableCode}` : ''}`}
               </h2>
-              {sessionData?.checkNumber && (
+              {sessionData?.checkNumber ? (
                 <span className="text-[11px] text-slate-400 font-mono">
                   Cuenta activa: #{sessionData.checkNumber}
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-400">
+                  {cart.length} {cart.length === 1 ? 'producto seleccionado' : 'productos seleccionados'}
                 </span>
               )}
             </div>
@@ -122,7 +130,7 @@ export function CartDrawer({
               setSuccessInfo(null);
               onClose();
             }}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition active:scale-95"
           >
             <X className="w-5 h-5" />
           </button>
@@ -130,15 +138,15 @@ export function CartDrawer({
 
         {/* Pantalla de Éxito al Enviar Comanda */}
         {successInfo ? (
-          <div className="flex-1 p-6 flex flex-col items-center justify-center text-center space-y-4">
-            <div className="w-20 h-20 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-xl">
+          <div className="relative z-10 flex-1 p-6 flex flex-col items-center justify-center text-center space-y-4">
+            <div className="w-20 h-20 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-xl shadow-emerald-500/10">
               <CheckCircle2 className="w-10 h-10" />
             </div>
             <h3 className="text-2xl font-black text-white">¡Comanda Enviada!</h3>
             <p className="text-xs text-slate-300 max-w-xs leading-relaxed">
               Tus platillos entraron directamente al sistema de cocina. Te notificaremos cuando estén listos.
             </p>
-            <div className="p-3 bg-white/5 rounded-2xl border border-white/10 w-full max-w-xs text-xs space-y-1">
+            <div className="p-4 bg-slate-900/80 rounded-2xl border border-slate-800 w-full max-w-xs text-xs space-y-2 shadow-inner">
               <div className="flex justify-between text-slate-400">
                 <span>Número de Cuenta:</span>
                 <span className="font-bold text-white font-mono">{successInfo.checkNumber}</span>
@@ -154,7 +162,7 @@ export function CartDrawer({
                 setSuccessInfo(null);
                 onClose();
               }}
-              className="mt-4 px-6 py-3 rounded-2xl bg-[var(--menu-primary)] text-white text-xs font-bold shadow-lg"
+              className="mt-4 px-6 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg shadow-blue-600/30 transition active:scale-95"
             >
               Seguir Explorando el Menú
             </button>
@@ -162,45 +170,51 @@ export function CartDrawer({
         ) : (
           <>
             {/* Lista de Ítems en el Carrito */}
-            <div className="p-4 flex-1 overflow-y-auto space-y-3">
+            <div className="relative z-10 p-4 flex-1 overflow-y-auto space-y-3">
               {cart.length === 0 ? (
-                <div className="text-center py-20 text-slate-500 text-xs flex flex-col items-center gap-3">
-                  <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center text-2xl">
+                <div className="text-center py-24 text-slate-500 text-xs flex flex-col items-center gap-3">
+                  <div className="w-16 h-16 rounded-3xl bg-slate-900/90 border border-slate-800 flex items-center justify-center text-3xl shadow-inner">
                     🛒
                   </div>
-                  <span>Tu carrito está vacío. ¡Explora el menú y añade platillos!</span>
+                  <span className="text-slate-400 font-medium">Tu carrito está vacío.</span>
+                  <span className="text-slate-500 text-[11px]">¡Explora la carta y agrega tus especialidades favoritas!</span>
                 </div>
               ) : (
                 cart.map((item, idx) => (
                   <div
                     key={idx}
-                    className="p-3.5 rounded-2xl bg-white/5 border border-white/5 flex items-start justify-between gap-3 text-xs"
+                    className="p-3.5 rounded-2xl bg-[#111726]/90 border border-slate-800/80 flex items-start justify-between gap-3 text-xs shadow-md transition hover:border-slate-700/80"
                   >
                     <div className="space-y-1 flex-1">
-                      <div className="font-bold text-white text-sm">
-                        {item.qty}x {item.name}
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-lg bg-blue-600/20 text-blue-400 font-black text-[11px] border border-blue-500/30">
+                          {item.qty}x
+                        </span>
+                        <span className="font-black text-white text-sm">
+                          {item.name}
+                        </span>
                       </div>
 
                       {item.modifiers && item.modifiers.length > 0 && (
-                        <div className="text-[11px] text-slate-400">
+                        <div className="text-[11px] text-slate-400 pl-1">
                           {item.modifiers.map((m) => m.name).join(', ')}
                         </div>
                       )}
 
                       {item.notes && (
-                        <div className="text-[11px] text-amber-300 italic">
+                        <div className="text-[11px] text-amber-300/90 italic pl-1">
                           "{item.notes}"
                         </div>
                       )}
                     </div>
 
-                    <div className="text-right flex flex-col items-end gap-1.5">
-                      <span className="font-extrabold text-white text-sm">
-                        Q{(item.unitPrice * item.qty).toFixed(2)}
+                    <div className="text-right flex flex-col items-end gap-2">
+                      <span className="font-black text-white text-sm">
+                        Q {(item.unitPrice * item.qty).toFixed(2)}
                       </span>
                       <button
                         onClick={() => setCart((prev) => prev.filter((_, i) => i !== idx))}
-                        className="text-red-400 hover:text-red-300 p-1 transition"
+                        className="text-rose-400/80 hover:text-rose-300 hover:bg-rose-500/10 p-1 rounded-lg transition"
                         title="Eliminar ítem"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -213,7 +227,7 @@ export function CartDrawer({
 
             {/* Footer con Métodos de Pago y Confirmación */}
             {cart.length > 0 && (
-              <div className="p-5 bg-[#090C14] border-t border-white/10 space-y-4">
+              <div className="relative z-10 p-5 bg-[#0A0E17]/95 border-t border-slate-800/80 backdrop-blur-md space-y-4">
                 {/* Selector de Método de Pago */}
                 <div>
                   <span className="text-xs font-bold text-slate-300 block mb-2">
@@ -225,8 +239,8 @@ export function CartDrawer({
                       onClick={() => setPaymentMethod('cash')}
                       className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
                         paymentMethod === 'cash'
-                          ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300 ring-2 ring-emerald-500/40 shadow-md'
-                          : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+                          ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300 ring-2 ring-emerald-500/40 shadow-md shadow-emerald-500/10'
+                          : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
                       <Banknote className="w-4 h-4 text-emerald-400" />
@@ -238,11 +252,11 @@ export function CartDrawer({
                       onClick={() => setPaymentMethod('card')}
                       className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
                         paymentMethod === 'card'
-                          ? 'border-sky-500 bg-sky-500/20 text-sky-300 ring-2 ring-sky-500/40 shadow-md'
-                          : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+                          ? 'border-blue-500 bg-blue-950/40 text-blue-300 ring-2 ring-blue-500/40 shadow-md shadow-blue-500/10'
+                          : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
-                      <CreditCard className="w-4 h-4 text-sky-400" />
+                      <CreditCard className="w-4 h-4 text-blue-400" />
                       <span>POS Tarjeta</span>
                     </button>
 
@@ -251,8 +265,8 @@ export function CartDrawer({
                       onClick={() => setPaymentMethod('transfer')}
                       className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
                         paymentMethod === 'transfer'
-                          ? 'border-amber-500 bg-amber-500/20 text-amber-300 ring-2 ring-amber-500/40 shadow-md'
-                          : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+                          ? 'border-amber-500 bg-amber-950/40 text-amber-300 ring-2 ring-amber-500/40 shadow-md shadow-amber-500/10'
+                          : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
                       <QrCode className="w-4 h-4 text-amber-400" />
@@ -264,14 +278,14 @@ export function CartDrawer({
                 {/* Subtotal */}
                 <div className="flex items-center justify-between text-sm font-bold pt-1">
                   <span className="text-slate-400">Total Comanda:</span>
-                  <span className="text-xl font-black text-white">Q{subtotal.toFixed(2)}</span>
+                  <span className="text-xl font-black text-white">Q {subtotal.toFixed(2)}</span>
                 </div>
 
                 {/* Botón Principal de Envío */}
                 <button
                   disabled={isSending}
                   onClick={handleSendOrder}
-                  className="w-full py-4 rounded-2xl bg-[var(--menu-primary)] hover:brightness-110 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-[var(--menu-primary)]/35 active:scale-98 transition disabled:opacity-50"
+                  className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-blue-600/35 active:scale-98 transition disabled:opacity-50"
                 >
                   {isSending ? (
                     <>
@@ -290,7 +304,7 @@ export function CartDrawer({
 
             {/* Opción de Solicitar la Cuenta en Mesa si no hay items pendientes pero la sesión existe */}
             {cart.length === 0 && sessionData?.accountId && (
-              <div className="p-4 bg-[#090C14] border-t border-white/10 space-y-3">
+              <div className="relative z-10 p-4 bg-[#0A0E17]/95 border-t border-slate-800/80 space-y-3">
                 <div>
                   <span className="text-xs font-bold text-slate-300 block mb-2">
                     ¿Cómo deseas pagar la cuenta?
@@ -301,8 +315,8 @@ export function CartDrawer({
                       onClick={() => setPaymentMethod('cash')}
                       className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
                         paymentMethod === 'cash'
-                          ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300 ring-2 ring-emerald-500/40 shadow-md'
-                          : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+                          ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300 ring-2 ring-emerald-500/40 shadow-md'
+                          : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
                       <Banknote className="w-4 h-4 text-emerald-400" />
@@ -314,11 +328,11 @@ export function CartDrawer({
                       onClick={() => setPaymentMethod('card')}
                       className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
                         paymentMethod === 'card'
-                          ? 'border-sky-500 bg-sky-500/20 text-sky-300 ring-2 ring-sky-500/40 shadow-md'
-                          : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+                          ? 'border-blue-500 bg-blue-950/40 text-blue-300 ring-2 ring-blue-500/40 shadow-md'
+                          : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
-                      <CreditCard className="w-4 h-4 text-sky-400" />
+                      <CreditCard className="w-4 h-4 text-blue-400" />
                       <span>POS Tarjeta</span>
                     </button>
 
@@ -327,8 +341,8 @@ export function CartDrawer({
                       onClick={() => setPaymentMethod('transfer')}
                       className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
                         paymentMethod === 'transfer'
-                          ? 'border-amber-500 bg-amber-500/20 text-amber-300 ring-2 ring-amber-500/40 shadow-md'
-                          : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+                          ? 'border-amber-500 bg-amber-950/40 text-amber-300 ring-2 ring-amber-500/40 shadow-md'
+                          : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
                       <QrCode className="w-4 h-4 text-amber-400" />
@@ -340,7 +354,7 @@ export function CartDrawer({
                 <button
                   disabled={requestingBill}
                   onClick={handleBill}
-                  className="w-full py-3 px-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 hover:bg-amber-500/20 transition active:scale-98"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-black text-xs flex items-center justify-center gap-2 hover:bg-amber-500/20 transition active:scale-98 shadow-lg shadow-amber-500/10"
                 >
                   <Receipt className="w-4 h-4" />
                   {requestingBill ? 'Solicitando...' : 'Solicitar la Cuenta en Mesa'}

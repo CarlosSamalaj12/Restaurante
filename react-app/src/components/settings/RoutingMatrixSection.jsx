@@ -427,20 +427,20 @@ export function RoutingMatrixSection({
   return (
     <div className="space-y-6">
       {/* ── HERO BANNER: EXPLICACIÓN CLARA Y MODERNA ── */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-7 text-white shadow-xl border border-indigo-800/40 relative overflow-hidden">
-        <div className="absolute right-0 top-0 p-6 opacity-10 pointer-events-none">
-          <Network className="w-36 h-36 text-indigo-400" />
+      <div className="bg-white rounded-3xl p-6 sm:p-7 text-slate-800 shadow-2xs border border-slate-200/90 relative overflow-hidden">
+        <div className="absolute right-0 top-0 p-6 opacity-[0.06] pointer-events-none">
+          <Network className="w-36 h-36 text-slate-900" />
         </div>
         <div className="relative z-10 max-w-3xl">
-          <div className="inline-flex items-center gap-2 bg-indigo-500/20 border border-indigo-400/30 rounded-full px-3 py-1 text-xs text-indigo-300 font-semibold mb-3">
+          <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200/80 rounded-full px-3 py-1 text-xs text-indigo-700 font-bold mb-3 shadow-2xs">
             <Sparkles className="w-3.5 h-3.5" /> Enrutamiento Inteligente de Comandas
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-2">
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mb-2">
             Enrutamiento de Cocina y Bar
           </h2>
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
             Configura de forma fácil a qué cocina o bar se envían tus platillos y bebidas.
-            Solo elige la <strong className="text-white">Estación Principal</strong> de cada categoría, y si alguna zona (como la <strong className="text-amber-300">Terraza</strong>) usa un bar o cocina diferente, agrega una <strong className="text-emerald-400">excepción</strong> con un solo clic.
+            Solo elige la <strong className="text-slate-900 font-bold">Estación Principal</strong> de cada categoría, y si alguna zona (como la <strong className="text-amber-700 font-bold">Terraza</strong>) usa un bar o cocina diferente, agrega una <strong className="text-emerald-700 font-bold">excepción</strong> con un solo clic.
           </p>
         </div>
       </div>

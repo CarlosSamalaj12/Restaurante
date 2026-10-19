@@ -198,29 +198,39 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
         <head>
           <title>Corte X - Auditoría Parcial</title>
           <style>
-            body { font-family: monospace; width: 78mm; margin: 0 auto; padding: 4px; font-size: 11px; }
-            .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 6px; margin-bottom: 6px; }
-            .title { font-size: 15px; font-weight: 900; }
-            .meta { font-size: 10px; margin-bottom: 6px; line-height: 1.3; }
-            .row { display: flex; justify-content: space-between; padding: 2px 0; }
-            .bold { font-weight: bold; }
-            .total { font-size: 13px; font-weight: 900; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; padding: 3px 0; margin-top: 4px; }
-            .footer { text-align: center; font-size: 9px; margin-top: 10px; border-top: 1px dashed #000; padding-top: 4px; }
+            * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color: #000 !important; }
+            body { font-family: 'Consolas', 'Lucida Console', Monaco, monospace !important; width: 72mm; margin: 0 auto; padding: 4px; font-size: 11px; font-weight: 700; -webkit-font-smoothing: antialiased; }
+            .header { text-align: center; margin-bottom: 4px; }
+            .title { font-size: 18px; font-weight: 900; }
+            .meta { font-size: 11px; margin-bottom: 4px; line-height: 1.25; }
+            .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; font-weight: 700; }
+            .bold { font-weight: 900; }
+            .total { font-size: 14px; font-weight: 900; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; padding: 3px 0; margin-top: 4px; }
+            .footer { text-align: center; font-size: 10px; margin-top: 4px; padding-top: 4px; font-weight: 700; }
+            .ascii-sep { overflow: hidden; white-space: nowrap; font-family: 'Consolas', monospace; font-size: 11px; font-weight: 900; text-align: center; margin: 2px 0; }
+            @media print {
+              body { width: 72mm !important; margin: 0 auto !important; padding: 0 !important; }
+              @page { margin: 0; size: 80mm auto; }
+            }
           </style>
         </head>
         <body>
           <div class="header">
             <div class="title">${restaurantName}</div>
-            <div class="bold">*** CORTE X - AUDITORÍA PARCIAL ***</div>
+            <div class="ascii-sep">==========================================</div>
+            <div class="bold" style="font-size:14px;">*** CORTE X - AUDITORÍA PARCIAL ***</div>
+            <div class="ascii-sep">------------------------------------------</div>
             <div>Fecha: ${nowStr}</div>
             <div>Usuario: ${user?.full_name || 'Carlos Samalaj'}</div>
             <div>Centro: ${centerObj?.name || 'Principal'}</div>
           </div>
+          <div class="ascii-sep">==========================================</div>
           <div class="row"><span>Ventas Totales:</span><span class="bold">Q ${totalSales}</span></div>
           <div class="row"><span>Cuentas Cerradas:</span><span class="bold">${accountsCount}</span></div>
           <div class="row"><span>Total Propinas:</span><span class="bold">Q ${totalTips}</span></div>
           <div class="row"><span>Anulaciones:</span><span class="bold">${kpiMetrics.voidCount} (Q ${kpiMetrics.voidAmount.toFixed(2)})</span></div>
           <div class="row total"><span>TOTAL COBRADO:</span><span>Q ${totalSales}</span></div>
+          <div class="ascii-sep">------------------------------------------</div>
           <div class="footer">DOCUMENTO DE CONTROL INTERNO • NO FISCAL</div>
           <script>window.print();window.close();<\/script>
         </body>
@@ -644,18 +654,18 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
         </div>
 
         {/* ───────────────────────────────────────────────────────── */}
-        {/* 3. DARK BLUE ACTION BANNER: CIERRE Y ARQUEO */}
+        {/* 3. LIGHT EXECUTIVE ACTION BANNER: CIERRE Y ARQUEO */}
         {/* ───────────────────────────────────────────────────────── */}
-        <div className="bg-gradient-to-r from-blue-950 via-indigo-950 to-blue-900 rounded-2xl p-4 sm:p-5 text-white shadow-md flex flex-col md:flex-row items-center justify-between gap-4 border border-blue-900/60">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 text-slate-800 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-4 border border-slate-200/90">
           <div className="flex items-center gap-3.5 w-full md:w-auto">
-            <div className="w-11 h-11 rounded-2xl bg-blue-800/80 border border-blue-600/60 flex items-center justify-center text-blue-200 shrink-0 shadow-inner">
+            <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-center text-blue-600 shrink-0 shadow-2xs">
               <Printer className="w-5 h-5 stroke-[2.2]" />
             </div>
             <div className="space-y-0.5">
-              <h2 className="font-extrabold text-white text-sm sm:text-base tracking-tight">
+              <h2 className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight">
                 Acciones Rápidas de Cierre y Arqueo de Caja
               </h2>
-              <p className="text-xs text-blue-200/90">
+              <p className="text-xs text-slate-500">
                 Genera la tirilla térmica inmediata de corte de caja o exporta la auditoria del turno actual.
               </p>
             </div>
@@ -667,10 +677,10 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
               type="button"
               disabled={printingCut}
               onClick={handlePrintCorteX}
-              className="px-4 py-2.5 bg-blue-900/80 hover:bg-blue-800 border border-blue-600/70 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-2 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
               title="Imprime tira de auditoría parcial X [Ctrl+P]"
             >
-              {printingCut ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+              {printingCut ? <Loader2 className="w-4 h-4 animate-spin text-blue-600" /> : <Printer className="w-4 h-4 text-slate-600" />}
               <span>Imprimir Corte Parcial (X)</span>
             </button>
 
@@ -684,7 +694,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
                   setCloseShiftModal(true);
                 }
               }}
-              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all active:scale-95 cursor-pointer shadow-blue-500/20"
               title="Iniciar cierre fiscal definitivo Z de turno"
             >
               <CheckCircle2 className="w-4 h-4" />

@@ -20,7 +20,11 @@ import {
   Loader2,
   ChevronRight,
   Coins,
-  Layers
+  Layers,
+  Trophy,
+  Award,
+  Flame,
+  Sparkles
 } from 'lucide-react';
 
 export function ProductSalesReportPage({ onBack }) {
@@ -32,6 +36,7 @@ export function ProductSalesReportPage({ onBack }) {
   const [productName, setProductName] = useState('');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
+  const [topSortBy, setTopSortBy] = useState('qty'); // 'qty' | 'sales'
 
   // Fechas (por defecto mes en curso)
   const today = new Date().toISOString().slice(0, 10);
@@ -142,6 +147,25 @@ export function ProductSalesReportPage({ onBack }) {
     }
     return max;
   }, [data]);
+
+  // Ranking Top 10 Platillos Más Vendidos
+  const top10Products = useMemo(() => {
+    if (!data?.rows || data.rows.length === 0) return [];
+    const sorted = [...data.rows].sort((a, b) => {
+      if (topSortBy === 'qty') {
+        return Number(b.total_qty || 0) - Number(a.total_qty || 0);
+      }
+      return Number(b.total_sales || 0) - Number(a.total_sales || 0);
+    });
+    return sorted.slice(0, 10);
+  }, [data, topSortBy]);
+
+  const maxTopMetric = useMemo(() => {
+    if (!top10Products.length) return 1;
+    return topSortBy === 'qty'
+      ? Math.max(...top10Products.map((p) => Number(p.total_qty || 0)), 1)
+      : Math.max(...top10Products.map((p) => Number(p.total_sales || 0)), 1);
+  }, [top10Products, topSortBy]);
 
   // Categoría líder (mayor facturación)
   const topCategory = useMemo(() => {
@@ -471,9 +495,182 @@ export function ProductSalesReportPage({ onBack }) {
         </div>
       }
     >
-      {/* ─────────────────────────────────────────────────────────── */}
-      {/* VISTA DESGLOSADA POR CATEGORÍA & PRODUCTO */}
-      {/* ─────────────────────────────────────────────────────────── */}
+      <div className="space-y-6">
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* SECCIÓN: TOP 10 PLATILLOS MÁS VENDIDOS                     */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+          {/* Header del Top 10 con selector de métrica */}
+          <div className="px-5 py-4 border-b border-slate-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gradient-to-r from-amber-50/50 via-white to-blue-50/30">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 via-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md shadow-amber-500/25 shrink-0">
+                <Trophy className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-extrabold text-slate-900 text-sm uppercase tracking-wider">
+                    Top 10 Platillos Más Vendidos
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-800 border border-amber-300">
+                    Ranking Maestro
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Los productos con mayor impacto en cocina y ventas del período seleccionado
+                </p>
+              </div>
+            </div>
+
+            {/* Selector de ordenamiento: Unidades vs Monto */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0 self-stretch sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setTopSortBy('qty')}
+                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  topSortBy === 'qty'
+                    ? 'bg-white text-blue-700 shadow-xs border border-slate-200/80 font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Por Unidades</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTopSortBy('sales')}
+                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  topSortBy === 'sales'
+                    ? 'bg-white text-emerald-700 shadow-xs border border-slate-200/80 font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5" />
+                <span>Por Facturación (Q)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Listado / Grid del Top 10 */}
+          {top10Products.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-xs">
+              <p>No se encontraron productos registrados en este rango de fechas o filtros.</p>
+            </div>
+          ) : (
+            <div className="p-4 sm:p-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {top10Products.map((p, idx) => {
+                  const rank = idx + 1;
+                  const qty = Number(p.total_qty || 0);
+                  const sales = Number(p.total_sales || 0);
+                  const currentVal = topSortBy === 'qty' ? qty : sales;
+                  const percentOfTop = maxTopMetric > 0 ? (currentVal / maxTopMetric) * 100 : 0;
+                  const percentOfGlobal =
+                    topSortBy === 'qty'
+                      ? grandQty > 0
+                        ? ((qty / grandQty) * 100).toFixed(1)
+                        : '0'
+                      : grandTotal > 0
+                      ? ((sales / grandTotal) * 100).toFixed(1)
+                      : '0';
+
+                  const isTop1 = rank === 1;
+                  const isTop2 = rank === 2;
+                  const isTop3 = rank === 3;
+
+                  return (
+                    <div
+                      key={p.product_id || p.product_name || idx}
+                      className={`relative p-3.5 rounded-2xl border transition-all duration-200 flex flex-col justify-between ${
+                        isTop1
+                          ? 'bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-white border-amber-300 shadow-xs'
+                          : isTop2
+                          ? 'bg-gradient-to-r from-slate-200/40 via-slate-100/20 to-white border-slate-300'
+                          : isTop3
+                          ? 'bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-white border-amber-300/80'
+                          : 'bg-white border-slate-200/80 hover:border-blue-300 hover:shadow-xs'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {/* Medalla / Posición */}
+                          <div
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shrink-0 shadow-xs ${
+                              isTop1
+                                ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-white ring-2 ring-amber-300'
+                                : isTop2
+                                ? 'bg-gradient-to-br from-slate-300 to-slate-500 text-white ring-2 ring-slate-200'
+                                : isTop3
+                                ? 'bg-gradient-to-br from-amber-600 to-amber-800 text-white ring-2 ring-amber-400'
+                                : 'bg-slate-100 text-slate-700 font-extrabold border border-slate-200'
+                            }`}
+                          >
+                            {isTop1 ? '🥇' : isTop2 ? '🥈' : isTop3 ? '🥉' : `#${rank}`}
+                          </div>
+
+                          <div className="min-w-0">
+                            <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
+                              {p.product_name}
+                            </h4>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md truncate">
+                                {p.category_name || 'Menú'}
+                              </span>
+                              {isTop1 && (
+                                <span className="text-[10px] font-black text-amber-700 bg-amber-100 px-2 py-0.2 rounded-md">
+                                  Líder en ventas
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Cifras clave */}
+                        <div className="text-right shrink-0">
+                          <div
+                            className={`font-black text-xs sm:text-sm font-mono ${
+                              topSortBy === 'sales' ? 'text-emerald-700' : 'text-blue-700'
+                            }`}
+                          >
+                            {topSortBy === 'sales' ? fmt(sales) : `${qty.toLocaleString('es-GT')} un.`}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                            {topSortBy === 'sales'
+                              ? `${qty.toLocaleString('es-GT')} un.`
+                              : fmt(sales)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Barra de progreso relativo al #1 */}
+                      <div className="mt-1 space-y-1">
+                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              isTop1
+                                ? 'bg-gradient-to-r from-amber-400 to-amber-600'
+                                : topSortBy === 'sales'
+                                ? 'bg-gradient-to-r from-emerald-400 to-teal-600'
+                                : 'bg-gradient-to-r from-blue-400 to-indigo-600'
+                            }`}
+                            style={{ width: `${Math.max(percentOfTop, 4)}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                          <span>{percentOfGlobal}% del total del periodo</span>
+                          <span>Frecuencia: {p.frequency || p.account_count || 1} cuentas</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* VISTA DESGLOSADA POR CATEGORÍA & PRODUCTO */}
+        {/* ─────────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-slate-50/50">
           <div>
@@ -609,6 +806,7 @@ export function ProductSalesReportPage({ onBack }) {
           </table>
         </div>
       </div>
-    </ReportLayout>
-  );
+    </div>
+  </ReportLayout>
+);
 }

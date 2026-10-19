@@ -227,7 +227,22 @@ const reactDistPath = path.join(__dirname, "react-app", "dist");
 if (require("fs").existsSync(reactDistPath)) {
   app.use(express.static(reactDistPath));
 }
-app.use(express.static(path.join(__dirname, "public")));
+
+// Servir uploads de imágenes con caché optimizado HTTP (30 días para carga inmediata 0ms en re-visitas)
+const uploadsPath = path.join(__dirname, "public", "uploads");
+if (require("fs").existsSync(uploadsPath)) {
+  app.use(
+    "/uploads",
+    express.static(uploadsPath, {
+      maxAge: "30d",
+      immutable: true,
+      etag: true,
+      lastModified: true,
+    })
+  );
+}
+
+app.use(express.static(path.join(__dirname, "public"), { maxAge: "1d" }));
 
 // Middleware global de licenciamiento
 // /api/license/* y /api/public/* están exentos para comensales y enrollment

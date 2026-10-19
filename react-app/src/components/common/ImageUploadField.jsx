@@ -107,8 +107,10 @@ const convertToOptimizedWebP = (file, maxDimension = 1200, quality = 0.85) => {
     try {
       setUploading(true);
 
-      // Convertir y comprimir a WebP optimizado
-      const base64Data = await convertToOptimizedWebP(file);
+      // Convertir y comprimir a WebP optimizado según tipo
+      const targetMaxDim = type === 'banners' ? 1400 : type === 'logos' ? 400 : 800;
+      const targetQuality = type === 'banners' ? 0.85 : 0.82;
+      const base64Data = await convertToOptimizedWebP(file, targetMaxDim, targetQuality);
       if (!base64Data) {
         throw new Error('No se pudo procesar la imagen seleccionada');
       }

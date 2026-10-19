@@ -37,81 +37,121 @@ export function printPrecheckThermal({ account, items = [], totals = {}, busines
       <meta charset="utf-8">
       <title>Precuenta - ${checkNumber}</title>
       <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color: #000 !important;
+        }
         body {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, monospace;
+          font-family: 'Courier New', Courier, 'Lucida Console', Monaco, monospace !important;
           width: 78mm;
           margin: 0 auto;
-          padding: 6px 3px;
-          color: #000;
+          padding: 4px 2px;
+          color: #000 !important;
+          background: #fff !important;
           font-size: 11px;
-          line-height: 1.35;
+          line-height: 1.3;
+          -webkit-font-smoothing: none !important;
+          -moz-osx-font-smoothing: grayscale !important;
+          font-smooth: never !important;
+          text-rendering: geometricPrecision !important;
+          image-rendering: pixelated !important;
         }
         .center { text-align: center; }
-        .bold { font-weight: 800; }
-        .logo-box { text-align: center; margin-bottom: 5px; }
-        .logo-box img { max-width: 130px; max-height: 55px; object-fit: contain; filter: grayscale(100%) contrast(200%); }
-        .subtitle { font-size: 9.5px; font-weight: 700; color: #444; letter-spacing: 0.5px; text-transform: uppercase; }
-        .main-title { font-size: 15px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; margin: 1px 0; }
-        .branch-info { font-size: 10px; color: #222; }
-        .tax-info { font-size: 10px; font-weight: 600; color: #222; margin-top: 1px; }
+        .bold { font-weight: 900; }
+        .logo-box { text-align: center; margin-bottom: 4px; }
+        .logo-box img { max-width: 130px; max-height: 55px; object-fit: contain; filter: grayscale(100%) contrast(300%); image-rendering: pixelated; }
+        .subtitle { font-size: 10px; font-weight: bold; color: #000 !important; letter-spacing: 0; text-transform: uppercase; }
+        .main-title { font-size: 17px; font-weight: 900; letter-spacing: 0; text-transform: uppercase; margin: 2px 0; color: #000 !important; line-height: 1.2; }
+        .branch-info { font-size: 10px; color: #000 !important; font-weight: bold; }
+        .tax-info { font-size: 10px; font-weight: bold; color: #000 !important; margin-top: 1px; }
 
         .doc-banner {
-          background: #000;
-          color: #fff;
+          background-color: #fff !important;
+          color: #000 !important;
           text-align: center;
           padding: 3px 2px;
           margin: 6px 0 2px 0;
           font-size: 11px;
           font-weight: 900;
-          letter-spacing: 0.5px;
+          letter-spacing: 0;
           text-transform: uppercase;
+          border: 2px solid #000 !important;
         }
         .doc-subnotice {
           text-align: center;
           font-size: 9px;
-          font-weight: 800;
+          font-weight: 900;
+          letter-spacing: 0;
           padding: 1px 0;
-          border-bottom: 1px solid #000;
+          border-bottom: 1.5px solid #000;
           margin-bottom: 5px;
+          color: #000 !important;
         }
 
         .meta-box {
-          border: 1px solid #000;
-          border-radius: 3px;
-          padding: 3px 5px;
+          border: 1.5px solid #000;
+          border-radius: 0;
+          padding: 4px 5px;
           margin: 5px 0;
-          font-size: 10px;
+          font-size: 10.5px;
+          font-weight: bold;
+          color: #000 !important;
         }
-        .meta-row { display: flex; justify-content: space-between; padding: 1px 0; }
+        .meta-row { display: flex; justify-content: space-between; padding: 1px 0; color: #000 !important; }
 
-        .items-table { width: 100%; border-collapse: collapse; margin: 5px 0; font-size: 10.5px; }
-        .items-table th { border-bottom: 1.5px solid #000; padding: 2px 0; font-size: 9.5px; text-transform: uppercase; }
-        .items-table td { padding: 2.5px 0; border-bottom: 0.5px dotted #aaa; }
+        .items-table { width: 100%; border-collapse: collapse; margin: 5px 0; font-size: 11px; color: #000 !important; }
+        .items-table th { border-bottom: 1.5px solid #000; padding: 2px 0; font-size: 10px; font-weight: 900; text-transform: uppercase; color: #000 !important; }
+        .items-table td { padding: 2.5px 0; border-bottom: 1px dotted #000; color: #000 !important; font-weight: 700; }
 
-        .tot-row { display: flex; justify-content: space-between; padding: 1.5px 0; font-size: 10.5px; }
+        .tot-row { display: flex; justify-content: space-between; padding: 1.5px 0; font-size: 11px; font-weight: 700; color: #000 !important; }
         .grand-total {
           display: flex;
           justify-content: space-between;
           font-size: 14px;
           font-weight: 900;
-          border-top: 1.5px solid #000;
-          border-bottom: 1.5px solid #000;
+          border-top: 2px solid #000;
+          border-bottom: 2px solid #000;
           padding: 3px 0;
           margin: 4px 0;
+          color: #000 !important;
         }
 
         .footer-note {
-          font-size: 9.5px;
+          font-size: 10px;
           text-align: center;
           padding-top: 6px;
           margin-top: 8px;
           border-top: 1.5px dashed #000;
           line-height: 1.35;
+          font-weight: 700;
+          color: #000 !important;
         }
 
         @media print {
-          body { width: 100%; margin: 0; padding: 0; }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color: #000 !important;
+            border-color: #000 !important;
+          }
+          body {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            font-family: 'Courier New', Courier, 'Lucida Console', Monaco, monospace !important;
+            -webkit-font-smoothing: none !important;
+            text-rendering: geometricPrecision !important;
+          }
+          .doc-banner {
+            background-color: #fff !important;
+            color: #000 !important;
+            border: 2px solid #000 !important;
+          }
           @page { margin: 0; size: auto; }
         }
       </style>

@@ -189,6 +189,16 @@ const ordersService = {
       order_source: account.order_source,
     };
 
+    // Obtener configuración de copias de comanda (por defecto 1 o configurado en Settings/FEL)
+    let kitchenCopies = 1;
+    try {
+      const felRepository = require("../fel/fel.repository");
+      const felCfg = await felRepository.getConfig();
+      if (felCfg && felCfg.kitchen_copies) {
+        kitchenCopies = Math.max(1, Number(felCfg.kitchen_copies));
+      }
+    } catch (_) {}
+
     for (const ticket of tickets) {
       if (!ticket.centerId) continue;
       ordersRepository
@@ -196,7 +206,7 @@ const ordersService = {
         .then((center) => {
           if (!center) return;
           printService
-            .printKitchenTicket(ticket, center, accountMeta)
+            .printKitchenTicket(ticket, center, accountMeta, { copies: kitchenCopies })
             .then((result) => {
               if (!result.ok && !result.skipped) {
                 console.warn(

@@ -544,9 +544,20 @@ const digitalMenuService = {
 
     if (sharp) {
       try {
+        let resizeOptions = { width: 800, height: 800, fit: "inside", withoutEnlargement: true };
+        let webpQuality = 82;
+
+        if (safeType === "banners") {
+          resizeOptions = { width: 1400, height: 700, fit: "inside", withoutEnlargement: true };
+          webpQuality = 85;
+        } else if (safeType === "logos") {
+          resizeOptions = { width: 400, height: 400, fit: "inside", withoutEnlargement: true };
+          webpQuality = 85;
+        }
+
         finalBuffer = await sharp(inputBuffer)
-          .resize({ width: 1200, height: 1200, fit: "inside", withoutEnlargement: true })
-          .webp({ quality: 85, effort: 4 })
+          .resize(resizeOptions)
+          .webp({ quality: webpQuality, effort: 4 })
           .toBuffer();
       } catch (err) {
         console.warn("[WebP Convert Warning] Fallback al original:", err.message);

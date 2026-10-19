@@ -103,20 +103,20 @@ export function PmsSection() {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-teal-900 to-slate-900 text-white rounded-3xl p-6 sm:p-7 shadow-lg relative overflow-hidden">
+      <div className="bg-white text-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xs border border-slate-200/90 relative overflow-hidden">
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-13 h-13 rounded-2xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300 backdrop-blur-xs shrink-0">
+            <div className="w-13 h-13 rounded-2xl bg-teal-50 border border-teal-200/80 flex items-center justify-center text-teal-700 shrink-0 shadow-2xs">
               <BedDouble className="w-7 h-7 stroke-[2.2]" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-xl font-extrabold tracking-tight">Integración Hotel PMS</h2>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-400/20 text-teal-300 border border-teal-400/30">
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Integración Hotel PMS</h2>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
                   {config.sandbox_mode ? 'Modo Sandbox' : 'PMS Externo'}
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-1 max-w-xl">
+              <p className="text-xs text-slate-500 mt-1 max-w-xl">
                 Permite a los meseros verificar crédito de habitaciones y cargar cuentas de restaurante directamente al folio del hotel.
               </p>
             </div>
@@ -125,7 +125,7 @@ export function PmsSection() {
           <button
             onClick={loadData}
             title="Refrescar datos"
-            className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl border border-white/10 transition-colors self-start sm:self-auto cursor-pointer"
+            className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-200 transition-colors self-start sm:self-auto cursor-pointer"
           >
             <RefreshCw className="w-4 h-4" />
           </button>

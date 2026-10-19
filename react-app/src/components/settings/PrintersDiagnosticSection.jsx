@@ -193,18 +193,18 @@ export function PrintersDiagnosticSection({
   return (
     <div className="space-y-6">
       {/* ── ENCABEZADO Y HERO ── */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-7 text-white shadow-xl border border-indigo-800/40 relative overflow-hidden">
-        <div className="absolute right-0 top-0 p-6 opacity-10 pointer-events-none">
-          <Printer className="w-36 h-36 text-indigo-400" />
+      <div className="bg-white rounded-3xl p-6 sm:p-7 text-slate-800 shadow-2xs border border-slate-200/90 relative overflow-hidden">
+        <div className="absolute right-0 top-0 p-6 opacity-[0.06] pointer-events-none">
+          <Printer className="w-36 h-36 text-slate-900" />
         </div>
         <div className="relative z-10 max-w-3xl">
-          <div className="inline-flex items-center gap-2 bg-indigo-500/20 border border-indigo-400/30 rounded-full px-3 py-1 text-xs text-indigo-300 font-semibold mb-3">
+          <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200/80 rounded-full px-3 py-1 text-xs text-indigo-700 font-bold mb-3 shadow-2xs">
             <Wifi className="w-3.5 h-3.5" /> Impresión Térmica ESC/POS (LAN / WiFi)
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-2">
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mb-2">
             Centro de Control de Impresoras
           </h2>
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4">
+          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
             Registra y administra las impresoras de red de tu restaurante (Cocina, Bar y Caja).
             Comprueba la conexión en un clic y audita que cada platillo y terminal esté debidamente enlazado.
           </p>
@@ -215,7 +215,7 @@ export function PrintersDiagnosticSection({
                 setEditingPrinter(null);
                 setModalPrinter(true);
               }}
-              className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-900/30 transition-all active:scale-95 cursor-pointer"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-sm shadow-emerald-600/30 transition-all active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Nueva Impresora</span>
@@ -223,21 +223,21 @@ export function PrintersDiagnosticSection({
 
             <button
               onClick={handleRunAudit}
-              className="bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2 backdrop-blur-sm transition-all active:scale-95 cursor-pointer"
+              className="bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
             >
-              <ClipboardCheck className="w-4 h-4 text-emerald-300 stroke-[2.2]" />
+              <ClipboardCheck className="w-4 h-4 text-emerald-600 stroke-[2.2]" />
               <span>Auditar Configuración</span>
             </button>
 
-            <div className="inline-flex items-center gap-2 px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-xs">
-              <span className="text-slate-400">Servicio ESC/POS:</span>
+            <div className="inline-flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium">
+              <span className="text-slate-500">Servicio ESC/POS:</span>
               {status?.escposAvailable ? (
-                <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Activo
+                <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Activo
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-amber-400 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-amber-400" /> Emulador / Local
+                <span className="inline-flex items-center gap-1 text-amber-700 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" /> Emulador / Local
                 </span>
               )}
             </div>

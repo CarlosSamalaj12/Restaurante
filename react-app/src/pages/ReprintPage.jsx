@@ -328,36 +328,68 @@ export function ReprintPage({ onBack, onSelectAccount }) {
       <head>
         <title>Ticket - #${account.check_number}</title>
         <style>
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color: #000 !important;
+          }
           body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, monospace;
+            font-family: 'Courier New', Courier, 'Lucida Console', Monaco, monospace !important;
             width: 78mm;
             margin: 0 auto;
             padding: 4px 2px;
-            color: #000;
+            color: #000 !important;
+            background: #fff !important;
             font-size: 11px;
-            line-height: 1.35;
+            line-height: 1.3;
+            -webkit-font-smoothing: none !important;
+            -moz-osx-font-smoothing: grayscale !important;
+            font-smooth: never !important;
+            text-rendering: geometricPrecision !important;
+            image-rendering: pixelated !important;
           }
           .center { text-align: center; }
-          .bold { font-weight: 800; }
+          .bold { font-weight: 900; }
           .logo-box { text-align: center; margin-bottom: 4px; }
-          .logo-box img { max-width: 130px; max-height: 55px; object-fit: contain; filter: grayscale(100%) contrast(200%); }
+          .logo-box img { max-width: 130px; max-height: 55px; object-fit: contain; filter: grayscale(100%) contrast(300%); image-rendering: pixelated; }
           .header { text-align: center; border-bottom: 1.5px dashed #000; padding-bottom: 5px; margin-bottom: 5px; }
-          .sub-giro { font-size: 9px; font-weight: 700; color: #333; text-transform: uppercase; }
-          .title { font-size: 15px; font-weight: 900; text-transform: uppercase; margin-bottom: 1px; }
-          .sub { font-size: 9.5px; margin-top: 1px; }
-          .doc-type { font-size: 11px; font-weight: 900; margin: 4px 0 2px 0; letter-spacing: 0.5px; }
-          .meta { font-size: 10px; margin-bottom: 5px; padding-bottom: 4px; border-bottom: 1.5px dashed #000; line-height: 1.35; }
-          .meta-row { display: flex; justify-content: space-between; padding: 1px 0; }
-          .table-items { width: 100%; border-collapse: collapse; margin-top: 4px; }
-          .table-items th { font-size: 10px; border-bottom: 1.5px solid #000; padding: 2px 0; text-transform: uppercase; }
-          .table-items td { font-size: 10.5px; padding: 2.5px 0; border-bottom: 0.5px dotted #aaa; }
-          .totals { margin-top: 5px; border-top: 1.5px solid #000; padding-top: 3px; font-size: 11px; }
-          .tot-row { display: flex; justify-content: space-between; padding: 1.5px 0; }
-          .grand { font-size: 14px; font-weight: 900; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; padding: 3px 0; margin-top: 3px; }
-          .watermark { text-align: center; font-weight: 900; font-size: 11px; margin-top: 6px; padding: 3px 0; border: 1.5px dashed #000; text-transform: uppercase; }
-          .footer { text-align: center; font-size: 9.5px; margin-top: 10px; border-top: 1px dashed #000; padding-top: 4px; line-height: 1.3; }
+          .sub-giro { font-size: 10px; font-weight: bold; color: #000 !important; text-transform: uppercase; }
+          .title { font-size: 17px; font-weight: 900; text-transform: uppercase; margin-bottom: 1px; color: #000 !important; line-height: 1.2; }
+          .sub { font-size: 10px; margin-top: 1px; font-weight: bold; color: #000 !important; }
+          .doc-type { font-size: 11px; font-weight: 900; margin: 4px 0 2px 0; letter-spacing: 0; color: #000 !important; }
+          .meta { font-size: 10.5px; margin-bottom: 5px; padding-bottom: 4px; border-bottom: 1.5px dashed #000; line-height: 1.35; color: #000 !important; font-weight: bold; }
+          .meta-row { display: flex; justify-content: space-between; padding: 1px 0; color: #000 !important; }
+          .table-items { width: 100%; border-collapse: collapse; margin-top: 4px; color: #000 !important; }
+          .table-items th { font-size: 10px; border-bottom: 1.5px solid #000; padding: 2px 0; text-transform: uppercase; font-weight: 900; color: #000 !important; }
+          .table-items td { font-size: 11px; padding: 2.5px 0; border-bottom: 1px dotted #000; color: #000 !important; font-weight: 700; }
+          .totals { margin-top: 5px; border-top: 1.5px solid #000; padding-top: 3px; font-size: 11px; color: #000 !important; }
+          .tot-row { display: flex; justify-content: space-between; padding: 1.5px 0; font-weight: 700; color: #000 !important; }
+          .grand { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 3px 0; margin-top: 3px; color: #000 !important; }
+          .watermark { text-align: center; font-weight: 900; font-size: 11px; margin-top: 6px; padding: 3px 0; border: 1.5px dashed #000; text-transform: uppercase; color: #000 !important; }
+          .footer { text-align: center; font-size: 10px; margin-top: 10px; border-top: 1.5px dashed #000; padding-top: 4px; line-height: 1.3; font-weight: 700; color: #000 !important; }
           @media print {
-            body { width: 100%; margin: 0; padding: 0; }
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color: #000 !important;
+              border-color: #000 !important;
+            }
+            body {
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #fff !important;
+              font-family: 'Courier New', Courier, 'Lucida Console', Monaco, monospace !important;
+              -webkit-font-smoothing: none !important;
+              text-rendering: geometricPrecision !important;
+            }
+            @page {
+              margin: 0;
+              size: auto;
+            }
           }
         </style>
       </head>
@@ -563,10 +595,15 @@ export function ReprintPage({ onBack, onSelectAccount }) {
       <head>
         <title>Comanda Cocina - #${account.check_number}</title>
         <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           body { font-family: monospace; width: 78mm; margin: 0 auto; padding: 4px; font-size: 12px; }
           .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 4px; margin-bottom: 6px; }
           .title { font-size: 16px; font-weight: 900; }
           .item { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; padding: 3px 0; border-bottom: 1px dotted #ccc; }
+          @media print {
+            body { width: 100%; margin: 0; padding: 0; }
+            @page { margin: 0; size: auto; }
+          }
         </style>
       </head>
       <body>

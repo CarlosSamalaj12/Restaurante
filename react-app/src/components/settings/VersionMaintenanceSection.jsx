@@ -324,34 +324,34 @@ export function VersionMaintenanceSection() {
         </div>
 
         {/* Tarjeta de Resumen de Versión */}
-        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+        <div className="bg-white rounded-3xl p-6 shadow-2xs border border-slate-200 flex flex-col justify-between">
           <div>
-            <div className="w-10 h-10 rounded-2xl bg-white/10 text-sky-300 flex items-center justify-center border border-white/10 mb-4">
+            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-200 mb-4 shadow-2xs">
               <Sparkles className="w-5 h-5" />
             </div>
-            <span className="text-[11px] font-bold text-sky-400 uppercase tracking-wider block">
+            <span className="text-[11px] font-bold text-sky-700 uppercase tracking-wider block">
               Versión Activa
             </span>
-            <h3 className="text-3xl font-extrabold font-mono text-white mt-1">
+            <h3 className="text-3xl font-extrabold font-mono text-slate-900 mt-1">
               {currentVersion}
             </h3>
-            <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
               Sistema PWA instalable con soporte offline y sincronización en tiempo real vía Socket.IO.
             </p>
           </div>
 
-          <div className="pt-6 border-t border-white/10 space-y-2 text-xs">
-            <div className="flex justify-between text-slate-400">
+          <div className="pt-6 border-t border-slate-100 space-y-2 text-xs">
+            <div className="flex justify-between text-slate-500">
               <span>Modo PWA:</span>
-              <span className="text-emerald-400 font-semibold">Instalable</span>
+              <span className="text-emerald-700 font-semibold">Instalable</span>
             </div>
-            <div className="flex justify-between text-slate-400">
+            <div className="flex justify-between text-slate-500">
               <span>Soporte Móvil:</span>
-              <span className="text-slate-200">iOS / Android / Desktop</span>
+              <span className="text-slate-800 font-medium">iOS / Android / Desktop</span>
             </div>
-            <div className="flex justify-between text-slate-400">
+            <div className="flex justify-between text-slate-500">
               <span>Versiones Registradas:</span>
-              <span className="text-slate-200 font-bold">{versions.length}</span>
+              <span className="text-slate-900 font-bold">{versions.length}</span>
             </div>
           </div>
         </div>

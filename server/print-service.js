@@ -160,7 +160,7 @@ async function printWithRetry(target, jobType, accountId, builder) {
 // Cada builder recibe el `printer` de escpos y encadena comandos.
 // Devuelve el printer para que sendToNetworkPrinter haga el close.
 
-function buildKitchenTicket(ticket, center, account) {
+function buildKitchenTicket(ticket, center, account, copyInfo = null) {
   return (printer) => {
     const centerName = (center?.name || "COCINA").toUpperCase();
     const now = new Date();
@@ -174,7 +174,22 @@ function buildKitchenTicket(ticket, center, account) {
       .align("ct")
       .style("b")
       .size(1, 1)
-      .text(centerName)
+      .text(centerName);
+
+    // Si se imprimen múltiples copias, distinguir claramente cada una
+    if (copyInfo && copyInfo.totalCopies > 1) {
+      const copyLabel = copyInfo.copyNumber === 1
+        ? "[ORIGINAL - COCINA]"
+        : copyInfo.copyNumber === 2
+          ? "[COPIA - DESPACHO]"
+          : `[COPIA ${copyInfo.copyNumber}]`;
+      printer
+        .size(0, 0)
+        .text(copyLabel)
+        .size(1, 1);
+    }
+
+    printer
       .text(divider)
       .style("normal")
       .align("lt");
@@ -224,26 +239,24 @@ function buildKitchenTicket(ticket, center, account) {
       .size(1, 1)
       .text(`* ${time} *`)
       .style("normal")
-      .size(0, 0)
-      .feed(3);
+      .size(0, 0);
 
     try {
-      // Secuencia universal de corte ESC/POS:
-      // 1. Full cut estándar (\x1DV\x00) soportado por el 99.9% de impresoras térmicas
+      // Corte limpio y único para evitar desperdicio de papel y corte prematuro del pie del ticket:
+      // Se alimenta 4 líneas para librar la distancia física entre el cabezal térmico y la cuchilla (~14mm)
       if (typeof printer.cut === "function") {
-        printer.cut(); // Ejecuta feed y \x1DV\x00
+        printer.cut(false, 4);
       } else {
+        printer.feed(4);
         printer.raw(Buffer.from([0x1d, 0x56, 0x00]));
       }
-      // 2. Compatibilidad adicional con impresoras que requieren comando Function B (\x1DV\x42\x00)
-      printer.raw(Buffer.from([0x1d, 0x56, 0x42, 0x00]));
     } catch (_) {}
 
     return printer;
   };
 }
 
-function buildCustomerReceipt(receipt, restaurant) {
+function buildCustomerReceipt(receipt, restaurant, copyInfo = null) {
   return (printer) => {
     const { account = {}, items = [], payments = [], totals = {}, felInvoice = null } = receipt || {};
     const restName = restaurant?.name || "RESTAURANTE";
@@ -257,6 +270,18 @@ function buildCustomerReceipt(receipt, restaurant) {
       .text(restName)
       .style("normal")
       .size(0, 0);
+
+    if (copyInfo && copyInfo.totalCopies > 1) {
+      const copyLabel = copyInfo.copyNumber === 1
+        ? "[ORIGINAL - CLIENTE]"
+        : copyInfo.copyNumber === 2
+          ? "[COPIA - CAJA]"
+          : `[COPIA ${copyInfo.copyNumber}]`;
+      printer
+        .style("b")
+        .text(copyLabel)
+        .style("normal");
+    }
 
     if (restaurant?.commercial_name && restaurant.commercial_name !== restName) {
       printer.text(restaurant.commercial_name);
@@ -387,16 +412,17 @@ function buildCustomerReceipt(receipt, restaurant) {
       .align("ct")
       .style("b")
       .text("Gracias por su visita!")
-      .style("normal")
-      .feed(3);
+      .style("normal");
 
     try {
+      // Corte limpio y único para evitar que el pie del ticket ("Gracias por su visita") quede atrapado detrás de la cuchilla
+      // 4 líneas libran los ~14mm de distancia entre el cabezal térmico y la guillotina
       if (typeof printer.cut === "function") {
-        printer.cut();
+        printer.cut(false, 4);
       } else {
+        printer.feed(4);
         printer.raw(Buffer.from([0x1d, 0x56, 0x00]));
       }
-      printer.raw(Buffer.from([0x1d, 0x56, 0x42, 0x00]));
     } catch (_) {}
 
     return printer;
@@ -427,16 +453,15 @@ function buildTestPage(target) {
       .text("la conexion con la impresora")
       .text("es correcta.")
       .align("ct")
-      .text("--- SamaPos test page ---")
-      .feed(3);
+      .text("--- SamaPos test page ---");
 
     try {
       if (typeof printer.cut === "function") {
-        printer.cut();
+        printer.cut(false, 4);
       } else {
+        printer.feed(4);
         printer.raw(Buffer.from([0x1d, 0x56, 0x00]));
       }
-      printer.raw(Buffer.from([0x1d, 0x56, 0x42, 0x00]));
     } catch (_) {}
 
     return printer;
@@ -456,7 +481,13 @@ async function printKitchenTicket(ticket, center, account, options = {}) {
   const copies = Number(options.copies || 1);
   let lastRes = { ok: false };
   for (let c = 0; c < Math.max(1, copies); c++) {
-    lastRes = await printWithRetry(center, "kitchen_ticket", account?.id || null, buildKitchenTicket(ticket, center, account));
+    const copyInfo = copies > 1 ? { copyNumber: c + 1, totalCopies: copies } : null;
+    lastRes = await printWithRetry(
+      center,
+      "kitchen_ticket",
+      account?.id || null,
+      buildKitchenTicket(ticket, center, account, copyInfo)
+    );
   }
   return lastRes;
 }
@@ -472,11 +503,12 @@ async function printCustomerReceipt(receipt, terminal, restaurant = {}, options 
   const copies = Number(options.copies || receipt?.copies || 1);
   let lastRes = { ok: false };
   for (let c = 0; c < Math.max(1, copies); c++) {
+    const copyInfo = copies > 1 ? { copyNumber: c + 1, totalCopies: copies } : null;
     lastRes = await printWithRetry(
       terminal,
       "customer_receipt",
       receipt?.account?.id || null,
-      buildCustomerReceipt(receipt, restaurant)
+      buildCustomerReceipt(receipt, restaurant, copyInfo)
     );
   }
   return lastRes;

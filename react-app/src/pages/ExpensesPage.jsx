@@ -52,23 +52,23 @@ export function ExpensesPage({ onBack }) {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       {/* Top Navigation Header */}
-      <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-md">
+      <header className="bg-white border-b border-slate-200 text-slate-900 sticky top-0 z-30 shadow-2xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <BackButton onClick={onBack} label="Dashboard" />
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-200/80 shadow-2xs">
                   <WalletCards className="w-5 h-5" />
                 </div>
                 <div>
-                  <h1 className="text-base sm:text-lg font-black tracking-tight flex items-center gap-2">
+                  <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 flex items-center gap-2">
                     <span>Gastos & Proveedores (CXP)</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                       Finanzas
                     </span>
                   </h1>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-500">
                     Control de egresos, cuentas por pagar y rentabilidad en tiempo real
                   </p>
                 </div>
@@ -76,7 +76,7 @@ export function ExpensesPage({ onBack }) {
             </div>
 
             {/* Navigation Tabs */}
-            <div className="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-2xl border border-slate-700/60 overflow-x-auto">
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200 overflow-x-auto">
               {tabs.map((t) => {
                 const IconComponent = t.icon;
                 const isActive = activeTab === t.id;
@@ -84,10 +84,10 @@ export function ExpensesPage({ onBack }) {
                   <button
                     key={t.id}
                     onClick={() => setActiveTab(t.id)}
-                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                       isActive
-                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+                        ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80 font-black'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
                     }`}
                   >
                     <IconComponent className="w-4 h-4" />

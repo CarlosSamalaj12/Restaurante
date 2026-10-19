@@ -88,61 +88,46 @@ export function generateShiftTicketHtml({
     const totalForMethod = Number(shiftData[m.code + '_total'] || 0);
 
     if (paymentsForMethod.length > 0 || totalForMethod > 0) {
+      const pct = grandTotal > 0 ? ((totalForMethod / grandTotal) * 100).toFixed(1) : '0.0';
       detailedChecksHtml += `
-        <div style="margin-top:6px;">
-          <div style="font-weight:900;font-size:11px;background:#000;color:#fff;padding:2px 5px;display:flex;justify-content:space-between;text-transform:uppercase;">
-            <span>${methodIndex}. ${m.label.toUpperCase()} (${paymentsForMethod.length} ${paymentsForMethod.length === 1 ? 'CHK' : 'CHKS'})</span>
+        <div style="margin-top:3px;page-break-inside:avoid;break-inside:avoid;">
+          <div class="method-banner">
+            <span>${methodIndex}. ${m.label.toUpperCase()} (${paymentsForMethod.length} CHK • ${pct}%)</span>
             <span>Q${totalForMethod.toFixed(2)}</span>
           </div>
-          <div style="padding:2px 4px 4px 4px;">
-            ${paymentsForMethod.length > 0 ? paymentsForMethod.map(p => {
+          <div class="ascii-sep">------------------------------------------</div>
+          <div style="padding:1px 0;">
+            ${paymentsForMethod.length > 0 ? paymentsForMethod.map((p, pIdx) => {
               const timeStr = p.payment_time ? formatTimeOnly(p.payment_time) : (p.closed_at ? formatTimeOnly(p.closed_at) : '');
               const checkNum = p.check_number || `CHK-${String(p.account_id).padStart(4, '0')}`;
               let extraMeta = '';
               if (p.method === 'card' && p.reference_no) {
-                extraMeta = ` • Ref: ${p.reference_no}`;
+                extraMeta = ` • Ref:${p.reference_no}`;
               } else if (p.method === 'room_charge' && (p.room_number || p.reference_no)) {
-                extraMeta = ` • Hab: ${p.room_number || p.reference_no}`;
+                extraMeta = ` • Hab:${p.room_number || p.reference_no}`;
               } else if (p.reference_no) {
                 extraMeta = ` • ${p.reference_no}`;
               }
+              const isLast = pIdx === paymentsForMethod.length - 1;
               return `
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;font-size:10.5px;padding:2px 0;border-bottom:0.5px dotted #aaa;">
-                  <span style="font-weight:600;">
-                    ${checkNum}${timeStr ? ` • ${timeStr}` : ''}${extraMeta}
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;font-size:11px;padding:1px 0;color:#000;">
+                  <span style="font-weight:700;">
+                    ${checkNum}${timeStr ? ` ${timeStr}` : ''}${extraMeta}
                   </span>
-                  <span style="font-weight:800;white-space:nowrap;margin-left:6px;">Q${Number(p.amount).toFixed(2)}</span>
+                  <span style="font-weight:900;white-space:nowrap;margin-left:4px;">Q${Number(p.amount).toFixed(2)}</span>
                 </div>
+                ${!isLast ? '<div class="ascii-sep" style="font-size:10px;margin:1px 0;">------------------------------------------</div>' : ''}
               `;
             }).join('') : `
-              <div style="display:flex;justify-content:space-between;font-size:10.5px;padding:2px 0;">
+              <div style="display:flex;justify-content:space-between;font-size:11px;padding:1px 0;color:#000;">
                 <span>Total transacciones ${m.label}</span>
-                <span style="font-weight:800;">Q${totalForMethod.toFixed(2)}</span>
+                <span style="font-weight:900;">Q${totalForMethod.toFixed(2)}</span>
               </div>
             `}
-            <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:900;padding:2px 0 1px 0;border-top:1px solid #000;margin-top:2px;">
-              <span>SUBTOTAL ${m.label.toUpperCase()}:</span>
-              <span>Q${totalForMethod.toFixed(2)}</span>
-            </div>
           </div>
         </div>
       `;
       methodIndex++;
-    }
-  }
-
-  // Generar bloque de resumen con porcentajes
-  let consolidatedTotalsHtml = '';
-  for (const m of activeMethods) {
-    const tot = Number(shiftData[m.code + '_total'] || 0);
-    if (tot > 0) {
-      const pct = grandTotal > 0 ? ((tot / grandTotal) * 100).toFixed(1) : '0.0';
-      consolidatedTotalsHtml += `
-        <div style="display:flex;justify-content:space-between;padding:1.5px 0;font-size:10.5px;">
-          <span style="font-weight:600;">${m.label} (${pct}%):</span>
-          <span style="font-weight:800;">Q${tot.toFixed(2)}</span>
-        </div>
-      `;
     }
   }
 
@@ -164,107 +149,168 @@ export function generateShiftTicketHtml({
           box-sizing: border-box;
           margin: 0;
           padding: 0;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color: #000 !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        @page {
+          size: 80mm auto;
+          margin: 0;
+        }
+        html, body {
+          width: 100% !important;
+          height: auto !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #fff !important;
+          overflow: visible !important;
         }
         body {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, monospace;
-          width: 78mm;
-          margin: 0 auto;
-          padding: 6px 3px;
-          color: #000;
-          background: #fff;
+          font-family: 'Consolas', 'Lucida Console', Monaco, monospace !important;
           font-size: 11px;
-          line-height: 1.35;
+          font-weight: 700;
+          line-height: 1.25;
+          -webkit-font-smoothing: antialiased !important;
+          -moz-osx-font-smoothing: grayscale !important;
+          text-rendering: geometricPrecision !important;
+        }
+        .ticket-wrapper {
+          width: 72mm;
+          margin: 0 auto;
+          padding: 2mm 2mm;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          page-break-before: avoid !important;
+          break-before: avoid !important;
+          page-break-after: avoid !important;
+          break-after: avoid !important;
         }
         .center { text-align: center; }
-        .bold { font-weight: 800; }
-        .logo-box { text-align: center; margin-bottom: 6px; }
-        .logo-box img { max-width: 140px; max-height: 60px; object-fit: contain; filter: grayscale(100%) contrast(200%); }
-        .subtitle { font-size: 10px; font-weight: 700; color: #444; letter-spacing: 0.5px; text-transform: uppercase; }
-        .main-title { font-size: 16px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; margin: 1px 0; }
-        .branch-info { font-size: 10px; color: #222; margin-top: 1px; }
-        .tax-info { font-size: 10px; font-weight: 600; color: #222; margin-top: 1px; }
+        .bold { font-weight: 900; }
+        .logo-box { text-align: center; margin-bottom: 2px; }
+        .logo-box img { max-width: 120px; max-height: 45px; object-fit: contain; filter: grayscale(100%) contrast(300%); }
+        .subtitle { font-size: 11px; font-weight: 700; color: #000 !important; text-transform: uppercase; }
+        .main-title { font-size: 18px; font-weight: 900; text-transform: uppercase; margin: 1px 0; color: #000 !important; line-height: 1.15; }
+        .branch-info { font-size: 11px; color: #000 !important; font-weight: 700; }
+        .tax-info { font-size: 11px; font-weight: 700; color: #000 !important; }
         
-        .doc-banner {
-          background: #000;
-          color: #fff;
+        .ascii-sep {
+          overflow: hidden;
+          white-space: nowrap;
+          font-family: 'Consolas', 'Lucida Console', Monaco, monospace !important;
+          font-size: 11px;
+          font-weight: 900;
+          line-height: 1.1;
           text-align: center;
-          padding: 4px 2px;
-          margin: 7px 0 2px 0;
+          margin: 2px 0;
+          color: #000 !important;
+          letter-spacing: -0.5px;
+        }
+
+        .doc-banner {
+          background-color: #fff !important;
+          color: #000 !important;
+          text-align: center;
+          padding: 3px 2px;
+          margin: 2px 0 1px 0;
+          border: 2px solid #000 !important;
         }
         .doc-banner .title {
-          font-size: 12.5px;
+          font-size: 14px;
           font-weight: 900;
-          letter-spacing: 0.5px;
           text-transform: uppercase;
+          color: #000 !important;
         }
         .doc-subnotice {
           text-align: center;
-          font-size: 9px;
-          font-weight: 800;
-          letter-spacing: 0.3px;
-          padding: 2px 0;
-          border-bottom: 1px solid #000;
-          margin-bottom: 5px;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 1px 0;
+          margin-bottom: 2px;
+          color: #000 !important;
         }
 
         .meta-box {
-          border: 1px solid #000;
-          border-radius: 3px;
-          padding: 4px 6px;
-          margin: 5px 0;
-          font-size: 10.5px;
+          border: 1.5px solid #000;
+          padding: 3px 4px;
+          margin: 2px 0;
+          font-size: 11px;
+          font-weight: 700;
+          color: #000 !important;
         }
         .meta-row {
           display: flex;
           justify-content: space-between;
           padding: 1px 0;
+          color: #000 !important;
         }
 
         .section-box {
           border: 1.5px solid #000;
-          border-radius: 4px;
-          padding: 5px 6px;
-          margin: 6px 0;
+          padding: 3px 4px;
+          margin: 2px 0;
+          color: #000 !important;
         }
         .section-title {
           font-weight: 900;
-          font-size: 10.5px;
-          letter-spacing: 0.5px;
+          font-size: 13px;
           text-transform: uppercase;
           text-align: center;
-          border-bottom: 1px solid #000;
+          border-bottom: 1.5px solid #000;
           padding-bottom: 2px;
-          margin-bottom: 4px;
+          margin-bottom: 2px;
+          color: #000 !important;
         }
 
         .row {
           display: flex;
           justify-content: space-between;
-          padding: 1.5px 0;
-          font-size: 10.5px;
+          padding: 1px 0;
+          font-size: 11px;
+          font-weight: 700;
+          color: #000 !important;
         }
         .row.highlight {
-          font-size: 12px;
+          font-size: 13px;
           font-weight: 900;
           border-top: 1.5px solid #000;
           border-bottom: 1.5px solid #000;
-          padding: 3px 0;
-          margin: 3px 0;
+          padding: 2px 0;
+          margin: 2px 0;
+          color: #000 !important;
         }
 
-        .dashed-sep {
-          border-top: 1.5px dashed #000;
-          margin: 7px 0;
+        .method-banner {
+          font-weight: 900;
+          font-size: 12px;
+          background-color: #fff !important;
+          color: #000 !important;
+          padding: 2px 2px;
+          display: flex;
+          justify-content: space-between;
+          text-transform: uppercase;
+          border-top: 1.5px solid #000;
+          border-bottom: 1.5px solid #000;
+        }
+
+        .totals-group {
+          margin-top: 3px;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          page-break-before: avoid !important;
+          break-before: avoid !important;
         }
 
         .grand-banner {
-          background: #000;
-          color: #fff;
+          background-color: #fff !important;
+          color: #000 !important;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 5px 6px;
-          margin: 6px 0;
+          padding: 3px 4px;
+          border: 2px solid #000 !important;
         }
         .grand-banner .label-col {
           display: flex;
@@ -272,168 +318,205 @@ export function generateShiftTicketHtml({
         }
         .grand-banner .small-label {
           font-size: 9px;
-          font-weight: 700;
-          letter-spacing: 0.5px;
-          color: #ccc;
+          font-weight: 900;
+          color: #000 !important;
           text-transform: uppercase;
         }
         .grand-banner .big-label {
-          font-size: 12.5px;
+          font-size: 14px;
           font-weight: 900;
-          letter-spacing: 0.5px;
+          color: #000 !important;
         }
         .grand-banner .amount {
           font-size: 16px;
           font-weight: 900;
+          color: #000 !important;
         }
 
-        .stats-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 3px 8px;
-          font-size: 10px;
-          margin: 6px 0;
+        .stats-box {
+          border-top: 1.5px solid #000;
+          border-bottom: 1.5px solid #000;
+          padding: 3px 2px;
+          margin-top: 2px;
+          font-size: 12px;
+          color: #000 !important;
         }
-        .stats-item {
+        .stat-row {
           display: flex;
           justify-content: space-between;
           padding: 1px 0;
-        }
-        .stats-item .lbl {
-          color: #444;
-          font-weight: 600;
-          text-transform: uppercase;
-        }
-        .stats-item .val {
-          font-weight: 800;
+          font-weight: 900;
+          color: #000 !important;
         }
 
         .footer-note {
-          font-size: 9.5px;
-          line-height: 1.35;
-          margin-top: 8px;
+          font-size: 10px;
+          line-height: 1.3;
+          margin-top: 3px;
           text-align: center;
-          color: #222;
-          padding: 4px 2px;
-          border-top: 1.5px dashed #000;
+          color: #000 !important;
+          font-weight: 700;
+          padding: 2px 1px 0 1px;
         }
 
         @media print {
-          body {
-            width: 100%;
-            margin: 0;
-            padding: 0;
-            background: #fff;
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color: #000 !important;
+            border-color: #000 !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          html, body {
+            width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            font-family: 'Consolas', 'Lucida Console', Monaco, monospace !important;
+            -webkit-font-smoothing: antialiased !important;
+            text-rendering: geometricPrecision !important;
+          }
+          .ticket-wrapper {
+            width: 72mm !important;
+            margin: 0 auto !important;
+            padding: 1mm 2mm !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .totals-group {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-before: avoid !important;
+            break-before: avoid !important;
+          }
+          .doc-banner {
+            background-color: #fff !important;
+            color: #000 !important;
+            border: 2px solid #000 !important;
+          }
+          .grand-banner {
+            background-color: #fff !important;
+            color: #000 !important;
+            border: 2px solid #000 !important;
+          }
+          .method-banner {
+            background-color: #fff !important;
+            color: #000 !important;
+            border-top: 1.5px solid #000 !important;
+            border-bottom: 1.5px solid #000 !important;
           }
           @page {
             margin: 0;
-            size: auto;
+            size: 80mm auto;
           }
         }
       </style>
     </head>
     <body>
-      <!-- 1. ENCABEZADO -->
-      <div class="center">
-        ${receiptLogo ? `
-          <div class="logo-box">
-            <img src="${receiptLogo}" alt="Logo" />
+      <div class="ticket-wrapper">
+        <!-- 1. ENCABEZADO -->
+        <div class="center">
+          ${receiptLogo ? `
+            <div class="logo-box">
+              <img src="${receiptLogo}" alt="Logo" />
+            </div>
+          ` : ''}
+          <div class="subtitle">${subtitle}</div>
+          <div class="main-title">${restaurantName}</div>
+          <div class="branch-info">${centerName} • ${address}</div>
+          <div class="tax-info">NIT: ${nit} • Tel: ${phone}</div>
+        </div>
+
+        <div class="ascii-sep">==========================================</div>
+
+        <!-- 2. FRANJA CORTE -->
+        <div class="doc-banner">
+          <div class="title">${docTitle}</div>
+        </div>
+        <div class="doc-subnotice">${docNotice}</div>
+
+        <!-- 3. METADATOS DEL TURNO -->
+        <div class="meta-box">
+          <div class="meta-row"><span>TURNO: #TRN-${String(shiftId).padStart(4, '0')}</span><span class="bold">CAJERO: ${cashierName}</span></div>
+          <div class="meta-row"><span>TERMINAL: #${terminalInfo.code || 'POS-01'}</span><span>APERTURA: ${openedStr}</span></div>
+          <div class="meta-row"><span>${isZ ? 'CIERRE TURNO:' : 'HORA IMPRESIÓN:'}</span><span class="bold">${printTimeStr}</span></div>
+        </div>
+
+        <div class="ascii-sep">==========================================</div>
+
+        <!-- 4. ARQUEO DE EFECTIVO EN CAJA -->
+        <div class="section-box">
+          <div class="section-title">ARQUEO DE EFECTIVO EN CAJA</div>
+          <div class="row"><span>Fondo Inicial (Base):</span><span class="bold">Q${openingCash.toFixed(2)}</span></div>
+          <div class="row"><span>(+) Ventas Efectivo:</span><span class="bold">+Q${cashSales.toFixed(2)}</span></div>
+          <div class="row"><span>(-) Retiros Caja Chica:</span><span class="bold">-Q${expenses.toFixed(2)}</span></div>
+          <div class="row highlight">
+            <span>EFECTIVO ESPERADO:</span>
+            <span>Q${expectedCash.toFixed(2)}</span>
           </div>
-        ` : ''}
-        <div class="subtitle">${subtitle}</div>
-        <div class="main-title">${restaurantName}</div>
-        <div class="branch-info">${centerName} • ${address}</div>
-        <div class="tax-info">NIT: ${nit} • Tel: ${phone}</div>
-      </div>
+          <div class="row" style="padding-top:1px;">
+            <span>Efectivo Contado (Físico):</span>
+            <span class="bold">Q${closingCash.toFixed(2)}</span>
+          </div>
+          <div class="row" style="padding-top:1px;">
+            <span>Diferencia:</span>
+            <span class="bold">${diff > 0 ? '+' : ''}Q${diff.toFixed(2)} ${diffLabel}</span>
+          </div>
+        </div>
 
-      <!-- 2. FRANJA CORTE -->
-      <div class="doc-banner">
-        <div class="title">${docTitle}</div>
-      </div>
-      <div class="doc-subnotice">${docNotice}</div>
+        <div class="ascii-sep">==========================================</div>
 
-      <!-- 3. METADATOS DEL TURNO -->
-      <div class="meta-box">
-        <div class="meta-row"><span>TURNO ID:</span><span class="bold">#TRN-${String(shiftId).padStart(4, '0')}</span></div>
-        <div class="meta-row"><span>CAJERO / OPERADOR:</span><span class="bold">${cashierName}</span></div>
-        <div class="meta-row"><span>TERMINAL / CAJA:</span><span>#${terminalInfo.code || 'POS-01'} (${terminalInfo.name || 'Lado A'})</span></div>
-        <div class="meta-row"><span>APERTURA TURNO:</span><span>${openedStr}</span></div>
-        <div class="meta-row"><span>${isZ ? 'CIERRE TURNO:' : 'HORA IMPRESIÓN:'}</span><span class="bold">${printTimeStr}</span></div>
-      </div>
+        <!-- 5. DETALLE DE CHEQUES POR FORMA DE PAGO -->
+        <div style="margin-top:2px;">
+          <div class="bold center" style="font-size:13px;text-transform:uppercase;color:#000;">
+            DETALLE DE CHEQUES POR FORMA DE PAGO
+          </div>
+          ${detailedChecksHtml || '<div style="text-align:center;padding:4px 0;font-weight:bold;color:#000;">Sin transacciones registradas</div>'}
+        </div>
 
-      <!-- 4. ARQUEO DE EFECTIVO EN CAJA -->
-      <div class="section-box">
-        <div class="section-title">ARQUEO DE EFECTIVO EN CAJA</div>
-        <div class="row"><span>Fondo Inicial (Base):</span><span class="bold">Q${openingCash.toFixed(2)}</span></div>
-        <div class="row"><span>(+) Ventas Efectivo:</span><span class="bold" style="color:#000;">+Q${cashSales.toFixed(2)}</span></div>
-        <div class="row"><span>(-) Retiros Caja Chica:</span><span class="bold" style="color:#000;">-Q${expenses.toFixed(2)}</span></div>
-        <div class="row highlight">
-          <span>EFECTIVO ESPERADO:</span>
-          <span>Q${expectedCash.toFixed(2)}</span>
-        </div>
-        <div class="row" style="font-size:11.5px;padding-top:2px;">
-          <span>Efectivo Contado (Físico):</span>
-          <span class="bold" style="font-size:12px;">Q${closingCash.toFixed(2)}</span>
-        </div>
-        <div class="row" style="font-weight:bold;font-size:11.5px;padding-top:2px;">
-          <span>Diferencia:</span>
-          <span style="font-weight:900;">
-            ${diff > 0 ? '+' : ''}Q${diff.toFixed(2)} ${diffLabel}
-          </span>
-        </div>
-      </div>
+        <div class="ascii-sep">==========================================</div>
 
-      <div class="dashed-sep"></div>
+        <!-- 6. TOTALES Y MÉTRICAS OPERATIVAS (UNIFICADOS) -->
+        <div class="totals-group">
+          <div class="grand-banner">
+            <div class="label-col">
+              <span class="small-label">TOTAL FACTURADO</span>
+              <span class="big-label">VENTAS BRUTAS:</span>
+            </div>
+            <div class="amount">Q${grandTotal.toFixed(2)}</div>
+          </div>
 
-      <!-- 5. DETALLE DE CHEQUES POR FORMA DE PAGO -->
-      <div>
-        <div class="bold center" style="font-size:11.5px;letter-spacing:0.5px;text-transform:uppercase;">
-          DETALLE DE CHEQUES POR FORMA DE PAGO
-        </div>
-        <div class="center" style="font-size:9.5px;color:#555;margin-bottom:4px;">
-          Desglose de transacciones auditadas
-        </div>
-        ${detailedChecksHtml || '<div style="text-align:center;padding:6px 0;font-style:italic;">Sin transacciones registradas</div>'}
-      </div>
+          <div class="stats-box">
+            <div class="stat-row">
+              <span>TOTAL CUENTAS:</span>
+              <span class="bold">${accountsCount}</span>
+            </div>
+            <div class="stat-row">
+              <span>TICKET PROMEDIO:</span>
+              <span class="bold">Q${avgTicket.toFixed(2)}</span>
+            </div>
+            ${discounts > 0 ? `
+            <div class="stat-row">
+              <span>DESCUENTOS APLICADOS:</span>
+              <span class="bold">-Q${discounts.toFixed(2)}</span>
+            </div>
+            ` : ''}
+            ${tips > 0 ? `
+            <div class="stat-row">
+              <span>PROPINAS RECIBIDAS:</span>
+              <span class="bold">+Q${tips.toFixed(2)}</span>
+            </div>
+            ` : ''}
+          </div>
 
-      <!-- 6. RESUMEN TOTALES POR FORMA DE PAGO -->
-      <div class="section-box" style="margin-top:8px;">
-        <div class="section-title">RESUMEN TOTALES POR FORMA DE PAGO</div>
-        ${consolidatedTotalsHtml || '<div style="text-align:center;padding:4px 0;">Q0.00</div>'}
-      </div>
+          <div class="ascii-sep">------------------------------------------</div>
 
-      <!-- 7. TOTAL FACTURADO / VENTAS BRUTAS -->
-      <div class="grand-banner">
-        <div class="label-col">
-          <span class="small-label">TOTAL FACTURADO</span>
-          <span class="big-label">VENTAS BRUTAS:</span>
+          <div class="footer-note">
+            ${footerText}
+          </div>
         </div>
-        <div class="amount">Q${grandTotal.toFixed(2)}</div>
-      </div>
-
-      <!-- 8. MÉTRICAS OPERATIVAS -->
-      <div class="stats-grid">
-        <div class="stats-item">
-          <span class="lbl">Cuentas:</span>
-          <span class="val">${accountsCount}</span>
-        </div>
-        <div class="stats-item">
-          <span class="lbl">Ticket Prom.:</span>
-          <span class="val">Q${avgTicket.toFixed(2)}</span>
-        </div>
-        <div class="stats-item">
-          <span class="lbl">Descuentos:</span>
-          <span class="val">Q${discounts.toFixed(2)}</span>
-        </div>
-        <div class="stats-item">
-          <span class="lbl">Propinas:</span>
-          <span class="val">Q${tips.toFixed(2)}</span>
-        </div>
-      </div>
-
-      <!-- 9. NOTA INFORMATIVA FINAL (SIN FIRMAS) -->
-      <div class="footer-note">
-        ${footerText}
       </div>
 
       <script>
@@ -646,11 +729,14 @@ export function ShiftTicketModal({
         </div>
 
         {/* CONTENEDOR DEL PAPEL TÉRMICO SCROLLEABLE */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-950/60 flex justify-center">
-          <div className="w-[330px] bg-white text-black p-4 rounded-sm shadow-xl font-mono text-[11px] leading-[1.35] select-text">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-950/60">
+          <div
+            className="w-[330px] mx-auto bg-white text-black p-4 pb-6 mb-6 rounded-sm shadow-xl select-text h-auto"
+            style={{ fontFamily: "'Consolas', 'Lucida Console', Monaco, monospace", fontSize: '11px', lineHeight: 1.25, fontWeight: 700 }}
+          >
             
             {/* CABECERA COMERCIAL */}
-            <div className="text-center pb-2">
+            <div className="text-center pb-1">
               {receiptLogo && (
                 <div className="mb-2 flex justify-center">
                   <img
@@ -660,47 +746,47 @@ export function ShiftTicketModal({
                   />
                 </div>
               )}
-              <div className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{subtitle}</div>
-              <div className="text-[17px] font-black uppercase tracking-tight text-black my-0.5">{restaurantName}</div>
-              <div className="text-[10px] text-slate-700">{centerName} • {address}</div>
-              <div className="text-[10px] font-semibold text-slate-800">NIT: {nit} • Tel: {phone}</div>
+              <div className="text-[11px] font-bold text-black uppercase tracking-wider">{subtitle}</div>
+              <div className="text-[18px] font-black uppercase tracking-tight text-black my-0.5">{restaurantName}</div>
+              <div className="text-[11px] text-black font-bold">{centerName} • {address}</div>
+              <div className="text-[11px] font-bold text-black">NIT: {nit} • Tel: {phone}</div>
             </div>
 
-            {/* BANNER NEGRO CORTE */}
-            <div className="bg-black text-white text-center py-1.5 px-1 mt-1">
-              <div className="text-[12px] font-black tracking-wide uppercase">{docTitle}</div>
+            <div className="text-center font-black tracking-tighter text-[11px] text-black my-1 select-none overflow-hidden whitespace-nowrap">
+              ==========================================
             </div>
-            <div className="text-center text-[9px] font-extrabold tracking-tight py-0.5 border-b border-black mb-2 uppercase">
+
+            {/* RECUADRO CORTE */}
+            <div className="bg-white text-black text-center py-1 px-1 border-2 border-black">
+              <div className="text-[14px] font-black tracking-wide uppercase">{docTitle}</div>
+            </div>
+            <div className="text-center text-[10px] font-bold tracking-tight py-0.5 mb-1 uppercase text-black">
               {docNotice}
             </div>
 
             {/* METADATOS */}
-            <div className="border border-black rounded-xs p-2 mb-2 space-y-0.5 text-[10.5px]">
+            <div className="border-[1.5px] border-black p-1.5 mb-1 space-y-0.5 text-[11px] font-bold">
               <div className="flex justify-between">
-                <span className="font-semibold text-slate-700">TURNO ID:</span>
-                <span className="font-black text-black">#TRN-{String(shiftId).padStart(4, '0')}</span>
+                <span className="text-black">TURNO: #TRN-{String(shiftId).padStart(4, '0')}</span>
+                <span className="font-black text-black">CAJERO: {cashierName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="font-semibold text-slate-700">CAJERO / OPERADOR:</span>
-                <span className="font-bold text-black">{cashierName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-semibold text-slate-700">TERMINAL / CAJA:</span>
-                <span className="font-bold text-black">#{terminalInfo.code || 'POS-01'} ({terminalInfo.name || 'Lado A'})</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-semibold text-slate-700">APERTURA TURNO:</span>
+                <span className="text-black">TERMINAL: #{terminalInfo.code || 'POS-01'}</span>
                 <span className="text-black">{openedStr}</span>
               </div>
               <div className="flex justify-between">
-                <span className="font-semibold text-slate-700">{isZ ? 'CIERRE TURNO:' : 'HORA IMPRESIÓN:'}</span>
+                <span className="text-black">{isZ ? 'CIERRE TURNO:' : 'HORA IMPRESIÓN:'}</span>
                 <span className="font-black text-black">{printTimeStr}</span>
               </div>
             </div>
 
+            <div className="text-center font-black tracking-tighter text-[11px] text-black my-1 select-none overflow-hidden whitespace-nowrap">
+              ==========================================
+            </div>
+
             {/* ARQUEO DE EFECTIVO */}
-            <div className="border-[1.5px] border-black rounded-xs p-2 my-2 space-y-1">
-              <div className="font-black text-center text-[10.5px] uppercase tracking-wider border-b border-black pb-1 mb-1.5">
+            <div className="border-[1.5px] border-black p-1.5 my-1 space-y-0.5 text-[11px]">
+              <div className="font-black text-center text-[13px] uppercase tracking-wider border-b-[1.5px] border-black pb-1 mb-1 text-black">
                 ARQUEO DE EFECTIVO EN CAJA
               </div>
               <div className="flex justify-between text-[11px]">
@@ -709,55 +795,59 @@ export function ShiftTicketModal({
               </div>
               <div className="flex justify-between text-[11px]">
                 <span>(+) Ventas Efectivo:</span>
-                <span className="font-bold text-emerald-800">+{formatMoney(cashSales)}</span>
+                <span className="font-bold text-black">+{formatMoney(cashSales)}</span>
               </div>
               <div className="flex justify-between text-[11px]">
                 <span>(-) Retiros Caja Chica:</span>
-                <span className="font-bold text-rose-800">-{formatMoney(expenses)}</span>
+                <span className="font-bold text-black">-{formatMoney(expenses)}</span>
               </div>
               
-              <div className="border-t-[1.5px] border-b-[1.5px] border-black py-1 my-1 flex justify-between font-black text-[12px]">
+              <div className="border-t-[1.5px] border-b-[1.5px] border-black py-0.5 my-0.5 flex justify-between font-black text-[13px]">
                 <span>EFECTIVO ESPERADO:</span>
                 <span>{formatMoney(expectedCash)}</span>
               </div>
 
-              <div className="flex justify-between text-[11.5px] pt-0.5">
+              <div className="flex justify-between text-[12px] pt-0.5">
                 <span>Efectivo Contado (Físico):</span>
                 <span className="font-black text-[12px]">{formatMoney(closingCash)}</span>
               </div>
 
-              <div className="flex justify-between text-[11px] font-bold pt-0.5">
+              <div className="flex justify-between text-[12px] font-bold pt-0.5">
                 <span>Diferencia (Sobrante/Faltante):</span>
-                <span className={`font-black ${diff === 0 ? 'text-emerald-700' : diff > 0 ? 'text-blue-700' : 'text-rose-700'}`}>
+                <span className="font-black text-black">
                   {diff > 0 ? '+' : ''}{formatMoney(diff)} {diffLabel}
                 </span>
               </div>
             </div>
 
-            <div className="border-t-[1.5px] border-dashed border-black my-2.5"></div>
+            <div className="text-center font-black tracking-tighter text-[11px] text-black my-1 select-none overflow-hidden whitespace-nowrap">
+              ==========================================
+            </div>
 
             {/* DETALLE DE CHEQUES POR FORMA DE PAGO */}
             <div>
-              <div className="font-black text-center text-[11.5px] uppercase tracking-wider">
+              <div className="font-black text-center text-[13px] uppercase tracking-wider text-black">
                 DETALLE DE CHEQUES POR FORMA DE PAGO
-              </div>
-              <div className="text-center text-[9.5px] text-slate-600 mb-2">
-                Desglose de transacciones auditadas
               </div>
 
               {activeMethods.map((m, idx) => {
                 const paymentsForMethod = allPayments.filter(p => p.method === m.code);
                 const totalForMethod = Number(shiftData[m.code + '_total'] || 0);
                 if (paymentsForMethod.length === 0 && totalForMethod === 0) return null;
+                const pct = grandTotal > 0 ? ((totalForMethod / grandTotal) * 100).toFixed(1) : '0.0';
 
                 return (
-                  <div key={m.code} className="mt-2 text-[10.5px]">
-                    <div className="bg-black text-white px-1.5 py-0.5 flex justify-between font-black uppercase text-[11px]">
-                      <span>{idx + 1}. {m.label} ({paymentsForMethod.length} {paymentsForMethod.length === 1 ? 'CHK' : 'CHKS'})</span>
+                  <div key={m.code} className="mt-1.5 text-[11px]">
+                    <div className="bg-white text-black px-1 py-0.5 flex justify-between font-black uppercase text-[12px] border-t-[1.5px] border-b-[1.5px] border-black">
+                      <span>{idx + 1}. {m.label} ({paymentsForMethod.length} CHK • {pct}%)</span>
                       <span>{formatMoney(totalForMethod)}</span>
                     </div>
 
-                    <div className="px-1 py-1 space-y-1">
+                    <div className="text-center font-black tracking-tighter text-[10px] text-black my-0.5 select-none overflow-hidden whitespace-nowrap">
+                      ------------------------------------------
+                    </div>
+
+                    <div className="px-0.5 py-0.5 space-y-0.5">
                       {paymentsForMethod.length > 0 ? paymentsForMethod.map((p, pIdx) => {
                         const timeStr = p.payment_time ? formatTimeOnly(p.payment_time) : (p.closed_at ? formatTimeOnly(p.closed_at) : '');
                         const checkNum = p.check_number || `CHK-${String(p.account_id).padStart(4, '0')}`;
@@ -766,85 +856,86 @@ export function ShiftTicketModal({
                         else if (p.method === 'room_charge' && p.room_number) extra = ` • Hab: ${p.room_number}`;
                         else if (p.reference_no) extra = ` • ${p.reference_no}`;
 
+                        const isLast = pIdx === paymentsForMethod.length - 1;
+
                         return (
-                          <div key={p.id || pIdx} className="flex justify-between items-start border-b border-dotted border-slate-300 pb-0.5">
-                            <span className="font-semibold text-slate-800">
-                              {checkNum}{timeStr ? ` • ${timeStr}` : ''}{extra}
-                            </span>
-                            <span className="font-extrabold text-black ml-2 whitespace-nowrap">
-                              {formatMoney(p.amount)}
-                            </span>
-                          </div>
+                          <React.Fragment key={p.id || pIdx}>
+                            <div className="flex justify-between items-start text-[11px]">
+                              <span className="font-bold text-black">
+                                {checkNum}{timeStr ? ` • ${timeStr}` : ''}{extra}
+                              </span>
+                              <span className="font-black text-black ml-2 whitespace-nowrap">
+                                {formatMoney(p.amount)}
+                              </span>
+                            </div>
+                            {!isLast && (
+                              <div className="text-center font-bold tracking-tighter text-[10px] text-black my-0.5 select-none overflow-hidden whitespace-nowrap">
+                                ------------------------------------------
+                              </div>
+                            )}
+                          </React.Fragment>
                         );
                       }) : (
-                        <div className="flex justify-between text-slate-700 py-0.5">
+                        <div className="flex justify-between text-black py-0.5 text-[11px]">
                           <span>Ventas {m.label}</span>
                           <span className="font-bold">{formatMoney(totalForMethod)}</span>
                         </div>
                       )}
-
-                      <div className="flex justify-between font-black border-t border-black pt-1 mt-1 text-[11px]">
-                        <span>SUBTOTAL {m.label.toUpperCase()}:</span>
-                        <span>{formatMoney(totalForMethod)}</span>
-                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* RESUMEN TOTALES POR FORMA DE PAGO */}
-            <div className="border-[1.5px] border-black rounded-xs p-2 mt-3 space-y-1">
-              <div className="font-black text-center text-[10.5px] uppercase tracking-wider border-b border-black pb-1 mb-1.5">
-                RESUMEN TOTALES POR FORMA DE PAGO
+            <div className="text-center font-black tracking-tighter text-[11px] text-black my-1 select-none overflow-hidden whitespace-nowrap">
+              ==========================================
+            </div>
+
+            {/* TOTALES Y MÉTRICAS OPERATIVAS (UNIFICADO) */}
+            <div className="mt-1">
+              {/* RECUADRO VENTAS BRUTAS */}
+              <div className="bg-white text-black p-1.5 flex justify-between items-center border-2 border-black">
+                <div>
+                  <div className="text-[9px] font-black text-black uppercase tracking-widest">TOTAL FACTURADO</div>
+                  <div className="text-[14px] font-black">VENTAS BRUTAS:</div>
+                </div>
+                <div className="text-[16px] font-black text-black">
+                  {formatMoney(grandTotal)}
+                </div>
               </div>
-              {activeMethods.map((m) => {
-                const tot = Number(shiftData[m.code + '_total'] || 0);
-                if (tot === 0) return null;
-                const pct = grandTotal > 0 ? ((tot / grandTotal) * 100).toFixed(1) : '0.0';
-                return (
-                  <div key={m.code} className="flex justify-between text-[10.5px]">
-                    <span className="font-semibold">{m.label} ({pct}%):</span>
-                    <span className="font-black">{formatMoney(tot)}</span>
+
+              {/* MÉTRICAS OPERATIVAS (CUENTAS Y TICKET PROMEDIO) */}
+              <div className="border-t-[1.5px] border-b-[1.5px] border-black py-1.5 my-1.5 space-y-0.5 text-[12px] font-black text-black">
+                <div className="flex justify-between">
+                  <span>TOTAL CUENTAS:</span>
+                  <span className="font-black">{accountsCount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>TICKET PROMEDIO:</span>
+                  <span className="font-black">{formatMoney(avgTicket)}</span>
+                </div>
+                {discounts > 0 && (
+                  <div className="flex justify-between">
+                    <span>DESCUENTOS APLICADOS:</span>
+                    <span className="font-black">-{formatMoney(discounts)}</span>
                   </div>
-                );
-              })}
-            </div>
+                )}
+                {tips > 0 && (
+                  <div className="flex justify-between">
+                    <span>PROPINAS RECIBIDAS:</span>
+                    <span className="font-black">+{formatMoney(tips)}</span>
+                  </div>
+                )}
+              </div>
 
-            {/* BANNER NEGRO VENTAS BRUTAS */}
-            <div className="bg-black text-white p-2 mt-2 flex justify-between items-center">
-              <div>
-                <div className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">TOTAL FACTURADO</div>
-                <div className="text-[13px] font-black tracking-wide">VENTAS BRUTAS:</div>
+              <div className="text-center font-black tracking-tighter text-[10px] text-black my-1 select-none overflow-hidden whitespace-nowrap">
+                ------------------------------------------
               </div>
-              <div className="text-[17px] font-black">
-                {formatMoney(grandTotal)}
-              </div>
-            </div>
 
-            {/* MÉTRICAS OPERATIVAS */}
-            <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] py-2 border-b border-slate-300">
-              <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">CUENTAS:</span>
-                <span className="font-black">{accountsCount}</span>
+              {/* NOTA INFORMATIVA FINAL */}
+              <div className="mt-1 text-[10px] font-bold leading-tight text-center text-black pt-1">
+                {footerText}
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">TICKET PROM:</span>
-                <span className="font-black">{formatMoney(avgTicket)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">DESCUENTOS:</span>
-                <span className="font-black">{formatMoney(discounts)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">PROPINAS:</span>
-                <span className="font-black">{formatMoney(tips)}</span>
-              </div>
-            </div>
-
-            {/* NOTA INFORMATIVA FINAL */}
-            <div className="mt-3 text-[9.5px] leading-tight text-center text-slate-800 border-t border-dashed border-black pt-2">
-              {footerText}
             </div>
 
           </div>
