@@ -1,0 +1,97 @@
+/* react-app/src/components/public_menu/public_menu.css */
+/* Módulo de Estilos Midnight Glow & Theming para Menú Digital y Kioscos */
+
+:root {
+  --menu-primary: #E63946;
+  --menu-secondary: #1D3557;
+  --menu-bg: #0B101B;
+  --menu-surface: #111726;
+  --menu-surface-alt: #151D30;
+  --menu-border: rgba(51, 65, 85, 0.7);
+  --menu-text: #F8FAFC;
+  --menu-text-muted: #94A3B8;
+  --menu-font: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.menu-glow-background {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 80rem;
+  height: 24rem;
+  background: radial-gradient(ellipse at top, rgba(30, 58, 138, 0.18), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.menu-glass-header {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background-color: rgba(11, 16, 27, 0.92);
+  border-bottom: 1px solid rgba(51, 65, 85, 0.8);
+}
+
+.menu-category-pill {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  font-weight: 700;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+}
+
+.menu-category-pill.active {
+  background-color: #2563EB;
+  color: #FFFFFF;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+}
+
+.menu-category-pill.inactive {
+  background-color: rgba(18, 25, 41, 0.85);
+  border: 1px solid rgba(51, 65, 85, 0.9);
+  color: #94A3B8;
+}
+
+.menu-category-pill.inactive:hover {
+  color: #FFFFFF;
+  background-color: rgba(30, 41, 59, 0.6);
+}
+
+.menu-product-card-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(30, 41, 59, 0.6) 0%,
+    rgba(51, 65, 85, 0.8) 50%,
+    rgba(30, 41, 59, 0.6) 100%
+  );
+  background-size: 200% 100%;
+  animation: menuShimmer 1.8s infinite;
+}
+
+@keyframes menuShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.menu-badge-pulse {
+  animation: menuPulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+@keyframes menuPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}

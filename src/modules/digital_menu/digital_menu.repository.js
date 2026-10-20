@@ -143,34 +143,23 @@ const digitalMenuRepository = {
     const [rows] = await query(
       `SELECT p.id, p.category_id, p.name, p.base_price,
               p.image_url, p.description, p.dietary_tags, p.estimated_prep_min,
-              dmp.is_featured, dmp.sort_order,
-              COALESCE(sales.total_sold, 0) AS total_sold
+              COALESCE(p.rating_avg, 5.0) AS rating_avg,
+              COALESCE(p.rating_count, 0) AS rating_count,
+              dmp.is_featured, dmp.sort_order
        FROM digital_menu_products dmp
        INNER JOIN products p ON p.id = dmp.product_id
-       LEFT JOIN (
-         SELECT product_id, SUM(qty) AS total_sold
-         FROM order_items
-         WHERE status != 'voided'
-         GROUP BY product_id
-       ) sales ON sales.product_id = p.id
        WHERE dmp.menu_id = ? AND p.is_active = 1 ${catClause}
        ORDER BY dmp.is_featured DESC, dmp.sort_order ASC, p.name ASC`,
       params
     );
 
-    const maxSales = Math.max(...rows.map((r) => Number(r.total_sold || 0)), 1);
-
-    return rows.map((r) => {
-      const sold = Number(r.total_sold || 0);
-      const calculatedRating = maxSales > 0 ? 4.0 + (sold / maxSales) * 1.0 : 5.0;
-      return {
-        ...r,
-        rating_avg: Number(calculatedRating.toFixed(1)),
-        rating_count: Math.round(sold),
-        sales_count: Math.round(sold),
-        dietary_tags: typeof r.dietary_tags === "string" ? JSON.parse(r.dietary_tags || "[]") : r.dietary_tags || [],
-      };
-    });
+    return rows.map((r) => ({
+      ...r,
+      rating_avg: Number(Number(r.rating_avg || 5.0).toFixed(1)),
+      rating_count: Number(r.rating_count || 0),
+      sales_count: Number(r.rating_count || 0),
+      dietary_tags: typeof r.dietary_tags === "string" ? JSON.parse(r.dietary_tags || "[]") : r.dietary_tags || [],
+    }));
   },
 
   async syncMenuCategories(menuId, categoryIds = []) {
@@ -198,32 +187,14 @@ const digitalMenuRepository = {
     const [products] = await query(
       `SELECT p.id, p.category_id, p.name, p.base_price,
               p.image_url, p.description, p.dietary_tags, p.estimated_prep_min,
-              COALESCE(sales.total_sold, 0) AS total_sold,
-              COALESCE(max_sales.max_sold, 1) AS max_sold
+              COALESCE(p.rating_avg, 5.0) AS rating_avg,
+              COALESCE(p.rating_count, 0) AS rating_count
        FROM products p
-       LEFT JOIN (
-         SELECT product_id, SUM(qty) AS total_sold
-         FROM order_items
-         WHERE status != 'voided' AND product_id = ?
-         GROUP BY product_id
-       ) sales ON sales.product_id = p.id
-       CROSS JOIN (
-         SELECT COALESCE(MAX(t.sold), 1) AS max_sold
-         FROM (
-           SELECT SUM(qty) AS sold
-           FROM order_items
-           WHERE status != 'voided'
-           GROUP BY product_id
-         ) t
-       ) max_sales
        WHERE p.id = ? AND p.is_active = 1`,
-      [productId, productId]
+      [productId]
     );
     if (!products.length) return null;
     const prod = products[0];
-    const sold = Number(prod.total_sold || 0);
-    const maxSold = Math.max(Number(prod.max_sold || 1), 1);
-    const calculatedRating = maxSold > 0 ? 4.0 + (sold / maxSold) * 1.0 : 5.0;
 
     // Obtener grupos de modificadores
     const [groups] = await query(
@@ -270,9 +241,9 @@ const digitalMenuRepository = {
 
     return {
       ...prod,
-      rating_avg: Number(calculatedRating.toFixed(1)),
-      rating_count: Math.round(sold),
-      sales_count: Math.round(sold),
+      rating_avg: Number(Number(prod.rating_avg || 5.0).toFixed(1)),
+      rating_count: Number(prod.rating_count || 0),
+      sales_count: Number(prod.rating_count || 0),
       dietary_tags: typeof prod.dietary_tags === "string" ? JSON.parse(prod.dietary_tags || "[]") : prod.dietary_tags || [],
       modifier_groups: modifierGroups,
       reviews,

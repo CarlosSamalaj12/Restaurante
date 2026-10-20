@@ -81,6 +81,8 @@ settingsRouter.post("/printers/:printerId/test", requireSuperadmin, settingsCont
 settingsRouter.get("/printers/audit", settingsController.auditPrinters);
 settingsRouter.post("/printers/test", requireSuperadmin, settingsController.testPrinter);
 settingsRouter.get("/printers/status", settingsController.getPrintersStatus);
+settingsRouter.get("/printers/mode", settingsController.getPrinterRoutingMode);
+settingsRouter.put("/printers/mode", requireSuperadmin, settingsController.setPrinterRoutingMode);
 settingsRouter.get("/printers/recent", settingsController.getRecentPrintJobs);
 
 // Usuarios del Sistema (Exclusivo Superadmin)

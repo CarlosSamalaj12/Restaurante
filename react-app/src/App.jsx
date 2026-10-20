@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { MotionConfig, LazyMotion, domMax } from 'framer-motion';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ToastProvider } from './hooks/useToast';
@@ -7,20 +7,6 @@ import { OfflineBanner } from './components/OfflineBanner';
 import { LicenseBlock } from './components/LicenseBlock';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useLicense } from './hooks/useLicense';
-import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
-import { Tables } from './pages/Tables';
-import { OrderView } from './pages/OrderView';
-import { SettingsPage } from './pages/Settings';
-import { ShiftsPage } from './pages/Shifts';
-import { ReportsPage } from './pages/Reports';
-import { AccountsPage } from './pages/AccountsPage';
-import { ReprintPage } from './pages/ReprintPage';
-import { KitchenDisplay } from './pages/KitchenDisplay';
-import { ExecutiveDashboard } from './pages/ExecutiveDashboard';
-import { CXCPage } from './pages/CXC';
-import { ExpensesPage } from './pages/ExpensesPage';
-import { PublicMenuPage } from './pages/PublicMenuPage';
 import { PendingTerminalsNotification } from './components/PendingTerminalsNotification';
 import { useMaintenance } from './hooks/useMaintenance';
 import { MaintenanceCountdownBanner } from './components/MaintenanceCountdownBanner';
@@ -28,6 +14,39 @@ import { MaintenanceLockScreen } from './components/MaintenanceLockScreen';
 import { SuperadminMaintenanceBar } from './components/SuperadminMaintenanceBar';
 import api from './api';
 import { syncService } from './lib/syncService';
+
+// Carga perezosa (Code-Splitting) para desacoplar el Menú Digital del POS
+const PublicMenuPage = lazy(() => import('./pages/PublicMenuPage').then((m) => ({ default: m.PublicMenuPage })));
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const Tables = lazy(() => import('./pages/Tables').then((m) => ({ default: m.Tables })));
+const OrderView = lazy(() => import('./pages/OrderView').then((m) => ({ default: m.OrderView })));
+const SettingsPage = lazy(() => import('./pages/Settings').then((m) => ({ default: m.SettingsPage })));
+const ShiftsPage = lazy(() => import('./pages/Shifts').then((m) => ({ default: m.ShiftsPage })));
+const ReportsPage = lazy(() => import('./pages/Reports').then((m) => ({ default: m.ReportsPage })));
+const AccountsPage = lazy(() => import('./pages/AccountsPage').then((m) => ({ default: m.AccountsPage })));
+const ReprintPage = lazy(() => import('./pages/ReprintPage').then((m) => ({ default: m.ReprintPage })));
+const KitchenDisplay = lazy(() => import('./pages/KitchenDisplay').then((m) => ({ default: m.KitchenDisplay })));
+const ExecutiveDashboard = lazy(() => import('./pages/ExecutiveDashboard').then((m) => ({ default: m.ExecutiveDashboard })));
+const CXCPage = lazy(() => import('./pages/CXC').then((m) => ({ default: m.CXCPage })));
+const ExpensesPage = lazy(() => import('./pages/ExpensesPage').then((m) => ({ default: m.ExpensesPage })));
+const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login })));
+
+function PublicMenuLoading() {
+  return (
+    <div className="min-h-screen bg-[#0B0F19] text-white flex flex-col items-center justify-center p-4">
+      <div className="w-10 h-10 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mb-3" />
+      <p className="text-sm font-bold text-slate-400">Cargando Menú Digital...</p>
+    </div>
+  );
+}
+
+function PosViewLoading() {
+  return (
+    <div className="min-h-[50vh] flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function AppContent() {
   const { user, loading, canView } = useAuth();
@@ -130,119 +149,131 @@ function AppContent() {
   }
 
   if (!user) {
-    return <Login />;
+    return (
+      <Suspense fallback={<PosViewLoading />}>
+        <Login />
+      </Suspense>
+    );
   }
 
-  switch (view) {
-    case 'order':
-      return (
-        <OrderView
-          accountId={selectedAccount}
-          tableCode={selectedTableCode}
-          tableId={selectedTableId}
-          onBack={handleBackFromOrder}
-          onNavigate={handleNavigate}
-        />
-      );
-    case 'tables':
-      return (
-        <Tables
-          onBack={() => {
-            setAutoOpenTable(null);
-            if (canView('dashboard')) {
-              setView('dashboard');
-            } else {
-              logout();
-            }
-          }}
-          onSelectTable={handleSelectTable}
-          centers={centers}
-          autoOpenTable={autoOpenTable}
-          onNavigate={handleNavigate}
-        />
-      );
-    case 'shifts':
-      return (
-        <ShiftsPage onBack={() => handleBackFromView('shifts')} />
-      );
-    case 'reprints':
-      return (
-        <ReprintPage 
-          onBack={() => handleBackFromView('reprints')} 
-          onSelectAccount={(account) => {
-            setSelectedAccount(account.id);
-            setSelectedTableCode(account.table_code);
-            setSelectedTableId(account.table_id);
-            setView('order');
-          }}
-        />
-      );
-    case 'reports':
-      return (
-        <ReportsPage 
-          onBack={() => handleBackFromView('reports')} 
-          onNavigateShifts={() => setView('shifts')}
-        />
-      );
-    case 'settings':
-      return (
-        <SettingsPage 
-          onBack={() => handleBackFromView('settings')} 
-          initialTab={settingsTab}
-        />
-      );
-    case 'accounts':
-      return (
-        <AccountsPage 
-          onBack={() => handleBackFromView('accounts')} 
-          onSelectAccount={(account) => {
-            setSelectedAccount(account.id);
-            setSelectedTableCode(account.table_code);
-            setSelectedTableId(account.table_id);
-            setView('order');
-          }} 
-          onNavigate={handleNavigate}
-        />
-      );
-    case 'cxc':
-      return (
-        <CXCPage 
-          onBack={() => handleBackFromView('cxc')} 
-        />
-      );
-    case 'expenses':
-      return (
-        <ExpensesPage 
-          onBack={() => handleBackFromView('expenses')} 
-        />
-      );
-    case 'kds':
-      return (
-        <KitchenDisplay onBack={() => handleBackFromView('kds')} />
-      );
-    case 'executive-dashboard':
-      return (
-        <ExecutiveDashboard onBack={() => handleBackFromView('executive-dashboard')} />
-      );
-    default:
-      if (canView && !canView('dashboard')) {
+  const renderCurrentView = () => {
+    switch (view) {
+      case 'order':
+        return (
+          <OrderView
+            accountId={selectedAccount}
+            tableCode={selectedTableCode}
+            tableId={selectedTableId}
+            onBack={handleBackFromOrder}
+            onNavigate={handleNavigate}
+          />
+        );
+      case 'tables':
         return (
           <Tables
-            onBack={() => {}}
+            onBack={() => {
+              setAutoOpenTable(null);
+              if (canView('dashboard')) {
+                setView('dashboard');
+              } else {
+                logout();
+              }
+            }}
             onSelectTable={handleSelectTable}
             centers={centers}
             autoOpenTable={autoOpenTable}
             onNavigate={handleNavigate}
           />
         );
-      }
-      return (
-        <Dashboard
-          onNavigate={handleNavigate}
-          onSelectTable={handleSelectTable}
-        />
-      );
-  }
+      case 'shifts':
+        return (
+          <ShiftsPage onBack={() => handleBackFromView('shifts')} />
+        );
+      case 'reprints':
+        return (
+          <ReprintPage 
+            onBack={() => handleBackFromView('reprints')} 
+            onSelectAccount={(account) => {
+              setSelectedAccount(account.id);
+              setSelectedTableCode(account.table_code);
+              setSelectedTableId(account.table_id);
+              setView('order');
+            }}
+          />
+        );
+      case 'reports':
+        return (
+          <ReportsPage 
+            onBack={() => handleBackFromView('reports')} 
+            onNavigateShifts={() => setView('shifts')}
+          />
+        );
+      case 'settings':
+        return (
+          <SettingsPage 
+            onBack={() => handleBackFromView('settings')} 
+            initialTab={settingsTab}
+          />
+        );
+      case 'accounts':
+        return (
+          <AccountsPage 
+            onBack={() => handleBackFromView('accounts')} 
+            onSelectAccount={(account) => {
+              setSelectedAccount(account.id);
+              setSelectedTableCode(account.table_code);
+              setSelectedTableId(account.table_id);
+              setView('order');
+            }} 
+            onNavigate={handleNavigate}
+          />
+        );
+      case 'cxc':
+        return (
+          <CXCPage 
+            onBack={() => handleBackFromView('cxc')} 
+          />
+        );
+      case 'expenses':
+        return (
+          <ExpensesPage 
+            onBack={() => handleBackFromView('expenses')} 
+          />
+        );
+      case 'kds':
+        return (
+          <KitchenDisplay onBack={() => handleBackFromView('kds')} />
+        );
+      case 'executive-dashboard':
+        return (
+          <ExecutiveDashboard onBack={() => handleBackFromView('executive-dashboard')} />
+        );
+      default:
+        if (canView && !canView('dashboard')) {
+          return (
+            <Tables
+              onBack={() => {}}
+              onSelectTable={handleSelectTable}
+              centers={centers}
+              autoOpenTable={autoOpenTable}
+              onNavigate={handleNavigate}
+            />
+          );
+        }
+        return (
+          <Dashboard
+            onNavigate={handleNavigate}
+            onSelectTable={handleSelectTable}
+          />
+        );
+    }
+  };
+
+  return (
+    <Suspense fallback={<PosViewLoading />}>
+      {renderCurrentView()}
+    </Suspense>
+  );
 }
 
 function LicenseGate({ children }) {
@@ -352,7 +383,9 @@ export default function App() {
         <MotionConfig reducedMotion="user">
           <ErrorBoundary>
             <ToastProvider>
-              <PublicMenuPage isKiosk={isKiosk} />
+              <Suspense fallback={<PublicMenuLoading />}>
+                <PublicMenuPage isKiosk={isKiosk} />
+              </Suspense>
               <Toast />
             </ToastProvider>
           </ErrorBoundary>

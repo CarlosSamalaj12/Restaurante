@@ -1,0 +1,10 @@
+{
+  "serverUrl": "http://localhost:3000",
+  "agentSecret": "samapos_print_secret_2026",
+  "agentName": "Caja Principal - Restaurante",
+  "agentId": "caja-pos-1",
+  "pollIntervalMs": 15000,
+  "connectTimeoutMs": 3000,
+  "retryAttempts": 2,
+  "retryDelayMs": 500
+}

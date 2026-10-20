@@ -12,6 +12,10 @@
 //   * Timeout de conexión: 3 segundos (las térmicas de red contestan en <1s).
 
 const { query } = require("../src/db");
+let printAgentService = null;
+try {
+  printAgentService = require("../src/modules/print_agent/print_agent.service");
+} catch (_) {}
 
 // ───────── Configuración ─────────
 const RETRY_ATTEMPTS = 2;
@@ -27,7 +31,7 @@ try {
   escpos.Network = Network;
 } catch (e) {
   console.warn(
-    "[PRINT] Librerías escpos no disponibles — la impresión quedará deshabilitada hasta que se instalen. Detalle:",
+    "[PRINT] Librerías escpos no disponibles — la impresión directa quedará delegada al Print Agent. Detalle:",
     e.message
   );
 }
@@ -47,12 +51,13 @@ async function logPrintJob({
   error = null,
   attempts = 0,
   payloadSize = null,
+  payloadJson = null,
 }) {
   try {
-    await query(
+    const res = await query(
       `INSERT INTO print_jobs
-         (printer_target, printer_ip, printer_port, job_type, account_id, payload_size, status, attempts, error_message, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (printer_target, printer_ip, printer_port, job_type, account_id, payload_size, payload_json, status, attempts, error_message, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         target,
         ip || null,
@@ -60,14 +65,31 @@ async function logPrintJob({
         jobType,
         accountId,
         payloadSize,
+        payloadJson,
         status,
         attempts,
         error,
         status === "pending" ? null : nowSql(),
       ]
     );
+    return res?.insertId || null;
   } catch (e) {
     console.error("[PRINT] No pude loguear print_job:", e.message);
+    return null;
+  }
+}
+
+async function updatePrintJob(jobId, status, attempts = 1, error = null) {
+  if (!jobId) return;
+  try {
+    await query(
+      `UPDATE print_jobs
+       SET status = ?, attempts = ?, error_message = ?, completed_at = ?
+       WHERE id = ?`,
+      [status, attempts, error, status === "pending" ? null : nowSql(), Number(jobId)]
+    );
+  } catch (e) {
+    console.error("[PRINT] No pude actualizar print_job:", e.message);
   }
 }
 
@@ -123,25 +145,120 @@ function sendToNetworkPrinter(ip, port, builder) {
   });
 }
 
-async function printWithRetry(target, jobType, accountId, builder) {
+async function dispatchPrint({ target, jobType, accountId, payloadData, builder, waitResult = false }) {
   const printerName = target.printer_name || target.name || "UNKNOWN";
   const ip = target.printer_ip;
   const port = target.printer_port || 9100;
 
   if (!ip) {
     const error = "printer_ip no configurado";
-    await logPrintJob({ target: printerName, ip: null, port, jobType, accountId, status: "failed", error, attempts: 0 });
+    await logPrintJob({
+      target: printerName,
+      ip: null,
+      port,
+      jobType,
+      accountId,
+      status: "failed",
+      error,
+      attempts: 0,
+    });
     return { ok: false, error, skipped: true, attempts: 0 };
   }
 
+  const payloadString = payloadData ? JSON.stringify(payloadData) : null;
+  const payloadSize = payloadString ? Buffer.byteLength(payloadString, "utf8") : 0;
+
+  // Registrar trabajo en cola con payload completo
+  const jobId = await logPrintJob({
+    target: printerName,
+    ip,
+    port,
+    jobType,
+    accountId,
+    status: "pending",
+    attempts: 0,
+    payloadSize,
+    payloadJson: payloadString,
+  });
+
+  // Consultar modo de enrutamiento ('auto', 'direct', 'agent')
+  let routingMode = "auto";
+  try {
+    const [settingRows] = await query(
+      `SELECT setting_value FROM app_settings WHERE setting_key = 'print_routing_mode' LIMIT 1`
+    );
+    if (settingRows?.[0]?.setting_value) {
+      routingMode = settingRows[0].setting_value;
+    }
+  } catch (_) {}
+
+  // 1. Modo Local Estricto ('direct'):
+  // Se comunica directamente por TCP con la IP local de la impresora sin requerir el Print Agent
+  if (routingMode === "direct") {
+    let lastError = null;
+    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+      try {
+        await sendToNetworkPrinter(ip, port, builder);
+        await updatePrintJob(jobId, "success", attempt);
+        return { ok: true, jobId, attempts: attempt, mode: "direct" };
+      } catch (e) {
+        lastError = e;
+        if (attempt < RETRY_ATTEMPTS) {
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        }
+      }
+    }
+    const errorMsg = lastError?.message || "Error desconocido";
+    await updatePrintJob(jobId, "failed", RETRY_ATTEMPTS, errorMsg);
+    return { ok: false, jobId, error: errorMsg, attempts: RETRY_ATTEMPTS, mode: "direct" };
+  }
+
+  // 2. Modo Nube / VPS Estricto ('agent'):
+  // Exige Print Agent. Si no está conectado y es prueba directa, alerta inmediatamente
+  const hasAgent = printAgentService && printAgentService.hasConnectedAgents();
+  if (routingMode === "agent" && !hasAgent) {
+    if (waitResult) {
+      const err = "El Print Agent no está conectado. Inicia start-agent.bat en la computadora de caja";
+      await updatePrintJob(jobId, "failed", 0, err);
+      return { ok: false, jobId, error: err, mode: "agent" };
+    }
+    console.log(`[PRINT] Modo Agent activo: trabajo #${jobId} guardado en cola para cuando conecte el agente`);
+    return { ok: true, jobId, pendingAgent: true, mode: "agent" };
+  }
+
+  // 3. Si hay un agente conectado (válido tanto en 'agent' como en 'auto'):
+  if (hasAgent) {
+    const jobObj = {
+      jobId,
+      jobType,
+      printerTarget: printerName,
+      printerIp: ip,
+      printerPort: port,
+      payloadData,
+      createdAt: new Date().toISOString(),
+    };
+    printAgentService.emitNewJob(jobObj);
+
+    if (waitResult) {
+      const ackResult = await printAgentService.waitForJobAck(jobId, 5000);
+      return { ok: ackResult.ok, error: ackResult.error, jobId, delegatedToAgent: true };
+    }
+    return { ok: true, jobId, delegatedToAgent: true };
+  }
+
+  // 4. Modo Automático ('auto') sin agente pero forzado en nube por variable de entorno:
+  if (process.env.CLOUD_MODE === "true") {
+    console.log(`[PRINT] Modo Cloud activo: trabajo #${jobId} guardado en cola para el Print Agent`);
+    return { ok: true, jobId, pendingAgent: true };
+  }
+
+  // 5. Modo Automático ('auto') local: intenta conexión directa
   let lastError = null;
   for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
     try {
       await sendToNetworkPrinter(ip, port, builder);
-      await logPrintJob({
-        target: printerName, ip, port, jobType, accountId, status: "success", attempts: attempt,
-      });
-      return { ok: true, attempts: attempt };
+      await updatePrintJob(jobId, "success", attempt);
+      return { ok: true, jobId, attempts: attempt };
     } catch (e) {
       lastError = e;
       if (attempt < RETRY_ATTEMPTS) {
@@ -149,11 +266,20 @@ async function printWithRetry(target, jobType, accountId, builder) {
       }
     }
   }
+
   const errorMsg = lastError?.message || "Error desconocido";
-  await logPrintJob({
-    target: printerName, ip, port, jobType, accountId, status: "failed", error: errorMsg, attempts: RETRY_ATTEMPTS,
+  await updatePrintJob(jobId, "failed", RETRY_ATTEMPTS, errorMsg);
+  return { ok: false, jobId, error: errorMsg, attempts: RETRY_ATTEMPTS };
+}
+
+async function printWithRetry(target, jobType, accountId, builder) {
+  return dispatchPrint({
+    target,
+    jobType,
+    accountId,
+    payloadData: { jobType, target },
+    builder,
   });
-  return { ok: false, error: errorMsg, attempts: RETRY_ATTEMPTS };
 }
 
 // ───────── Builders de tickets (texto plano → ESC/POS) ─────────
@@ -473,8 +599,8 @@ function buildTestPage(target) {
 /**
  * Imprime un ticket de cocina (comanda) con soporte de múltiples copias.
  * @param {object} ticket - {centerName, items, notes}
- * @param {object} center - {id, name, printer_name, printer_ip, printer_port}
- * @param {object} account - {id, check_number, table_code, waiter_name}
+ * @param {object} center - {id, name, printer_name, printer_ip, printer_port, paper_width}
+ * @param {object} account - {id, check_number, table_code, waiter_name, waiter_id, order_source}
  * @param {object} options - {copies}
  */
 async function printKitchenTicket(ticket, center, account, options = {}) {
@@ -482,12 +608,20 @@ async function printKitchenTicket(ticket, center, account, options = {}) {
   let lastRes = { ok: false };
   for (let c = 0; c < Math.max(1, copies); c++) {
     const copyInfo = copies > 1 ? { copyNumber: c + 1, totalCopies: copies } : null;
-    lastRes = await printWithRetry(
+    const payloadData = {
+      jobType: "kitchen_ticket",
+      ticket,
       center,
-      "kitchen_ticket",
-      account?.id || null,
-      buildKitchenTicket(ticket, center, account, copyInfo)
-    );
+      account,
+      copyInfo,
+    };
+    lastRes = await dispatchPrint({
+      target: center,
+      jobType: "kitchen_ticket",
+      accountId: account?.id || null,
+      payloadData,
+      builder: buildKitchenTicket(ticket, center, account, copyInfo),
+    });
   }
   return lastRes;
 }
@@ -495,8 +629,8 @@ async function printKitchenTicket(ticket, center, account, options = {}) {
 /**
  * Imprime el recibo del cliente con soporte de copias y DTE SAT.
  * @param {object} receipt - {account, items, payments, totals, felInvoice}
- * @param {object} terminal - {id, name, printer_name, printer_ip, printer_port}
- * @param {object} restaurant - {name, address, phone, nit}
+ * @param {object} terminal - {id, name, printer_name, printer_ip, printer_port, paper_width}
+ * @param {object} restaurant - {name, address, phone, nit, commercial_name, establishment_code}
  * @param {object} options - {copies}
  */
 async function printCustomerReceipt(receipt, terminal, restaurant = {}, options = {}) {
@@ -504,33 +638,77 @@ async function printCustomerReceipt(receipt, terminal, restaurant = {}, options 
   let lastRes = { ok: false };
   for (let c = 0; c < Math.max(1, copies); c++) {
     const copyInfo = copies > 1 ? { copyNumber: c + 1, totalCopies: copies } : null;
-    lastRes = await printWithRetry(
+    const payloadData = {
+      jobType: "customer_receipt",
+      receipt,
       terminal,
-      "customer_receipt",
-      receipt?.account?.id || null,
-      buildCustomerReceipt(receipt, restaurant, copyInfo)
-    );
+      restaurant,
+      copyInfo,
+    };
+    lastRes = await dispatchPrint({
+      target: terminal,
+      jobType: "customer_receipt",
+      accountId: receipt?.account?.id || null,
+      payloadData,
+      builder: buildCustomerReceipt(receipt, restaurant, copyInfo),
+    });
   }
   return lastRes;
 }
 
 /**
  * Imprime una página de prueba (botón "Probar" en Settings).
- * @param {object} target - {printer_name, printer_ip, printer_port}
+ * @param {object} target - {printer_name, name, printer_ip, printer_port, paper_width}
  */
 async function printTestPage(target) {
-  return printWithRetry(target, "test", null, buildTestPage(target));
+  const payloadData = {
+    jobType: "test",
+    target,
+  };
+  return dispatchPrint({
+    target,
+    jobType: "test",
+    accountId: null,
+    payloadData,
+    builder: buildTestPage(target),
+    waitResult: true,
+  });
+}
+
+let cachedRoutingMode = "auto";
+
+async function refreshRoutingMode() {
+  try {
+    const [rows] = await query(
+      "SELECT setting_value FROM app_settings WHERE setting_key = 'print_routing_mode' LIMIT 1"
+    );
+    if (rows?.[0]?.setting_value) cachedRoutingMode = rows[0].setting_value;
+  } catch (_) {}
+  return cachedRoutingMode;
+}
+
+// Cargar modo inicial al arrancar
+refreshRoutingMode().catch(() => {});
+
+function setRoutingMode(mode) {
+  cachedRoutingMode = mode;
 }
 
 /**
  * Devuelve info de diagnóstico (útil para el panel admin).
  */
 function getStatus() {
+  const agentStatus = printAgentService
+    ? printAgentService.getStatus()
+    : { enabled: false, hasConnectedAgents: false, connectedCount: 0, agents: [] };
+
   return {
     escposAvailable: !!(escpos && Network),
     retryAttempts: RETRY_ATTEMPTS,
     retryDelayMs: RETRY_DELAY_MS,
     connectTimeoutMs: CONNECT_TIMEOUT_MS,
+    printAgent: agentStatus,
+    routingMode: cachedRoutingMode,
   };
 }
 
@@ -539,4 +717,10 @@ module.exports = {
   printCustomerReceipt,
   printTestPage,
   getStatus,
+  setRoutingMode,
+  refreshRoutingMode,
+  buildKitchenTicket,
+  buildCustomerReceipt,
+  buildTestPage,
+  dispatchPrint,
 };

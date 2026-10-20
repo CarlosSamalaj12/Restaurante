@@ -277,6 +277,8 @@ export const api = {
   }),
   getPrintJobs: (limit = 50) => request(`/settings/printers/recent?limit=${limit}`),
   getPrintServiceStatus: () => request('/settings/printers/status'),
+  getPrinterRoutingMode: () => request('/settings/printers/mode'),
+  setPrinterRoutingMode: (mode) => request('/settings/printers/mode', { method: 'PUT', body: { mode } }),
   getPrinters: () => request('/settings/printers'),
   createPrinter: (data) => request('/settings/printers', { method: 'POST', body: data }),
   updatePrinter: (printerId, data) => request(`/settings/printers/${printerId}`, { method: 'PUT', body: data }),

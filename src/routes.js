@@ -97,6 +97,10 @@ const {
 router.use("/public", publicMenuRouter);
 router.use("/admin/digital-menu", adminDigitalMenuRouter);
 
+// 18. Módulo de Print Agent (Cloud to LAN printing)
+const printAgentRouter = require("./modules/print_agent/print_agent.routes");
+router.use("/print-agent", printAgentRouter);
+
 module.exports = router;
 
 

@@ -213,6 +213,17 @@ const settingsController = {
     res.json(settingsService.getPrintersStatus());
   }),
 
+  getPrinterRoutingMode: asyncHandler(async (_req, res) => {
+    const result = await settingsService.getPrinterRoutingMode();
+    res.json(result);
+  }),
+
+  setPrinterRoutingMode: asyncHandler(async (req, res) => {
+    const { mode } = req.body || {};
+    const result = await settingsService.setPrinterRoutingMode(mode);
+    res.json(result);
+  }),
+
   getRecentPrintJobs: asyncHandler(async (req, res) => {
     const result = await settingsService.getRecentPrintJobs(req.query?.limit);
     res.json(result);

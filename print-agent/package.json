@@ -1,0 +1,23 @@
+{
+  "name": "samapos-print-agent",
+  "version": "1.0.0",
+  "description": "Agente local de impresión térmica para SamaPos (Cloud to LAN Bridge)",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "keywords": [
+    "pos",
+    "thermal-printer",
+    "escpos",
+    "samapos",
+    "print-agent"
+  ],
+  "author": "SamaPos Team",
+  "license": "ISC",
+  "dependencies": {
+    "escpos": "^3.0.0-alpha.6",
+    "escpos-network": "^3.0.0-alpha.5",
+    "socket.io-client": "^4.8.1"
+  }
+}

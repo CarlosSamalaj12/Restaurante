@@ -49,6 +49,8 @@ export function PrintersDiagnosticSection({
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobFilter, setJobFilter] = useState('all'); // 'all' | 'success' | 'failed'
   const [showHistory, setShowHistory] = useState(false);
+  const [routingMode, setRoutingMode] = useState('auto'); // 'auto' | 'direct' | 'agent'
+  const [savingMode, setSavingMode] = useState(false);
 
   // Modales
   const [modalPrinter, setModalPrinter] = useState(false);
@@ -79,16 +81,39 @@ export function PrintersDiagnosticSection({
   const loadDiagnostics = async () => {
     setJobsLoading(true);
     try {
-      const [s, j] = await Promise.all([
+      const [s, j, m] = await Promise.all([
         api.getPrintServiceStatus().catch(() => ({ escposAvailable: false })),
         api.getPrintJobs(50).catch(() => ({ jobs: [] })),
+        api.getPrinterRoutingMode().catch(() => ({ mode: 'auto' })),
       ]);
       setStatus(s);
       setJobs(j?.jobs || []);
+      if (m?.mode) setRoutingMode(m.mode);
     } catch (e) {
       toast.error(`Error cargando diagnóstico: ${e.message}`);
     } finally {
       setJobsLoading(false);
+    }
+  };
+
+  const handleModeChange = async (newMode) => {
+    if (newMode === routingMode) return;
+    setSavingMode(true);
+    try {
+      await api.setPrinterRoutingMode(newMode);
+      setRoutingMode(newMode);
+      toast.success(
+        newMode === 'direct'
+          ? 'Modo Local (TCP Directo) activado'
+          : newMode === 'agent'
+          ? 'Modo Nube/Hostinger (Print Agent) activado'
+          : 'Modo Automático Híbrido activado'
+      );
+      await loadDiagnostics();
+    } catch (err) {
+      toast.error(`Error al cambiar modo de impresión: ${err.message}`);
+    } finally {
+      setSavingMode(false);
     }
   };
 
@@ -184,11 +209,13 @@ export function PrintersDiagnosticSection({
   const filteredJobs = useMemo(() => {
     if (jobFilter === 'success') return jobs.filter((j) => j.status === 'success');
     if (jobFilter === 'failed') return jobs.filter((j) => j.status === 'failed');
+    if (jobFilter === 'pending') return jobs.filter((j) => j.status === 'pending');
     return jobs;
   }, [jobs, jobFilter]);
 
   const successJobsCount = jobs.filter((j) => j.status === 'success').length;
   const failedJobsCount = jobs.filter((j) => j.status === 'failed').length;
+  const pendingJobsCount = jobs.filter((j) => j.status === 'pending').length;
 
   return (
     <div className="space-y-6">
@@ -241,7 +268,111 @@ export function PrintersDiagnosticSection({
                 </span>
               )}
             </div>
+
+            <div className="inline-flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium">
+              <span className="text-slate-500">Print Agent (LAN):</span>
+              {status?.printAgent?.hasConnectedAgents ? (
+                <span className="inline-flex items-center gap-1 text-emerald-700 font-bold" title={`${status.printAgent.connectedCount} agente(s) conectado(s)`}>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> En línea ({status.printAgent.connectedCount})
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-slate-500 font-medium" title="Sin agente conectado. En local envía por TCP directo; en nube espera al agente.">
+                  <span className="w-2 h-2 rounded-full bg-slate-400" /> Modo Directo
+                </span>
+              )}
+            </div>
           </div>
+        </div>
+      </div>
+
+      {/* ── SELECTOR DE MODO DE IMPRESIÓN (LOCAL DIRECTO vs HOSTINGER VPS) ── */}
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-indigo-600" />
+              Modo de Comunicación de Impresoras
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Configura cómo el sistema despacha comandas a las impresoras térmicas de cocina, bar y caja.
+            </p>
+          </div>
+          {savingMode && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-indigo-600 font-semibold animate-pulse">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando preferencia...
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Opción 1: Auto */}
+          <button
+            type="button"
+            onClick={() => handleModeChange('auto')}
+            disabled={savingMode}
+            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer relative ${
+              routingMode === 'auto'
+                ? 'border-indigo-600 bg-indigo-50/40 shadow-xs ring-2 ring-indigo-500/20'
+                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded-md">
+                Recomendado
+              </span>
+              {routingMode === 'auto' && <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />}
+            </div>
+            <h4 className="text-sm font-bold text-slate-900 mb-1">Automático Híbrido</h4>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Si hay un Print Agent conectado en la PC de caja, despacha por el agente; si estás en red local, imprime directo por IP.
+            </p>
+          </button>
+
+          {/* Opción 2: Local Directo */}
+          <button
+            type="button"
+            onClick={() => handleModeChange('direct')}
+            disabled={savingMode}
+            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer relative ${
+              routingMode === 'direct'
+                ? 'border-emerald-600 bg-emerald-50/40 shadow-xs ring-2 ring-emerald-500/20'
+                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                Instalación Local
+              </span>
+              {routingMode === 'direct' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+            </div>
+            <h4 className="text-sm font-bold text-slate-900 mb-1">Modo Local (TCP Directo)</h4>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Para cuando SamaPos corre en la misma PC del restaurante. Envía por socket RAW a la IP de la impresora sin requerir Print Agent.
+            </p>
+          </button>
+
+          {/* Opción 3: Nube / Hostinger */}
+          <button
+            type="button"
+            onClick={() => handleModeChange('agent')}
+            disabled={savingMode}
+            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer relative ${
+              routingMode === 'agent'
+                ? 'border-blue-600 bg-blue-50/40 shadow-xs ring-2 ring-blue-500/20'
+                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
+                VPS / Hostinger
+              </span>
+              {routingMode === 'agent' && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />}
+            </div>
+            <h4 className="text-sm font-bold text-slate-900 mb-1">Modo Nube (Print Agent)</h4>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Para cuando el sistema está en Hostinger. Despacha por WebSocket al Print Agent en la PC de caja con cola offline de respaldo.
+            </p>
+          </button>
         </div>
       </div>
 
@@ -518,6 +649,19 @@ export function PrintersDiagnosticSection({
                 >
                   Fallos ({failedJobsCount})
                 </button>
+                {pendingJobsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setJobFilter('pending')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      jobFilter === 'pending'
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                    }`}
+                  >
+                    En cola ({pendingJobsCount})
+                  </button>
+                )}
               </div>
 
               <button
@@ -550,6 +694,10 @@ export function PrintersDiagnosticSection({
                         {j.status === 'success' ? (
                           <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-md border border-emerald-200 text-[10px]">
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" /> OK
+                          </span>
+                        ) : j.status === 'pending' ? (
+                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded-md border border-amber-200 text-[10px]" title="En cola esperando que el agente local imprima">
+                            <Clock className="w-3 h-3 text-amber-600" /> En cola (Agent)
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-md border border-rose-200 text-[10px]">

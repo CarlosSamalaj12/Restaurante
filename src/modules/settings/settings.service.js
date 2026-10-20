@@ -587,6 +587,24 @@ const settingsService = {
     return { status: "offline", printers: [] };
   },
 
+  async getPrinterRoutingMode() {
+    const mode = await settingsRepository.getAppSetting("print_routing_mode");
+    return { mode: mode || "auto" };
+  },
+
+  async setPrinterRoutingMode(mode) {
+    const validModes = ["auto", "direct", "agent"];
+    const normalized = String(mode || "").toLowerCase().trim();
+    if (!validModes.includes(normalized)) {
+      throw new BadRequestError("Modo de impresión inválido. Debe ser: auto, direct o agent");
+    }
+    await settingsRepository.setAppSetting("print_routing_mode", normalized);
+    if (printService && typeof printService.setRoutingMode === "function") {
+      printService.setRoutingMode(normalized);
+    }
+    return { ok: true, mode: normalized };
+  },
+
   async getRecentPrintJobs(limit = 50) {
     const lim = Math.min(Number(limit || 50), 200);
     const jobs = await settingsRepository.getRecentPrintJobs(lim);

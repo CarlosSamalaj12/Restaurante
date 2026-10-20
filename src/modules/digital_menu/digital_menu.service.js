@@ -23,6 +23,22 @@ const { money } = require("../../common/utils");
 const { BadRequestError, NotFoundError, ForbiddenError } = require("../../common/errors");
 const { emitEvent } = require("../../common/sockets");
 
+// ─── Memoria Caché de Alto Rendimiento para Menú Digital (< 5ms) ───
+const publicMenuCache = new Map();
+const CACHE_TTL_MS = 60 * 1000; // 60 segundos de TTL
+
+function invalidateMenuCache(menuIdOrSlug = null) {
+  if (!menuIdOrSlug) {
+    publicMenuCache.clear();
+  } else {
+    for (const [key, val] of publicMenuCache.entries()) {
+      if (val.menuId === Number(menuIdOrSlug) || key.includes(String(menuIdOrSlug))) {
+        publicMenuCache.delete(key);
+      }
+    }
+  }
+}
+
 const digitalMenuService = {
   // ─── Control de Módulo Premium (Exclusivo Superadmin) ───
   async isModuleEnabled() {
@@ -35,26 +51,67 @@ const digitalMenuService = {
       throw new ForbiddenError("Únicamente el Super Administrador puede activar o desactivar este módulo Premium.");
     }
     await digitalMenuRepository.setModuleEnabled(enabled);
+    invalidateMenuCache();
     emitEvent("settings:module_digital_menu_toggled", { enabled });
     return { enabled };
   },
 
-  // ─── Menú Público para Comensales ───
+  // ─── Menú Público para Comensales (Ultra Optimizado con Caché) ───
   async getPublicMenu(slug, tableContext = null) {
-    let menu = null;
-    if (slug === "default") {
-      const menus = await digitalMenuRepository.getMenus(true);
-      menu = menus[0] || null;
-    } else {
-      menu = await digitalMenuRepository.getMenuBySlug(slug);
+    const cacheKey = String(slug || "default").toLowerCase();
+    const now = Date.now();
+    let cached = publicMenuCache.get(cacheKey);
+
+    if (!cached || now - cached.timestamp > CACHE_TTL_MS) {
+      let menu = null;
+      if (slug === "default") {
+        const menus = await digitalMenuRepository.getMenus(true);
+        menu = menus[0] || null;
+      } else {
+        menu = await digitalMenuRepository.getMenuBySlug(slug);
+      }
+
+      if (!menu) throw new NotFoundError("Menú no encontrado o inactivo");
+      if (!menu.is_active) throw new ForbiddenError("Este menú se encuentra temporalmente inactivo");
+
+      const [categories, products, promotions] = await Promise.all([
+        digitalMenuRepository.getMenuCategories(menu.id),
+        digitalMenuRepository.getMenuProducts(menu.id),
+        digitalMenuRepository.getPromotions(menu.id),
+      ]);
+
+      let logoUrl = menu.logo_url;
+      if (!logoUrl) {
+        try {
+          logoUrl = await settingsRepository.getLogoUrl();
+        } catch (_) {}
+      }
+
+      cached = {
+        menuId: menu.id,
+        timestamp: now,
+        menuData: {
+          id: menu.id,
+          name: menu.name,
+          slug: menu.slug,
+          description: menu.description,
+          mode: menu.mode,
+          primary_color: menu.primary_color,
+          secondary_color: menu.secondary_color,
+          bg_color: menu.bg_color,
+          text_color: menu.text_color,
+          font_family: menu.font_family,
+          logo_url: logoUrl || null,
+          banner_url: menu.banner_url,
+          social_links: menu.social_links || {},
+        },
+        categories,
+        products,
+        promotions,
+      };
+
+      publicMenuCache.set(cacheKey, cached);
     }
-
-    if (!menu) throw new NotFoundError("Menú no encontrado o inactivo");
-    if (!menu.is_active) throw new ForbiddenError("Este menú se encuentra temporalmente inactivo");
-
-    const categories = await digitalMenuRepository.getMenuCategories(menu.id);
-    const products = await digitalMenuRepository.getMenuProducts(menu.id);
-    const promotions = await digitalMenuRepository.getPromotions(menu.id);
 
     let tableInfo = null;
     if (tableContext) {
@@ -73,32 +130,11 @@ const digitalMenuService = {
       };
     }
 
-    let logoUrl = menu.logo_url;
-    if (!logoUrl) {
-      try {
-        logoUrl = await settingsRepository.getLogoUrl();
-      } catch (_) {}
-    }
-
     return {
-      menu: {
-        id: menu.id,
-        name: menu.name,
-        slug: menu.slug,
-        description: menu.description,
-        mode: menu.mode,
-        primary_color: menu.primary_color,
-        secondary_color: menu.secondary_color,
-        bg_color: menu.bg_color,
-        text_color: menu.text_color,
-        font_family: menu.font_family,
-        logo_url: logoUrl || null,
-        banner_url: menu.banner_url,
-        social_links: menu.social_links || {},
-      },
-      categories,
-      products,
-      promotions,
+      menu: cached.menuData,
+      categories: cached.categories,
+      products: cached.products,
+      promotions: cached.promotions,
       table: tableInfo,
     };
   },
@@ -400,6 +436,7 @@ const digitalMenuService = {
       dinerName: dinerName || "Comensal",
     });
 
+    invalidateMenuCache();
     return { id: reviewId, rating: parsedRating };
   },
 
@@ -426,6 +463,7 @@ const digitalMenuService = {
       await digitalMenuRepository.syncMenuProducts(menuId, data.productIds);
     }
 
+    invalidateMenuCache();
     return { id: menuId, slug: cleanSlug };
   },
 
@@ -450,11 +488,13 @@ const digitalMenuService = {
       await digitalMenuRepository.syncMenuProducts(Number(id), data.productIds);
     }
 
+    invalidateMenuCache(id);
     return { ok: true };
   },
 
   async deleteMenu(id) {
     await digitalMenuRepository.deleteMenu(Number(id));
+    invalidateMenuCache(id);
     return { ok: true };
   },
 
@@ -513,11 +553,13 @@ const digitalMenuService = {
       throw new BadRequestError("menu_id, title e image_url son requeridos");
     }
     const id = await digitalMenuRepository.createPromotion(data);
+    invalidateMenuCache(data.menu_id);
     return { id };
   },
 
   async deletePromotion(id) {
     await digitalMenuRepository.deletePromotion(Number(id));
+    invalidateMenuCache();
     return { ok: true };
   },
 
@@ -589,6 +631,7 @@ const digitalMenuService = {
             : null
           : undefined,
     });
+    invalidateMenuCache();
     return { ok: true };
   },
 };

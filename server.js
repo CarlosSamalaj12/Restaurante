@@ -13,6 +13,7 @@ const { traceMiddleware, errorHandler } = require("./src/common/middlewares");
 const { ensureConfigTables } = require("./src/modules/settings/settings.migration");
 const { ensureExpensesTables } = require("./src/modules/expenses/expenses.migration");
 const { ensureDigitalMenuTables } = require("./src/modules/digital_menu/digital_menu.migration");
+const compression = require("compression");
 const { initSocket } = require("./src/common/sockets");
 const maintenanceService = require("./src/modules/maintenance/maintenance.service");
 
@@ -98,6 +99,7 @@ const maintenanceService = require("./src/modules/maintenance/maintenance.servic
          job_type ENUM('kitchen_ticket','customer_receipt','test') NOT NULL,
          account_id INT NULL,
          payload_size INT NULL,
+         payload_json LONGTEXT NULL,
          status ENUM('pending','success','failed') NOT NULL DEFAULT 'pending',
          attempts INT NOT NULL DEFAULT 0,
          error_message TEXT NULL,
@@ -112,6 +114,18 @@ const maintenanceService = require("./src/modules/maintenance/maintenance.servic
     console.log("[MIGRATION] Tabla print_jobs OK");
   } catch (e) {
     console.warn("[MIGRATION] Error al crear tabla print_jobs:", e.message);
+  }
+
+  // Printers: asegurar columna payload_json para el Print Agent (Cloud to LAN)
+  try {
+    await query(`ALTER TABLE print_jobs ADD COLUMN payload_json LONGTEXT NULL AFTER payload_size`);
+    console.log("[MIGRATION] Columna payload_json agregada a print_jobs");
+  } catch (e) {
+    if (e.code === "ER_DUP_FIELDNAME") {
+      console.log("[MIGRATION] Columna payload_json ya existe en print_jobs — OK");
+    } else {
+      console.warn("[MIGRATION] Error al verificar columna payload_json en print_jobs:", e.message);
+    }
   }
 
   // Shifts: tabla shift_expenses (retiros y gastos de caja chica)
@@ -211,6 +225,9 @@ const io = new Server(server, {
 });
 initSocket(io);
 
+// Compresión HTTP automática Gzip/Deflate para reducir hasta 75% el tamaño de transferencia
+app.use(compression());
+
 // Cabeceras de seguridad HTTP (defensa contra MIME-sniffing, clickjacking y XSS)
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -225,7 +242,29 @@ app.use(express.json({ limit: "10mb" }));
 
 const reactDistPath = path.join(__dirname, "react-app", "dist");
 if (require("fs").existsSync(reactDistPath)) {
-  app.use(express.static(reactDistPath));
+  // 1. Assets estáticos con hash de Vite (JS/CSS/imágenes compiladas) -> Caché inmutable de 1 año
+  const assetsPath = path.join(reactDistPath, "assets");
+  if (require("fs").existsSync(assetsPath)) {
+    app.use(
+      "/assets",
+      express.static(assetsPath, {
+        maxAge: "1y",
+        immutable: true,
+      })
+    );
+  }
+
+  // 2. Archivos raíz (index.html, manifest.json, sw.js, favicons) -> sin caché agresivo para actualizaciones inmediatas
+  app.use(
+    express.static(reactDistPath, {
+      maxAge: 0,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith("index.html") || filePath.endsWith("sw.js")) {
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        }
+      },
+    })
+  );
 }
 
 // Servir uploads de imágenes con caché optimizado HTTP (30 días para carga inmediata 0ms en re-visitas)
@@ -245,10 +284,11 @@ if (require("fs").existsSync(uploadsPath)) {
 app.use(express.static(path.join(__dirname, "public"), { maxAge: "1d" }));
 
 // Middleware global de licenciamiento
-// /api/license/* y /api/public/* están exentos para comensales y enrollment
+// /api/license/*, /api/public/* y /api/print-agent están exentos para comensales, enrollment y print agent
 const LICENSE_EXEMPT_PATHS = [
   "/api/license",
   "/api/public",
+  "/api/print-agent",
 ];
 app.use("/api", (req, res, next) => {
   const fullPath = req.originalUrl.split("?")[0];
@@ -265,6 +305,7 @@ const MAINTENANCE_EXEMPT_PATHS = [
   "/api/bootstrap",
   "/api/license",
   "/api/public",
+  "/api/print-agent",
 ];
 app.use("/api", async (req, res, next) => {
   try {
