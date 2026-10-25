@@ -219,7 +219,13 @@ const settingsController = {
   }),
 
   setPrinterRoutingMode: asyncHandler(async (req, res) => {
-    const { mode } = req.body || {};
+    let body = req.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch (_) {}
+    }
+    const mode = body?.mode || req.query?.mode;
     const result = await settingsService.setPrinterRoutingMode(mode);
     res.json(result);
   }),
