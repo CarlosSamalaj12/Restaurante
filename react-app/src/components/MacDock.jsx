@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   Home,
   LayoutGrid,
@@ -8,9 +9,28 @@ import {
 } from 'lucide-react';
 import { m } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
+import { useSocket } from '../hooks/useSocket';
+import api from '../api';
 
 export function MacDock({ currentView = 'dashboard', onNavigate, kitchenOrdersCount = 0 }) {
   const { user, canView } = useAuth();
+  const isSuperadmin = String(user?.role || '').toLowerCase() === 'superadmin';
+
+  const [kdsEnabled, setKdsEnabled] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.kds.getStatus().then((res) => {
+      if (isMounted && res) setKdsEnabled(Boolean(res.enabled));
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, []);
+
+  useSocket({
+    'settings:module_kds_toggled': ({ enabled }) => {
+      setKdsEnabled(Boolean(enabled));
+    },
+  });
 
   const userRole = user?.role || 'waiter';
 
@@ -39,7 +59,7 @@ export function MacDock({ currentView = 'dashboard', onNavigate, kitchenOrdersCo
       gradient: 'bg-gradient-to-b from-[#f59e0b] to-[#ea580c]',
       shadow: 'shadow-md shadow-orange-500/35',
       badge: kitchenOrdersCount > 0 ? kitchenOrdersCount : null,
-      allowed: !canView || canView('kds'),
+      allowed: (!canView || canView('kds')) && (kdsEnabled || isSuperadmin),
     },
     {
       id: 'accounts',

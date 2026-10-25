@@ -3,13 +3,33 @@
 
 const kdsRepository = require("./kds.repository");
 const accountsService = require("../accounts/accounts.service");
-const { BadRequestError, NotFoundError } = require("../../common/errors");
+const { BadRequestError, NotFoundError, ForbiddenError } = require("../../common/errors");
+const { emitEvent } = require("../../common/sockets");
 
 const kdsService = {
+  // ─── Control de Módulo Premium (Exclusivo Superadmin) ───
+  async isModuleEnabled() {
+    return kdsRepository.isModuleEnabled();
+  },
+
+  async toggleModuleEnabled(enabled, authUser) {
+    const role = String(authUser?.role || "").toLowerCase();
+    if (role !== "superadmin") {
+      throw new ForbiddenError("Únicamente el Super Administrador puede activar o desactivar este módulo Premium.");
+    }
+    await kdsRepository.setModuleEnabled(enabled);
+    emitEvent("settings:module_kds_toggled", { enabled });
+    return { enabled };
+  },
+
   /**
    * Obtiene las órdenes activas en preparación para el KDS agrupadas por ticket.
    */
   async getActiveOrders(filters = null) {
+    const isEnabled = await this.isModuleEnabled();
+    if (!isEnabled) {
+      return { orders: [], categories: [], moduleDisabled: true };
+    }
     const items = await kdsRepository.findActiveOrders(filters);
     const activeItems = items.filter((i) => !i.completed_at);
 
@@ -75,6 +95,10 @@ const kdsService = {
    * Obtiene órdenes incluyendo los ítems anulados para mostrar alertas en cocina.
    */
   async getOrdersWithVoided(filters = null) {
+    const isEnabled = await this.isModuleEnabled();
+    if (!isEnabled) {
+      return { orders: [], categories: [], moduleDisabled: true };
+    }
     const items = await kdsRepository.findOrdersWithVoided(filters);
     if (!items.length) {
       return { orders: [], categories: [] };

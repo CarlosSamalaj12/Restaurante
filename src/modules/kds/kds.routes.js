@@ -3,8 +3,13 @@
 
 const express = require("express");
 const kdsController = require("./kds.controller");
+const authService = require("../auth/auth.service");
 
 const kdsRouter = express.Router();
+
+// Control de Módulo Premium (Exclusivo Superadmin)
+kdsRouter.get("/status", authService.requireAuth(), kdsController.getModuleStatus);
+kdsRouter.post("/toggle", authService.requireSuperadmin(), kdsController.toggleModule);
 
 kdsRouter.get("/orders", kdsController.getActiveOrders);
 kdsRouter.get("/orders-with-voided", kdsController.getOrdersWithVoided);

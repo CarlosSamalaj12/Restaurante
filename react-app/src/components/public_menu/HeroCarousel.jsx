@@ -66,10 +66,10 @@ export function HeroCarousel({ promotions = [], onSelectPromotion }) {
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <div className="relative w-full min-h-[170px] sm:min-h-[190px] rounded-3xl overflow-hidden shadow-2xl border border-slate-800/80 bg-[#101726]/90 backdrop-blur-md">
-        {/* Glow difuminado de fondo */}
-        <div className="absolute -top-12 -left-12 w-48 h-48 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="relative w-full min-h-[175px] sm:min-h-[200px] rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-gradient-to-br from-slate-800/90 via-slate-900/95 to-slate-950 backdrop-blur-xl">
+        {/* Glow difuminado sutil de fondo */}
+        <div className="absolute -top-12 -left-12 w-56 h-56 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-12 -right-12 w-56 h-56 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
 
         {/* Track Deslizante con Efecto Carrusel Real */}
         <div
@@ -85,7 +85,7 @@ export function HeroCarousel({ promotions = [], onSelectPromotion }) {
               {/* Contenido textual del banner */}
               <div className="relative z-20 max-w-[65%] sm:max-w-md space-y-2.5">
                 {promo.badge_text ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-black uppercase tracking-wider bg-blue-600 text-white shadow-md shadow-blue-600/30 border border-blue-400/30">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-black uppercase tracking-wider bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-600/30 border border-white/20">
                     {promo.badge_text}
                   </span>
                 ) : (
@@ -108,18 +108,18 @@ export function HeroCarousel({ promotions = [], onSelectPromotion }) {
                 <div className="pt-1 flex items-center gap-3 flex-wrap">
                   {promo.promo_price && (
                     <div className="flex items-baseline gap-2">
-                      <span className="text-base sm:text-lg font-black text-amber-400">
+                      <span className="text-base sm:text-lg font-black text-amber-400 font-mono">
                         Q {Number(promo.promo_price).toFixed(2)}
                       </span>
                       {promo.original_price && (
-                        <span className="text-xs text-slate-500 line-through">
+                        <span className="text-xs text-slate-500 line-through font-mono">
                           Q {Number(promo.original_price).toFixed(2)}
                         </span>
                       )}
                     </div>
                   )}
 
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200 bg-slate-800/80 hover:bg-slate-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-slate-700/60 transition active:scale-95 shadow">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-slate-800/80 hover:bg-slate-700/80 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 transition active:scale-95 shadow-md">
                     Ver detalle / Pedir <ChevronRight className="w-3.5 h-3.5 text-amber-400" />
                   </span>
                 </div>
@@ -127,7 +127,7 @@ export function HeroCarousel({ promotions = [], onSelectPromotion }) {
 
               {/* Imagen del banner o platillo */}
               {promo.image_url ? (
-                <div className="relative z-10 w-28 h-28 sm:w-36 sm:h-36 rounded-2xl overflow-hidden border border-slate-700/60 shadow-xl bg-slate-900/80 shrink-0">
+                <div className="relative z-10 w-28 h-28 sm:w-36 sm:h-36 rounded-2xl overflow-hidden border border-white/10 shadow-xl bg-slate-900/80 shrink-0 ring-1 ring-white/10">
                   <img
                     src={promo.image_url}
                     alt={promo.title}
@@ -137,7 +137,7 @@ export function HeroCarousel({ promotions = [], onSelectPromotion }) {
                   />
                 </div>
               ) : (
-                <div className="relative z-10 w-24 h-24 sm:w-32 sm:h-32 rounded-2xl border border-blue-500/20 bg-blue-950/20 flex items-center justify-center text-4xl shadow-lg shrink-0">
+                <div className="relative z-10 w-24 h-24 sm:w-32 sm:h-32 rounded-2xl border border-white/10 bg-slate-900/80 flex items-center justify-center text-4xl shadow-lg shrink-0">
                   ✨
                 </div>
               )}

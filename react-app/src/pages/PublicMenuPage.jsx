@@ -14,6 +14,7 @@ import { ProductGrid } from '../components/public_menu/ProductGrid';
 import { JoinAccountModal } from '../components/public_menu/JoinAccountModal';
 import { useDigitalMenuSession } from '../hooks/useDigitalMenuSession';
 import { useToast } from '../hooks/useToast';
+import { getInitialLanguage, setSavedLanguage } from '../utils/menuTranslations';
 import api from '../api';
 import '../components/public_menu/public_menu.css';
 
@@ -26,6 +27,14 @@ export function PublicMenuPage({ isKiosk = false }) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Idioma activo (Español / Inglés) con persistencia y auto-detección
+  const [lang, setLang] = useState(getInitialLanguage);
+
+  const handleLanguageChange = (newLang) => {
+    setLang(newLang);
+    setSavedLanguage(newLang);
+  };
 
   const [menu, setMenu] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -167,16 +176,20 @@ export function PublicMenuPage({ isKiosk = false }) {
     }
   };
 
-  // Filtrado reactivo de productos por categoría y buscador
+  // Filtrado reactivo de productos por categoría y buscador (bilingüe)
   const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return products.filter((p) => {
       const matchesCategory =
         selectedCategory === 'all' || Number(p.category_id) === Number(selectedCategory);
-      const matchesSearch =
-        !searchQuery.trim() ||
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesCategory && matchesSearch;
+      if (!matchesCategory) return false;
+      if (!q) return true;
+      return (
+        p.name?.toLowerCase().includes(q) ||
+        p.name_en?.toLowerCase().includes(q) ||
+        p.description?.toLowerCase().includes(q) ||
+        p.description_en?.toLowerCase().includes(q)
+      );
     });
   }, [products, selectedCategory, searchQuery]);
 
@@ -258,6 +271,8 @@ export function PublicMenuPage({ isKiosk = false }) {
         cartItemCount={cartItemCount}
         cartTotal={cartTotal}
         onOpenCart={() => setIsCartOpen(true)}
+        lang={lang}
+        onLanguageChange={handleLanguageChange}
       />
 
       {/* Carrusel Hero Promocional */}
@@ -286,6 +301,8 @@ export function PublicMenuPage({ isKiosk = false }) {
         selectedCategory={selectedCategory}
         onSelectCategory={setSelectedCategory}
         totalProductsCount={products.length}
+        products={products}
+        lang={lang}
       />
 
       {/* Rejilla de Platillos con Carga Incremental */}
@@ -297,6 +314,7 @@ export function PublicMenuPage({ isKiosk = false }) {
         hasMore={visibleCount < filteredProducts.length}
         searchQuery={searchQuery}
         onClearSearch={() => setSearchQuery('')}
+        lang={lang}
       />
 
       {/* Modal de Detalle de Platillo y Modificadores */}
@@ -305,6 +323,7 @@ export function PublicMenuPage({ isKiosk = false }) {
           <ProductDetailModal
             product={selectedProduct}
             onClose={() => setSelectedProduct(null)}
+            lang={lang}
             onAddToCart={(item) => {
               setCart((prev) => {
                 const existingIdx = prev.findIndex(
@@ -352,6 +371,7 @@ export function PublicMenuPage({ isKiosk = false }) {
         menuMode={menu?.mode}
         isKiosk={isKiosk}
         sessionData={sessionData}
+        lang={lang}
         onOrderSuccess={(res) => {
           setSessionData((prev) => ({ ...prev, accountId: res.accountId, checkNumber: res.checkNumber }));
         }}

@@ -19,11 +19,14 @@ import {
   Unlock,
   Building2,
   Filter,
-  LogOut
+  LogOut,
+  Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useKdsData } from '../hooks/useKdsData';
 import { BackButton } from '../components/BackButton';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { KdsSidebar } from '../components/kds/KdsSidebar';
 import { KdsSettingsPanel } from '../components/kds/KdsSettingsPanel';
 import { KdsOrderCard } from '../components/kds/KdsOrderCard';
@@ -85,7 +88,61 @@ export function KitchenDisplay({ onBack }) {
     reportDate,
     setReportDate,
     loadKdsReport,
+    moduleEnabled,
+    moduleLoading,
+    toggleModule,
   } = useKdsData();
+
+  // Verifica roles y permisos
+  const isSuperadmin = String(user?.role || '').toLowerCase() === 'superadmin';
+  const [togglingModule, setTogglingModule] = useState(false);
+
+  // Diálogo de Confirmación Moderno
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Aceptar',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeConfirm = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false, loading: false }));
+  };
+
+  const handleToggleModule = (enable) => {
+    if (!isSuperadmin) return;
+    setConfirmDialog({
+      isOpen: true,
+      title: enable ? '¿Activar Módulo de Pantallas KDS?' : '¿Desactivar Módulo de Pantallas KDS?',
+      message: enable
+        ? 'Se habilitarán las pantallas de cocina en tiempo real para todas las estaciones. Los pedidos se visualizarán al instante en los monitores de cocina y barra.'
+        : 'Al desactivar el módulo, las pantallas KDS dejarán de mostrar pedidos y se bloquearán para el personal. Las comandas continuarán imprimiéndose en los tickets físicos normalmente.',
+      itemName: enable ? 'Módulo: Pantallas de Cocina (KDS)' : 'Desactivación de KDS',
+      itemDetail: enable ? 'Acceso: Cocina, Barra, Despacho y Monitores' : 'Las impresoras térmicas seguirán activas',
+      variant: enable ? 'success' : 'warning',
+      confirmText: enable ? 'Activar KDS Ahora' : 'Desactivar KDS',
+      loading: false,
+      onConfirm: async () => {
+        try {
+          setConfirmDialog((prev) => ({ ...prev, loading: true }));
+          setTogglingModule(true);
+          await toggleModule(enable);
+          closeConfirm();
+        } catch (err) {
+          console.error('Error toggling KDS module:', err);
+          closeConfirm();
+        } finally {
+          setTogglingModule(false);
+        }
+      },
+    });
+  };
 
   // Verifica si el usuario actual tiene privilegios de supervisor / administrador
   const isAdminOrManager = useMemo(() => {
@@ -181,6 +238,94 @@ export function KitchenDisplay({ onBack }) {
     setShowReport(true);
     loadKdsReport();
   };
+
+  // Vista de bloqueo si el módulo KDS está inactivo
+  if (!moduleLoading && !moduleEnabled) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-between p-4 sm:p-6 lg:p-8">
+        <header className="w-full max-w-3xl mx-auto flex items-center justify-between py-2.5 px-4 rounded-2xl bg-slate-800/80 border border-slate-700 text-xs">
+          <div className="flex items-center gap-2">
+            <BackButton onClick={onBack} label="Volver" title="Volver al Punto de Venta" />
+            <span className="font-bold tracking-wide text-white uppercase text-xs">
+              Módulo KDS • Pantallas de Cocina
+            </span>
+          </div>
+          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            Módulo Desactivado
+          </span>
+        </header>
+
+        <main className="w-full max-w-2xl mx-auto my-auto py-8">
+          <div className="bg-slate-800 border border-slate-700 rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-5 shadow-xs">
+              <Lock className="w-8 h-8" />
+            </div>
+
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 mb-3">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Módulo Premium Opcional
+            </span>
+
+            <h2 className="text-2xl font-bold text-white mb-2">
+              Pantallas de Cocina y Despacho en Tiempo Real (KDS)
+            </h2>
+            <p className="text-slate-300 max-w-md mx-auto text-sm mb-6 leading-relaxed">
+              Monitorea tiempos de preparación en vivo, gestiona comandas por estación de trabajo (Cocina, Bar, Postres) y optimiza el despacho de platillos sin papel.
+            </p>
+
+            {isSuperadmin ? (
+              <div className="bg-slate-900/60 border border-slate-700 rounded-2xl p-5 max-w-md mx-auto space-y-3">
+                <span className="text-xs font-semibold text-slate-300 block">
+                  Acceso de Super Administrador detectado
+                </span>
+                <button
+                  disabled={togglingModule}
+                  onClick={() => handleToggleModule(true)}
+                  className="w-full py-3 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-[0.98] cursor-pointer"
+                >
+                  <Unlock className="w-4 h-4" />
+                  {togglingModule ? 'Activando KDS...' : 'Activar Módulo KDS Ahora'}
+                </button>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700 max-w-md mx-auto text-xs text-slate-400 flex items-center justify-center gap-2 mb-4">
+                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <span>Este módulo se encuentra desactivado. Solicita al Super Administrador su activación.</span>
+              </div>
+            )}
+
+            <div className="pt-6 mt-6 border-t border-slate-700/60 flex justify-center">
+              <button
+                type="button"
+                onClick={onBack}
+                className="px-5 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold flex items-center gap-2 transition cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" /> Volver al Punto de Venta
+              </button>
+            </div>
+          </div>
+        </main>
+
+        <footer className="w-full max-w-3xl mx-auto text-center text-xs text-slate-500 py-2">
+          Restaurante POS • Sistema de Punto de Venta
+        </footer>
+
+        {/* Diálogo de Confirmación */}
+        <ConfirmDialog
+          isOpen={confirmDialog.isOpen}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          itemName={confirmDialog.itemName}
+          itemDetail={confirmDialog.itemDetail}
+          confirmText={confirmDialog.confirmText}
+          cancelText={confirmDialog.cancelText}
+          variant={confirmDialog.variant}
+          loading={confirmDialog.loading}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={closeConfirm}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden select-none">
@@ -314,6 +459,20 @@ export function KitchenDisplay({ onBack }) {
                 <LogOut className="w-4 h-4 text-red-600" />
                 <span className="hidden sm:inline">Salir (PIN)</span>
               </button>
+
+              {/* Botón Desactivar Módulo KDS (Exclusivo Superadmin) */}
+              {isSuperadmin && (
+                <button
+                  type="button"
+                  onClick={() => handleToggleModule(false)}
+                  disabled={togglingModule}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer ml-1"
+                  title="Desactivar módulo KDS para todo el restaurante"
+                >
+                  <Lock className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden md:inline">Desactivar KDS</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -478,6 +637,21 @@ export function KitchenDisplay({ onBack }) {
         loadKdsReport={loadKdsReport}
         reportLoading={reportLoading}
         reportData={reportData}
+      />
+
+      {/* Diálogo de Confirmación */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemDetail={confirmDialog.itemDetail}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        variant={confirmDialog.variant}
+        loading={confirmDialog.loading}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={closeConfirm}
       />
     </div>
   );

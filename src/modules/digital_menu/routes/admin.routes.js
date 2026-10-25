@@ -83,4 +83,21 @@ router.post(
   digitalMenuController.attendWaiterCall
 );
 
+// ─── Gestión de Traducciones (ES -> EN) ───
+router.get(
+  "/translations",
+  authService.requirePermissionOrSupervisor("digital_menu.manage"),
+  digitalMenuController.getTranslations
+);
+router.post(
+  "/translations",
+  authService.requirePermissionOrSupervisor("digital_menu.manage"),
+  digitalMenuController.saveTranslations
+);
+router.post(
+  "/auto-translate",
+  authService.requirePermissionOrSupervisor("digital_menu.manage"),
+  digitalMenuController.autoTranslate
+);
+
 module.exports = router;

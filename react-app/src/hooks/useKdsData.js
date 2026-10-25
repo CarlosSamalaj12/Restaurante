@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { useToast } from './useToast';
+import { useSocket } from './useSocket';
 import { getOrCreateSerial } from '../lib/terminalSerial';
 import dayjs from 'dayjs';
 
@@ -11,6 +12,10 @@ export function useKdsData(options = {}) {
   const [operationCenters, setOperationCenters] = useState([]);
   const [stationConfig, setStationConfig] = useState(null);
   const [stationLoaded, setStationLoaded] = useState(false);
+
+  // Control de Licenciamiento / Activación del Módulo KDS
+  const [moduleEnabled, setModuleEnabled] = useState(true);
+  const [moduleLoading, setModuleLoading] = useState(true);
 
   // Filtros activos (estación de preparación y centro de consumo / salón)
   const [selectedProductionCenter, setSelectedProductionCenter] = useState(
@@ -26,6 +31,32 @@ export function useKdsData(options = {}) {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportDate, setReportDate] = useState(dayjs().format('YYYY-MM-DD'));
   const toast = useToast();
+
+  // Consulta el estado de activación del módulo KDS
+  useEffect(() => {
+    let isMounted = true;
+    const checkStatus = async () => {
+      try {
+        const res = await api.kds.getStatus();
+        if (isMounted && res) {
+          setModuleEnabled(Boolean(res.enabled));
+        }
+      } catch (err) {
+        console.warn('Could not check KDS status:', err.message);
+      } finally {
+        if (isMounted) setModuleLoading(false);
+      }
+    };
+    checkStatus();
+    return () => { isMounted = false; };
+  }, []);
+
+  // Escucha cambios de activación en tiempo real vía WebSockets
+  useSocket({
+    'settings:module_kds_toggled': ({ enabled }) => {
+      setModuleEnabled(Boolean(enabled));
+    },
+  });
 
   // Carga automática de la estación configurada para este dispositivo o terminal
   useEffect(() => {
@@ -62,6 +93,12 @@ export function useKdsData(options = {}) {
         }),
         api.kds.getProductionCenters()
       ]);
+      if (ordersData?.moduleDisabled) {
+        setModuleEnabled(false);
+        setOrders([]);
+        setCategories([]);
+        return;
+      }
       setOrders(ordersData.orders || []);
       setCategories(ordersData.categories || []);
       setCenters(centersData.centers || []);
@@ -75,10 +112,11 @@ export function useKdsData(options = {}) {
   }, [selectedProductionCenter, selectedOperationCenter]);
 
   useEffect(() => {
+    if (!moduleEnabled) return;
     loadData();
     const interval = setInterval(loadData, 8000);
     return () => clearInterval(interval);
-  }, [loadData]);
+  }, [loadData, moduleEnabled]);
 
   const handleMarkDone = async (itemId) => {
     setCompletingItems(prev => new Set([...prev, itemId]));
@@ -119,6 +157,15 @@ export function useKdsData(options = {}) {
     }
   };
 
+  const toggleModule = async (enabled) => {
+    const res = await api.kds.toggleModule(enabled);
+    setModuleEnabled(Boolean(res.enabled));
+    if (res.enabled) {
+      loadData();
+    }
+    return res;
+  };
+
   return {
     orders,
     categories,
@@ -140,6 +187,10 @@ export function useKdsData(options = {}) {
     reportDate,
     setReportDate,
     loadKdsReport,
+    moduleEnabled,
+    moduleLoading,
+    setModuleEnabled,
+    toggleModule,
   };
 }
 

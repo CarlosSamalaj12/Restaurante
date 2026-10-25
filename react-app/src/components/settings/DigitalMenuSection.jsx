@@ -37,6 +37,8 @@ import {
   Camera,
   Clock,
   Filter,
+  Languages,
+  Save,
 } from 'lucide-react';
 import api from '../../api';
 import { ConfirmDialog } from '../ConfirmDialog';
@@ -137,6 +139,138 @@ export function DigitalMenuSection({ authUser }) {
     } catch (err) {
       toast.error(err.message || 'Error al actualizar imagen del platillo');
     }
+  };
+
+  // Estados para la pestaña de Idiomas y Traducción Culinaria
+  const [translationCatalog, setTranslationCatalog] = useState({ categories: [], products: [] });
+  const [loadingTranslations, setLoadingTranslations] = useState(false);
+  const [savingTranslations, setSavingTranslations] = useState(false);
+  const [translatingAll, setTranslatingAll] = useState(false);
+  const [translatingItemId, setTranslatingItemId] = useState(null);
+  const [translationSearch, setTranslationSearch] = useState('');
+  const [translationCategoryFilter, setTranslationCategoryFilter] = useState('');
+  const [translationStatusFilter, setTranslationStatusFilter] = useState('all'); // 'all' | 'pending' | 'translated'
+  const [translationSubTab, setTranslationSubTab] = useState('products'); // 'products' | 'categories'
+  const [hasUnsavedTranslations, setHasUnsavedTranslations] = useState(false);
+
+  const loadTranslations = async () => {
+    try {
+      setLoadingTranslations(true);
+      const res = await api.digitalMenu.getTranslations();
+      setTranslationCatalog({
+        categories: res.categories || [],
+        products: res.products || [],
+      });
+      setHasUnsavedTranslations(false);
+    } catch (err) {
+      console.error('Error cargando catálogo de traducciones:', err);
+      toast.error('No se pudo cargar el catálogo de traducciones');
+    } finally {
+      setLoadingTranslations(false);
+    }
+  };
+
+  const handleAutoTranslateAll = async (force = false) => {
+    try {
+      setTranslatingAll(true);
+      const res = await api.digitalMenu.autoTranslate({
+        categories: translationCatalog.categories,
+        products: translationCatalog.products,
+        force,
+        persist: true,
+      });
+      if (res?.categories && res?.products) {
+        setTranslationCatalog({
+          categories: res.categories,
+          products: res.products,
+        });
+      }
+      setHasUnsavedTranslations(false);
+      toast.success(
+        force
+          ? 'Todo el menú ha sido re-traducido al inglés con IA'
+          : 'Platillos y categorías traducidos al inglés exitosamente'
+      );
+    } catch (err) {
+      toast.error(err.message || 'Error al auto-traducir menú');
+    } finally {
+      setTranslatingAll(false);
+    }
+  };
+
+  const handleTranslateSingleProduct = async (product) => {
+    try {
+      setTranslatingItemId(product.id);
+      const res = await api.digitalMenu.autoTranslate({
+        products: [product],
+        force: true,
+        persist: true,
+      });
+      const updatedProd = res?.products?.[0];
+      if (updatedProd) {
+        setTranslationCatalog((prev) => ({
+          ...prev,
+          products: prev.products.map((p) => (p.id === product.id ? { ...p, ...updatedProd } : p)),
+        }));
+        toast.success(`Traducción generada para "${product.name}"`);
+      }
+    } catch (err) {
+      toast.error(err.message || 'Error al traducir platillo');
+    } finally {
+      setTranslatingItemId(null);
+    }
+  };
+
+  const handleTranslateSingleCategory = async (category) => {
+    try {
+      setTranslatingItemId(`cat-${category.id}`);
+      const res = await api.digitalMenu.autoTranslate({
+        categories: [category],
+        force: true,
+        persist: true,
+      });
+      const updatedCat = res?.categories?.[0];
+      if (updatedCat) {
+        setTranslationCatalog((prev) => ({
+          ...prev,
+          categories: prev.categories.map((c) => (c.id === category.id ? { ...c, ...updatedCat } : c)),
+        }));
+        toast.success(`Traducción generada para categoría "${category.name}"`);
+      }
+    } catch (err) {
+      toast.error(err.message || 'Error al traducir categoría');
+    } finally {
+      setTranslatingItemId(null);
+    }
+  };
+
+  const handleSaveAllTranslations = async () => {
+    try {
+      setSavingTranslations(true);
+      await api.digitalMenu.saveTranslations(translationCatalog);
+      setHasUnsavedTranslations(false);
+      toast.success('Todas las traducciones en inglés han sido guardadas');
+    } catch (err) {
+      toast.error(err.message || 'Error al guardar traducciones');
+    } finally {
+      setSavingTranslations(false);
+    }
+  };
+
+  const handleProductTranslationChange = (id, field, value) => {
+    setTranslationCatalog((prev) => ({
+      ...prev,
+      products: prev.products.map((p) => (p.id === id ? { ...p, [field]: value } : p)),
+    }));
+    setHasUnsavedTranslations(true);
+  };
+
+  const handleCategoryTranslationChange = (id, value) => {
+    setTranslationCatalog((prev) => ({
+      ...prev,
+      categories: prev.categories.map((c) => (c.id === id ? { ...c, name_en: value } : c)),
+    }));
+    setHasUnsavedTranslations(true);
   };
 
   // Estados de QR Tokens
@@ -259,12 +393,16 @@ export function DigitalMenuSection({ authUser }) {
     loadData();
   }, []);
 
-  // Cargar QR tokens o promociones al cambiar de menú o pestaña
+  // Cargar QR tokens, promociones o catálogo de traducciones al cambiar de menú o pestaña
   useEffect(() => {
     if (activeTab === 'qr-generator' && selectedMenu?.id) {
       loadQrTokens(selectedMenu.id);
     } else if (activeTab === 'promotions' && selectedMenu?.id) {
       loadPromotions(selectedMenu.id);
+    } else if (activeTab === 'translations') {
+      if (translationCatalog.products.length === 0) {
+        loadTranslations();
+      }
     }
   }, [activeTab, selectedMenu?.id]);
 
@@ -649,6 +787,21 @@ export function DigitalMenuSection({ authUser }) {
         >
           <QrCode className={`w-4 h-4 ${activeTab === 'qr-generator' ? 'text-emerald-600' : 'text-slate-400'}`} />
           <span>Códigos QR & Tags NFC</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('translations')}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition ${
+            activeTab === 'translations'
+              ? 'bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <Languages className={`w-4 h-4 ${activeTab === 'translations' ? 'text-blue-600' : 'text-slate-400'}`} />
+          <span>Idiomas & Traducción</span>
+          {translationCatalog.products.some((p) => !p.name_en) && (
+            <span className="w-2 h-2 rounded-full bg-amber-500 inline-block ml-0.5" title="Hay platillos pendientes de traducir" />
+          )}
         </button>
       </div>
 
@@ -1213,6 +1366,413 @@ export function DigitalMenuSection({ authUser }) {
                             </button>
                           )}
                         </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ─── PESTAÑA 5: IDIOMAS Y TRADUCCIÓN CULINARIA MULTILINGÜE ─── */}
+      {activeTab === 'translations' && (() => {
+        const products = translationCatalog.products || [];
+        const categories = translationCatalog.categories || [];
+
+        const translatedProductsCount = products.filter(
+          (p) => p.name_en && String(p.name_en).trim()
+        ).length;
+        const pendingProductsCount = products.length - translatedProductsCount;
+
+        const translatedCategoriesCount = categories.filter(
+          (c) => c.name_en && String(c.name_en).trim()
+        ).length;
+
+        // Filtrado de Platillos
+        const filteredProducts = products.filter((p) => {
+          if (translationSearch.trim()) {
+            const q = translationSearch.toLowerCase();
+            const matchName = String(p.name || '').toLowerCase().includes(q);
+            const matchNameEn = String(p.name_en || '').toLowerCase().includes(q);
+            const matchCat = String(p.category_name || '').toLowerCase().includes(q);
+            if (!matchName && !matchNameEn && !matchCat) return false;
+          }
+          if (translationCategoryFilter && Number(p.category_id) !== Number(translationCategoryFilter)) {
+            return false;
+          }
+          const isTranslated = Boolean(p.name_en && String(p.name_en).trim());
+          if (translationStatusFilter === 'pending' && isTranslated) return false;
+          if (translationStatusFilter === 'translated' && !isTranslated) return false;
+          return true;
+        });
+
+        // Filtrado de Categorías
+        const filteredCategories = categories.filter((c) => {
+          if (translationSearch.trim()) {
+            const q = translationSearch.toLowerCase();
+            const matchName = String(c.name || '').toLowerCase().includes(q);
+            const matchNameEn = String(c.name_en || '').toLowerCase().includes(q);
+            if (!matchName && !matchNameEn) return false;
+          }
+          return true;
+        });
+
+        return (
+          <div className="space-y-5">
+            {/* Cabecera Principal de Traducción */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200/80 text-blue-600 flex items-center justify-center shadow-xs">
+                      <Languages className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                        Idiomas y Traducción Culinaria (Español / Inglés)
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Los comensales podrán cambiar de idioma en cualquier momento usando el botón{' '}
+                        <span className="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                          [ 🇪🇸 ES | 🇺🇸 EN ]
+                        </span>
+                        . Las comandas a cocina siempre se imprimen y muestran en español.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Acciones Globales: Auto-traducir con IA y Guardar */}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => loadTranslations()}
+                    disabled={loadingTranslations}
+                    className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition"
+                    title="Recargar catálogo de traducciones"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loadingTranslations ? 'animate-spin text-blue-600' : ''}`} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAutoTranslateAll(false)}
+                    disabled={translatingAll || loadingTranslations}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-xs flex items-center gap-2 shadow-sm shadow-blue-500/20 active:scale-[0.98] transition disabled:opacity-50"
+                    title="Traduce automáticamente los nombres y descripciones que aún no tengan versión en inglés"
+                  >
+                    <Sparkles className={`w-4 h-4 ${translatingAll ? 'animate-spin' : ''}`} />
+                    <span>{translatingAll ? 'Traduciendo con IA...' : 'Auto-traducir Pendientes'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAutoTranslateAll(true)}
+                    disabled={translatingAll || loadingTranslations}
+                    className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+                    title="Fuerza una nueva traducción con IA para todos los elementos del menú"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Re-traducir Todo</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveAllTranslations}
+                    disabled={savingTranslations || loadingTranslations}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition shadow-sm active:scale-[0.98] ${
+                      hasUnsavedTranslations
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{savingTranslations ? 'Guardando...' : hasUnsavedTranslations ? 'Guardar Cambios *' : 'Guardado'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Métricas / Badges Resumen */}
+              <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100 text-xs">
+                <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200">
+                  Total Platillos: <strong>{products.length}</strong>
+                </span>
+                <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
+                  Traducidos al Inglés: <strong>{translatedProductsCount}</strong>
+                </span>
+                {pendingProductsCount > 0 ? (
+                  <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 font-semibold border border-amber-200">
+                    Pendientes de Traducir: <strong>{pendingProductsCount}</strong>
+                  </span>
+                ) : (
+                  <span className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 font-semibold border border-blue-200">
+                    ✓ 100% Menú Traducido
+                  </span>
+                )}
+                <span className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 font-semibold border border-purple-200">
+                  Categorías Traducidas: <strong>{translatedCategoriesCount}/{categories.length}</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Sub-selector: Platillos vs Categorías */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs w-fit">
+                <button
+                  type="button"
+                  onClick={() => setTranslationSubTab('products')}
+                  className={`px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 ${
+                    translationSubTab === 'products'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Utensils className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Platillos ({products.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTranslationSubTab('categories')}
+                  className={`px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 ${
+                    translationSubTab === 'categories'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Categorías ({categories.length})</span>
+                </button>
+              </div>
+
+              {/* Filtros para Platillos */}
+              {translationSubTab === 'products' && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {/* Selector de Estado */}
+                  <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setTranslationStatusFilter('all')}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                        translationStatusFilter === 'all' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600'
+                      }`}
+                    >
+                      Todos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTranslationStatusFilter('pending')}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
+                        translationStatusFilter === 'pending' ? 'bg-amber-500 text-white shadow-xs font-bold' : 'text-amber-700'
+                      }`}
+                    >
+                      <span>⚠️ Pendientes ({pendingProductsCount})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTranslationStatusFilter('translated')}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                        translationStatusFilter === 'translated' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-emerald-700'
+                      }`}
+                    >
+                      ✓ Traducidos
+                    </button>
+                  </div>
+
+                  {/* Selector de Categoría */}
+                  <select
+                    value={translationCategoryFilter}
+                    onChange={(e) => setTranslationCategoryFilter(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Todas las categorías</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Buscador */}
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                    <input
+                      type="text"
+                      value={translationSearch}
+                      onChange={(e) => setTranslationSearch(e.target.value)}
+                      placeholder="Buscar platillo..."
+                      className="pl-8 pr-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 w-44"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ─── VISTA 1: LISTADO DE PLATILLOS ─── */}
+            {translationSubTab === 'products' && (
+              <div>
+                {loadingTranslations ? (
+                  <div className="p-12 text-center text-slate-500 flex flex-col items-center justify-center space-y-2">
+                    <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
+                    <p className="text-xs font-semibold">Cargando catálogo para traducción...</p>
+                  </div>
+                ) : filteredProducts.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center max-w-md mx-auto shadow-xs">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                      <Utensils className="w-6 h-6" />
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-800 mb-1">No se encontraron platillos</h4>
+                    <p className="text-xs text-slate-500">Prueba cambiando los filtros o el término de búsqueda.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredProducts.map((p) => {
+                      const isTranslatingThis = translatingItemId === p.id;
+                      const hasTranslation = Boolean(p.name_en && String(p.name_en).trim());
+
+                      return (
+                        <div
+                          key={p.id}
+                          className="bg-white border border-slate-200 hover:border-slate-300 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all flex flex-col gap-3"
+                        >
+                          {/* Fila Superior: Metadata del platillo */}
+                          <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700">
+                                {p.category_name || 'Sin Categoría'}
+                              </span>
+                              <span className="text-xs font-semibold text-slate-600">
+                                Q{Number(p.base_price || 0).toFixed(2)}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                  hasTranslation
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}
+                              >
+                                {hasTranslation ? '✓ En Inglés' : '⚠️ Sin traducir'}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => handleTranslateSingleProduct(p)}
+                                disabled={isTranslatingThis}
+                                className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
+                                title="Traducir este platillo con IA"
+                              >
+                                <Sparkles className={`w-3 h-3 ${isTranslatingThis ? 'animate-spin' : ''}`} />
+                                <span>{isTranslatingThis ? 'Traduciendo...' : 'Auto-traducir'}</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Comparativa: Español (Oficial Cocina) vs Inglés (Comensales) */}
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {/* Columna Izquierda: Español (Referencia) */}
+                            <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80 space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                                  <span>🇪🇸</span> Español (Oficial Restaurante & Cocina):
+                                </span>
+                              </div>
+                              <div className="font-bold text-slate-900 text-sm">{p.name}</div>
+                              <p className="text-xs text-slate-500 line-clamp-3">
+                                {p.description || <span className="italic text-slate-400">Sin descripción en español</span>}
+                              </p>
+                            </div>
+
+                            {/* Columna Derecha: Inglés (Editable) */}
+                            <div className="bg-blue-50/30 p-3.5 rounded-xl border border-blue-200/70 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                                  <span>🇺🇸</span> Nombre en Inglés (English Name):
+                                </label>
+                              </div>
+                              <input
+                                type="text"
+                                value={p.name_en || ''}
+                                onChange={(e) => handleProductTranslationChange(p.id, 'name_en', e.target.value)}
+                                placeholder="Ej: Crispy Fried Chicken Burger"
+                                className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-900 text-xs font-semibold placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                              />
+
+                              <label className="text-[11px] font-bold text-slate-700 block">
+                                Descripción en Inglés (English Description):
+                              </label>
+                              <textarea
+                                rows={2}
+                                value={p.description_en || ''}
+                                onChange={(e) => handleProductTranslationChange(p.id, 'description_en', e.target.value)}
+                                placeholder="Ej: Crispy marinated breast served with fresh lettuce, cheddar cheese and homemade fries..."
+                                className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-900 text-xs placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ─── VISTA 2: LISTADO DE CATEGORÍAS ─── */}
+            {translationSubTab === 'categories' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredCategories.map((c) => {
+                  const isTranslatingThis = translatingItemId === `cat-${c.id}`;
+                  const hasTranslation = Boolean(c.name_en && String(c.name_en).trim());
+
+                  return (
+                    <div
+                      key={c.id}
+                      className="bg-white border border-slate-200 hover:border-slate-300 rounded-2xl p-4 shadow-xs space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-500">Categoría #{c.id}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            hasTranslation
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}
+                        >
+                          {hasTranslation ? '✓ En Inglés' : '⚠️ Sin traducir'}
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        <span className="text-[10px] font-bold text-slate-500 block mb-0.5">
+                          🇪🇸 Nombre Oficial (Español):
+                        </span>
+                        <span className="text-sm font-bold text-slate-900">{c.name}</span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                          <span>🇺🇸 Nombre en Inglés:</span>
+                          <button
+                            type="button"
+                            onClick={() => handleTranslateSingleCategory(c)}
+                            disabled={isTranslatingThis}
+                            className="text-[10px] text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
+                          >
+                            <Sparkles className={`w-3 h-3 ${isTranslatingThis ? 'animate-spin' : ''}`} />
+                            <span>{isTranslatingThis ? 'Traduciendo...' : 'Auto-traducir'}</span>
+                          </button>
+                        </label>
+                        <input
+                          type="text"
+                          value={c.name_en || ''}
+                          onChange={(e) => handleCategoryTranslationChange(c.id, e.target.value)}
+                          placeholder="Ej: Starters & Appetizers"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 text-xs font-semibold focus:bg-white focus:outline-none focus:border-blue-500"
+                        />
                       </div>
                     </div>
                   );

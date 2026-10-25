@@ -1,22 +1,110 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { m } from 'framer-motion';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
+import { useAuth } from '../../hooks/useAuth';
+import { useSocket } from '../../hooks/useSocket';
+import { ConfirmDialog } from '../ConfirmDialog';
 import {
   Loader2,
   Plus,
   Edit,
   Trash2,
-  Printer
+  Printer,
+  Tv,
+  Lock,
+  Unlock,
+  Sparkles,
+  AlertCircle
 } from 'lucide-react';
 import { CenterIconBadge } from '../../utils/productIcons';
 
 export function ProductionCentersSection({ productionCenters, centers, printers = [], onReload }) {
+  const { user } = useAuth();
+  const isSuperadmin = String(user?.role || '').toLowerCase() === 'superadmin';
+
   const [showWizard, setShowWizard] = useState(false);
   const [editingCenter, setEditingCenter] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [testing, setTesting] = useState(null);
   const toast = useToast();
+
+  // Control de Módulo KDS (Pantallas de Cocina)
+  const [kdsEnabled, setKdsEnabled] = useState(true);
+  const [kdsLoading, setKdsLoading] = useState(true);
+  const [togglingKds, setTogglingKds] = useState(false);
+
+  const [confirmKdsDialog, setConfirmKdsDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    itemName: '',
+    itemDetail: '',
+    confirmText: 'Aceptar',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+    loading: false,
+    onConfirm: () => {},
+  });
+
+  const closeKdsConfirm = () => {
+    setConfirmKdsDialog(prev => ({ ...prev, isOpen: false, loading: false }));
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchKdsStatus = async () => {
+      try {
+        const res = await api.kds.getStatus();
+        if (isMounted && res) {
+          setKdsEnabled(Boolean(res.enabled));
+        }
+      } catch (err) {
+        console.warn('Could not fetch KDS status:', err.message);
+      } finally {
+        if (isMounted) setKdsLoading(false);
+      }
+    };
+    fetchKdsStatus();
+    return () => { isMounted = false; };
+  }, []);
+
+  useSocket({
+    'settings:module_kds_toggled': ({ enabled }) => {
+      setKdsEnabled(Boolean(enabled));
+    },
+  });
+
+  const handleToggleKds = (enable) => {
+    if (!isSuperadmin) return;
+    setConfirmKdsDialog({
+      isOpen: true,
+      title: enable ? '¿Activar Módulo de Pantallas KDS?' : '¿Desactivar Módulo de Pantallas KDS?',
+      message: enable
+        ? 'Se habilitarán las pantallas de cocina en tiempo real para todas las estaciones. Los pedidos se visualizarán al instante en los monitores de cocina y barra.'
+        : 'Al desactivar el módulo, las pantallas KDS se bloquearán y dejarán de mostrar pedidos. Las comandas continuarán imprimiéndose en los tickets físicos normalmente.',
+      itemName: enable ? 'Módulo: Pantallas de Cocina (KDS)' : 'Desactivación de KDS',
+      itemDetail: enable ? 'Monitores en Cocina, Barra y Despacho' : 'Las impresoras térmicas seguirán activas',
+      variant: enable ? 'success' : 'warning',
+      confirmText: enable ? 'Activar KDS Ahora' : 'Desactivar KDS',
+      loading: false,
+      onConfirm: async () => {
+        try {
+          setConfirmKdsDialog(prev => ({ ...prev, loading: true }));
+          setTogglingKds(true);
+          const res = await api.kds.toggleModule(enable);
+          setKdsEnabled(Boolean(res.enabled));
+          toast.success(enable ? 'Módulo KDS activado exitosamente' : 'Módulo KDS desactivado');
+          closeKdsConfirm();
+        } catch (err) {
+          toast.error(err.message || 'Error al cambiar estado del KDS');
+          closeKdsConfirm();
+        } finally {
+          setTogglingKds(false);
+        }
+      },
+    });
+  };
 
   const handleCreated = () => {
     setShowWizard(false);
@@ -68,6 +156,62 @@ export function ProductionCentersSection({ productionCenters, centers, printers 
 
   return (
     <div>
+      {/* Banner de Estado del Módulo KDS */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border shadow-xs ${
+            kdsEnabled
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+              : 'bg-amber-50 border-amber-200 text-amber-600'
+          }`}>
+            <Tv className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                Sistema de Pantallas de Cocina (KDS)
+              </h3>
+              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                kdsEnabled
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                  : 'bg-amber-50 text-amber-700 border-amber-200/80'
+              }`}>
+                {kdsEnabled ? 'Premium Activo' : 'Módulo Desactivado'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5 max-w-xl">
+              Permite a cocineros y baristas despachar comandas interactivamente en monitores táctiles. Si se desactiva, las comandas seguirán imprimiéndose en los tickets físicos.
+            </p>
+          </div>
+        </div>
+
+        {isSuperadmin && (
+          <div className="flex-shrink-0">
+            <button
+              disabled={togglingKds || kdsLoading}
+              onClick={() => handleToggleKds(!kdsEnabled)}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-[0.98] cursor-pointer disabled:opacity-50 ${
+                kdsEnabled
+                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-500/20'
+              }`}
+            >
+              {kdsEnabled ? (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Desactivar KDS</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>{togglingKds ? 'Activando...' : 'Activar KDS Ahora'}</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-between items-center mb-5">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">
@@ -210,6 +354,21 @@ export function ProductionCentersSection({ productionCenters, centers, printers 
           </m.div>
         </div>
       )}
+
+      {/* Diálogo de Confirmación para Activación / Desactivación de KDS */}
+      <ConfirmDialog
+        isOpen={confirmKdsDialog.isOpen}
+        title={confirmKdsDialog.title}
+        message={confirmKdsDialog.message}
+        itemName={confirmKdsDialog.itemName}
+        itemDetail={confirmKdsDialog.itemDetail}
+        confirmText={confirmKdsDialog.confirmText}
+        cancelText={confirmKdsDialog.cancelText}
+        variant={confirmKdsDialog.variant}
+        loading={confirmKdsDialog.loading}
+        onConfirm={confirmKdsDialog.onConfirm}
+        onCancel={closeKdsConfirm}
+      />
     </div>
   );
 }

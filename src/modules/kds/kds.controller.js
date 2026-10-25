@@ -5,6 +5,18 @@ const kdsService = require("./kds.service");
 const asyncHandler = require("../../common/asyncHandler");
 
 const kdsController = {
+  // ─── Control de Módulo Premium (Exclusivo Superadmin) ───
+  getModuleStatus: asyncHandler(async (req, res) => {
+    const isEnabled = await kdsService.isModuleEnabled();
+    res.json({ enabled: isEnabled });
+  }),
+
+  toggleModule: asyncHandler(async (req, res) => {
+    const { enabled } = req.body || {};
+    const result = await kdsService.toggleModuleEnabled(Boolean(enabled), req.authUser);
+    res.json(result);
+  }),
+
   getActiveOrders: asyncHandler(async (req, res) => {
     const { centerId, productionCenterId, operationCenterId } = req.query;
     const result = await kdsService.getActiveOrders({

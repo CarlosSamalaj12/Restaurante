@@ -1,9 +1,10 @@
 // react-app/src/components/public_menu/ProductGrid.jsx
-// Rejilla de platillos con renderizado incremental progresivo y soporte de lazy loading
+// Rejilla de platillos con renderizado incremental progresivo y soporte de lazy loading bilingüe
 
 import React from 'react';
 import { Search, Loader2 } from 'lucide-react';
 import { ProductCard } from './ProductCard';
+import { t } from '../../utils/menuTranslations';
 
 export function ProductGrid({
   products = [],
@@ -13,6 +14,7 @@ export function ProductGrid({
   hasMore = false,
   searchQuery = '',
   onClearSearch,
+  lang = 'es',
 }) {
   if (products.length === 0) {
     return (
@@ -20,18 +22,24 @@ export function ProductGrid({
         <div className="w-16 h-16 rounded-3xl bg-slate-800/60 border border-slate-700/60 text-slate-400 flex items-center justify-center mx-auto mb-4">
           <Search className="w-8 h-8 opacity-60" />
         </div>
-        <h3 className="text-base font-black text-white mb-1">No encontramos platillos</h3>
+        <h3 className="text-base font-black text-white mb-1">
+          {lang === 'en' ? 'No dishes found' : 'No encontramos platillos'}
+        </h3>
         <p className="text-xs text-slate-400 max-w-xs mx-auto mb-4 leading-relaxed">
           {searchQuery
-            ? `No hay resultados para "${searchQuery}". Intenta con otro término.`
-            : 'No hay platillos disponibles en esta categoría.'}
+            ? (lang === 'en'
+                ? `No results for "${searchQuery}". Try a different search term.`
+                : `No hay resultados para "${searchQuery}". Intenta con otro término.`)
+            : (lang === 'en'
+                ? 'No dishes available in this category.'
+                : 'No hay platillos disponibles en esta categoría.')}
         </p>
         {searchQuery && (
           <button
             onClick={onClearSearch}
-            className="px-4 py-2 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400 text-xs font-bold hover:bg-blue-600/30 transition"
+            className="px-4 py-2 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400 text-xs font-bold hover:bg-blue-600/30 transition cursor-pointer"
           >
-            Limpiar búsqueda
+            {t(lang, 'clearSearch')}
           </button>
         )}
       </div>
@@ -46,6 +54,7 @@ export function ProductGrid({
             key={product.id}
             product={product}
             onSelect={onSelectProduct}
+            lang={lang}
           />
         ))}
       </div>
@@ -55,7 +64,9 @@ export function ProductGrid({
         <div ref={loadMoreRef} className="py-8 flex justify-center items-center">
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900/80 border border-slate-800 text-slate-400 text-xs font-medium">
             <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-            <span>Cargando más especialidades...</span>
+            <span>
+              {lang === 'en' ? 'Loading more dishes...' : 'Cargando más especialidades...'}
+            </span>
           </div>
         </div>
       )}

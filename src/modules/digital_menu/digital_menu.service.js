@@ -11,6 +11,7 @@ try {
   console.warn("sharp no disponible, subiendo imagen en formato original");
 }
 const digitalMenuRepository = require("./digital_menu.repository");
+const { translateText } = require("./culinary_translator");
 const ordersRepository = require("../orders/orders.repository");
 const ordersService = require("../orders/orders.service");
 const accountsRepository = require("../accounts/accounts.repository");
@@ -633,6 +634,62 @@ const digitalMenuService = {
     });
     invalidateMenuCache();
     return { ok: true };
+  },
+
+  // ─── Gestión de Traducciones Multilingües (Español / Inglés) ───
+  async getTranslations(menuId = null) {
+    return digitalMenuRepository.getTranslationCatalog(menuId);
+  },
+
+  async saveTranslations(payload) {
+    const { categories = [], products = [] } = payload || {};
+    await digitalMenuRepository.saveTranslations({ categories, products });
+    invalidateMenuCache();
+    emitEvent("digital_menu:translations_updated", { count: categories.length + products.length });
+    return { ok: true, message: "Traducciones guardadas exitosamente" };
+  },
+
+  async autoTranslate(payload) {
+    let { categories = [], products = [], force = false, persist = true } = payload || {};
+
+    if ((!categories || categories.length === 0) && (!products || products.length === 0)) {
+      const catalog = await digitalMenuRepository.getTranslationCatalog();
+      categories = catalog.categories || [];
+      products = catalog.products || [];
+    }
+
+    const translatedCategories = await Promise.all(
+      categories.map(async (c) => ({
+        ...c,
+        name_en: !force && c.name_en && c.name_en.trim() ? c.name_en : await translateText(c.name),
+      }))
+    );
+
+    const translatedProducts = await Promise.all(
+      products.map(async (p) => ({
+        ...p,
+        name_en: !force && p.name_en && p.name_en.trim() ? p.name_en : await translateText(p.name),
+        description_en:
+          !force && p.description_en && p.description_en.trim()
+            ? p.description_en
+            : await translateText(p.description),
+      }))
+    );
+
+    if (persist) {
+      await digitalMenuRepository.saveTranslations({
+        categories: translatedCategories,
+        products: translatedProducts,
+      });
+      invalidateMenuCache();
+      emitEvent("digital_menu:translations_updated", { count: translatedCategories.length + translatedProducts.length });
+    }
+
+    return {
+      ok: true,
+      categories: translatedCategories,
+      products: translatedProducts,
+    };
   },
 };
 

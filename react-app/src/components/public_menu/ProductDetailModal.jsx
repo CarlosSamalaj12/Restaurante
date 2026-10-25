@@ -1,13 +1,28 @@
 // react-app/src/components/public_menu/ProductDetailModal.jsx
-// Modal / Bottom Sheet con diseño difuminado Midnight Glow (Imagen 2)
+// Modal / Pantalla Completa con estética iOS para personalización de modificadores y detalles
 
 import React, { useState, useEffect } from 'react';
 import { m } from 'framer-motion';
-import { X, Star, Clock, Plus, Minus, Send, CheckCircle2, ShoppingBag, Sparkles, Flame, Compass } from 'lucide-react';
+import {
+  X,
+  Star,
+  Clock,
+  Plus,
+  Minus,
+  Send,
+  CheckCircle2,
+  ShoppingBag,
+  Sparkles,
+  Flame,
+  Compass,
+  ArrowLeft,
+  ChevronRight,
+} from 'lucide-react';
 import { ModifierWizard } from './ModifierWizard';
 import api from '../../api';
+import { t, getLocalizedName, getLocalizedDescription } from '../../utils/menuTranslations';
 
-export function ProductDetailModal({ product: initialProduct, onClose, onAddToCart, sessionToken, tableCode }) {
+export function ProductDetailModal({ product: initialProduct, onClose, onAddToCart, sessionToken, tableCode, lang = 'es' }) {
   const [product, setProduct] = useState(initialProduct);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('details'); // 'details' | 'customize' | 'reviews'
@@ -98,6 +113,7 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
     onAddToCart({
       productId: product.id,
       name: product.name,
+      name_en: product.name_en,
       basePrice: Number(product.base_price),
       unitPrice,
       qty,
@@ -110,42 +126,86 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
   const salesCount = product.sales_count ?? product.rating_count ?? 15;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md overflow-hidden select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-xl overflow-hidden select-none">
       <m.div
-        initial={{ y: '100%', opacity: 0.8 }}
+        initial={{ y: '100%', opacity: 0.9 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: '100%', opacity: 0 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 350 }}
-        className="w-full max-w-lg bg-[#0D1322] rounded-t-[2.5rem] sm:rounded-3xl overflow-hidden shadow-2xl border border-slate-800/80 flex flex-col max-h-[92vh] sm:max-h-[88vh] relative"
+        transition={{ type: 'spring', damping: 30, stiffness: 350 }}
+        className="w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl lg:max-w-3xl bg-slate-950 sm:bg-slate-900/95 sm:backdrop-blur-2xl rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border sm:border-white/10 flex flex-col relative"
       >
-        {/* Manija superior táctil estilo bottom-sheet */}
-        <div className="w-12 h-1 bg-slate-700/60 rounded-full mx-auto mt-3 mb-1 shrink-0 sm:hidden" />
-
-        {/* Barra superior de estado (Mesa y Botón Cerrar) */}
-        <div className="px-5 pt-3 pb-1 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-slate-900/90 border border-slate-800 text-slate-300">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <span>Mesa {tableCode || '04'} • En comanda</span>
-          </div>
-
+        {/* Barra Superior estilo iOS con Navegación y Estado */}
+        <header className="px-4 py-3 sm:px-6 sm:py-3.5 bg-slate-900/90 sm:bg-slate-900/60 backdrop-blur-xl border-b border-white/[0.08] flex items-center justify-between shrink-0 z-20">
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition active:scale-90"
+            className="w-9 h-9 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white flex items-center justify-center border border-white/10 transition active:scale-90 cursor-pointer shadow-sm"
             aria-label="Cerrar modal"
           >
-            <X className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4 sm:hidden" />
+            <X className="w-4 h-4 hidden sm:block" />
           </button>
-        </div>
 
-        {/* ENCABEZADO: COMPACTO CUANDO ESTÁ PERSONALIZANDO, COMPLETO SI ESTÁ EN DETALLES O RESEÑAS */}
+          {/* Estado de mesa y orden en píldora iOS */}
+          <div className="flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-bold bg-slate-850 border border-white/10 text-slate-300 shadow-inner">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span>Mesa {tableCode || '04'} • Auto-Comanda</span>
+          </div>
+
+          {/* Selector de Pestañas Compacto estilo Segmented Control iOS */}
+          <div className="flex gap-1 p-1 rounded-xl bg-slate-800/90 border border-white/10 text-xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab('details')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                activeTab === 'details'
+                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {lang === 'en' ? 'Details' : 'Detalles'}
+            </button>
+            {hasModifiers && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('customize')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer ${
+                  activeTab === 'customize'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>{lang === 'en' ? 'Options' : 'Opciones'}</span>
+                {selectedModifiers.length > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-white text-slate-950 text-[10px] font-black flex items-center justify-center">
+                    {selectedModifiers.length}
+                  </span>
+                )}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveTab('reviews')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                activeTab === 'reviews'
+                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {lang === 'en' ? 'Reviews' : 'Opiniones'}
+            </button>
+          </div>
+        </header>
+
+        {/* ENCABEZADO RESUMIDO CUANDO ESTÁ PERSONALIZANDO (MÁXIMO ESPACIO PARA MODIFICADORES) */}
         {activeTab === 'customize' ? (
-          <div className="px-5 py-2.5 shrink-0 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between gap-3">
+          <div className="px-4 py-3 sm:px-6 bg-gradient-to-r from-slate-900/90 via-slate-850/80 to-slate-900/90 border-b border-white/[0.08] flex items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shrink-0 flex items-center justify-center relative shadow-md">
+              <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-950 border border-white/10 shrink-0 flex items-center justify-center relative shadow-md">
                 {product.image_url && !modalImgError ? (
                   <img
                     src={product.image_url}
-                    alt={product.name}
+                    alt={getLocalizedName(product, lang)}
                     className="w-full h-full object-cover"
                     onError={() => setModalImgError(true)}
                   />
@@ -154,160 +214,104 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
                 )}
               </div>
               <div className="min-w-0">
-                <h2 className="text-base sm:text-lg font-black text-white leading-tight truncate">
-                  {product.name}
+                <h2 className="text-base sm:text-lg font-bold text-white leading-tight truncate">
+                  {getLocalizedName(product, lang)}
                 </h2>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs font-black text-amber-400 font-mono">
+                  <span className="text-sm font-black text-amber-400 font-mono">
                     Q{unitPrice.toFixed(2)}
                   </span>
-                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-                    (Base: Q{Number(product.base_price || 0).toFixed(2)})
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    ({lang === 'en' ? 'Base' : 'Base'}: Q{Number(product.base_price || 0).toFixed(2)})
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Selector de Pestañas Compacto */}
-            <div className="flex gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800 shrink-0 text-xs">
-              <button
-                type="button"
-                onClick={() => setActiveTab('details')}
-                className="px-2.5 py-1 text-[11px] font-bold text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
-              >
-                Detalles
-              </button>
-              <button
-                type="button"
-                className="px-2.5 py-1 text-[11px] font-bold bg-blue-600 text-white rounded-lg shadow-sm cursor-pointer"
-              >
-                Personalizar
-              </button>
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/80 px-3 py-1.5 rounded-full border border-white/5">
+              <span>Personaliza tu orden a tu gusto</span>
             </div>
           </div>
         ) : (
-          <>
-            {/* Fila de Badges */}
-            <div className="px-5 pt-2 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/15 border border-amber-500/30 text-amber-400 shadow-sm">
-                <Flame className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                <span>{product.badge_text || 'Especialidad'}</span>
-              </div>
-
-              {product.estimated_prep_min && (
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-900/80 border border-slate-800 text-slate-300 shadow-sm">
-                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>{product.estimated_prep_min} min prep.</span>
-                </div>
-              )}
-            </div>
-
+          <div className="shrink-0 bg-gradient-to-b from-slate-900/60 to-transparent">
             {/* Zona de Imagen con Halo Difuminado */}
-            <div className="relative w-full h-48 sm:h-56 flex items-center justify-center overflow-hidden my-1 shrink-0">
-              <div className="absolute inset-0 bg-gradient-to-b from-blue-600/30 via-indigo-950/20 to-transparent blur-3xl pointer-events-none scale-125" />
-              <div className="absolute w-40 h-40 rounded-full bg-blue-500/20 blur-2xl pointer-events-none" />
+            <div className="relative w-full h-48 sm:h-56 flex items-center justify-center overflow-hidden my-2">
+              <div className="absolute inset-0 bg-gradient-to-b from-blue-600/15 via-slate-900/10 to-transparent blur-2xl pointer-events-none" />
 
               {product.image_url && !modalImgError ? (
                 <m.img
-                  initial={{ scale: 0.85, opacity: 0 }}
+                  initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: 0.35, ease: 'easeOut' }}
+                  transition={{ duration: 0.3 }}
                   src={product.image_url}
                   alt={product.name}
-                  className="relative z-10 max-h-44 sm:max-h-52 max-w-[85%] object-contain drop-shadow-[0_20px_35px_rgba(0,0,0,0.8)]"
+                  className="relative z-10 max-h-44 sm:max-h-52 max-w-[85%] object-contain drop-shadow-[0_15px_30px_rgba(0,0,0,0.7)]"
                   loading="eager"
                   decoding="async"
                   onError={() => setModalImgError(true)}
                 />
               ) : (
-                <div className="relative z-10 w-28 h-28 rounded-3xl bg-slate-900/80 border border-slate-800 flex items-center justify-center text-4xl shadow-2xl">
+                <div className="relative z-10 w-28 h-28 rounded-3xl bg-slate-900/80 border border-white/10 flex items-center justify-center text-4xl shadow-xl">
                   🍽️
                 </div>
               )}
             </div>
 
-            {/* Encabezado: Título del Platillo y Precio Base */}
-            <div className="px-5 pb-2 shrink-0">
+            {/* Encabezado: Título y Precio */}
+            <div className="px-4 pb-2 sm:px-6">
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-black text-white leading-tight">
-                    {product.name}
-                  </h2>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-300 font-medium mt-1">
-                    <Compass className="w-3.5 h-3.5 text-blue-400" />
-                    <span>100% Calidad de Autor • Ingredientes Frescos</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    {product.badge_text && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                        {product.badge_text}
+                      </span>
+                    )}
+                    {product.estimated_prep_min && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-300 flex items-center gap-1 border border-white/5">
+                        <Clock className="w-3 h-3 text-emerald-400" />
+                        {product.estimated_prep_min} min prep.
+                      </span>
+                    )}
                   </div>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-tight truncate">
+                    {getLocalizedName(product, lang)}
+                  </h2>
                 </div>
 
                 <div className="text-right shrink-0">
                   <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    <span className="text-base font-bold text-amber-400 mr-1">Q</span>
+                    <span className="text-base font-bold text-amber-400 mr-0.5">Q</span>
                     {unitPrice.toFixed(2)}
                   </div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-                    Precio base
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block">
+                    {lang === 'en' ? 'Base price' : 'Precio base'}
                   </span>
                 </div>
               </div>
 
-              <p className="text-xs text-slate-400 mt-2 line-clamp-2 leading-relaxed">
-                {product.description || 'Especialidad preparada al momento con granos seleccionados de altura e ingredientes frescos de la más alta calidad.'}
+              <p className="text-xs sm:text-sm text-slate-300 mt-2 line-clamp-2 leading-relaxed">
+                {getLocalizedDescription(product, lang) ||
+                  (lang === 'en'
+                    ? 'Specialty prepared fresh to order with selected ingredients.'
+                    : 'Especialidad preparada al momento con ingredientes frescos seleccionados.')}
               </p>
-
-              {/* Selector de Pestañas Segmented Tabs */}
-              <div className="flex gap-2 mt-4 p-1 rounded-2xl bg-slate-900/90 border border-slate-800/80">
-                <button
-                  onClick={() => setActiveTab('details')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
-                    activeTab === 'details'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Detalles
-                </button>
-
-                {hasModifiers && (
-                  <button
-                    onClick={() => setActiveTab('customize')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 ${
-                      activeTab === 'customize'
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <span>Personalizar</span>
-                    {selectedModifiers.length > 0 && (
-                      <span className="w-4 h-4 rounded-full bg-white text-slate-950 text-[10px] font-black flex items-center justify-center">
-                        {selectedModifiers.length}
-                      </span>
-                    )}
-                  </button>
-                )}
-
-                <button
-                  onClick={() => setActiveTab('reviews')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
-                    activeTab === 'reviews'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Reseñas ({product.reviews?.length || product.rating_count || 1})
-                </button>
-              </div>
             </div>
-          </>
+          </div>
         )}
 
-        {/* Contenido Dinámico con Scroll Interior */}
-        <div className="px-5 pt-2 pb-4 overflow-y-auto flex-1 space-y-4">
+        {/* CONTENIDO PRINCIPAL CON SCROLL EXTENDIDO Y PANTALLA COMPLETA */}
+        <div className="px-4 py-4 sm:px-6 overflow-y-auto flex-1 space-y-4 no-scrollbar">
           {activeTab === 'details' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex items-center gap-2">
+              <div className="grid grid-cols-2 gap-2.5 text-xs">
+                <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-white/5 flex items-center gap-2.5">
                   <Clock className="w-4 h-4 text-emerald-400" />
                   <span className="text-slate-300 font-semibold">Prep: ~{product.estimated_prep_min || 15} min</span>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-white/5 flex items-center gap-2.5">
+                  <Compass className="w-4 h-4 text-blue-400" />
+                  <span className="text-slate-300 font-semibold">100% Calidad de Autor</span>
                 </div>
                 {product.dietary_tags?.includes('vegano') && (
                   <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 flex items-center gap-2 font-semibold">
@@ -324,13 +328,18 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
               {hasModifiers && (
                 <div
                   onClick={() => setActiveTab('customize')}
-                  className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800/80 hover:border-blue-500/40 flex items-center justify-between cursor-pointer transition group"
+                  className="p-4 rounded-2xl bg-gradient-to-r from-blue-600/15 via-slate-900/90 to-slate-900/80 border border-blue-500/30 hover:border-blue-500/60 flex items-center justify-between cursor-pointer transition group shadow-sm"
                 >
-                  <span className="text-xs text-slate-300">
-                    Este platillo cuenta con opciones de personalización (temperatura, término, guarnición o extras)
-                  </span>
-                  <span className="text-xs font-bold text-blue-400 group-hover:underline whitespace-nowrap ml-2">
-                    Elegir opciones →
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-bold text-white block">
+                      Personalizar este platillo
+                    </span>
+                    <span className="text-[11px] text-slate-400 block">
+                      Elige opciones de temperatura, término, acompañamientos o extras.
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold text-blue-400 group-hover:underline flex items-center gap-1 shrink-0 ml-2">
+                    Personalizar <ChevronRight className="w-4 h-4" />
                   </span>
                 </div>
               )}
@@ -344,36 +353,37 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
               onChangeModifiers={setSelectedModifiers}
               notes={notes}
               onChangeNotes={setNotes}
+              lang={lang}
             />
           )}
 
           {activeTab === 'reviews' && (
-            <div className="space-y-3">
-              {/* Resumen de Calificación y Botón Dejar Opinión */}
-              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800/80">
+            <div className="space-y-3.5">
+              {/* Resumen de Calificación */}
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-900/80 border border-white/5">
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 text-amber-400 font-black text-base">
+                  <div className="flex items-center gap-1 text-amber-400 font-bold text-base">
                     <Star className="w-5 h-5 fill-amber-400" />
                     <span>{rating}</span>
                   </div>
                   <span className="text-xs text-slate-400">
-                    ({salesCount} pedidos registrados)
+                    ({salesCount} órdenes registradas)
                   </span>
                 </div>
 
                 <button
                   onClick={() => setShowReviewForm(!showReviewForm)}
-                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-sm active:scale-95"
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer"
                 >
                   {showReviewForm ? 'Cancelar' : '+ Dejar Opinión'}
                 </button>
               </div>
 
-              {/* Formulario de Nueva Reseña */}
+              {/* Formulario de Reseña */}
               {showReviewForm && (
                 <form
                   onSubmit={handleSubmitReview}
-                  className="p-4 rounded-2xl bg-slate-900/80 border border-blue-500/40 space-y-3 text-xs"
+                  className="p-4 rounded-2xl bg-slate-900/90 border border-blue-500/40 space-y-3 text-xs"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-300">Tu Calificación:</span>
@@ -404,7 +414,7 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
                       value={reviewName}
                       onChange={(e) => setReviewName(e.target.value)}
                       placeholder="Ej: Carlos S."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
@@ -415,7 +425,7 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
                       value={reviewComment}
                       onChange={(e) => setReviewComment(e.target.value)}
                       placeholder="¿Qué te pareció el sabor, presentación o porción?"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"
                     />
                   </div>
 
@@ -429,7 +439,7 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
                   <button
                     type="submit"
                     disabled={submittingReview}
-                    className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition disabled:opacity-50"
+                    className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center justify-center gap-2 shadow-md shadow-blue-600/30 transition disabled:opacity-50 cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>{submittingReview ? 'Enviando...' : 'Publicar Reseña'}</span>
@@ -442,7 +452,7 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
                 product.reviews.map((rev) => (
                   <div
                     key={rev.id}
-                    className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-xs space-y-1.5"
+                    className="p-3.5 rounded-2xl bg-slate-900/80 border border-white/5 text-xs space-y-1.5"
                   >
                     <div className="flex items-center justify-between font-bold text-white">
                       <span>{rev.diner_name}</span>
@@ -462,40 +472,43 @@ export function ProductDetailModal({ product: initialProduct, onClose, onAddToCa
           )}
         </div>
 
-        {/* Sticky Footer con Selector de Cantidad [- 1 +] y Botón Añadir Azul (Imagen 2) */}
-        <div className="sticky bottom-0 bg-[#0B101B]/95 backdrop-blur-md border-t border-slate-800/80 p-4 flex items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2 bg-slate-900/90 rounded-2xl p-1 border border-slate-800">
+        {/* Sticky Footer estilo Barra Flotante iOS */}
+        <footer className="sticky bottom-0 bg-slate-900/95 sm:bg-slate-900/90 backdrop-blur-2xl border-t border-white/[0.08] p-4 sm:p-5 flex items-center justify-between gap-3 shrink-0 z-20">
+          {/* Stepper iOS [- 1 +] */}
+          <div className="flex items-center gap-1.5 bg-slate-850 rounded-2xl p-1 border border-white/10 shadow-inner">
             <button
               onClick={() => setQty((q) => Math.max(1, q - 1))}
-              className="w-9 h-9 rounded-xl flex items-center justify-center bg-slate-800/80 hover:bg-slate-700 text-slate-200 transition active:scale-90"
+              className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-200 transition active:scale-90 cursor-pointer"
               aria-label="Disminuir cantidad"
             >
-              <Minus className="w-4 h-4" />
+              <Minus className="w-4 h-4 stroke-[2.5]" />
             </button>
-            <span className="font-black text-sm w-6 text-center text-white">{qty}</span>
+            <span className="font-bold text-sm w-7 text-center text-white font-mono">{qty}</span>
             <button
               onClick={() => setQty((q) => q + 1)}
-              className="w-9 h-9 rounded-xl flex items-center justify-center bg-slate-800/80 hover:bg-slate-700 text-slate-200 transition active:scale-90"
+              className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-200 transition active:scale-90 cursor-pointer"
               aria-label="Aumentar cantidad"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
 
+          {/* Botón Principal estilo iOS con Degradado Azul Suave */}
           <button
             onClick={handleAdd}
-            className="flex-1 py-3.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm flex items-center justify-between shadow-xl shadow-blue-600/40 active:scale-98 transition cursor-pointer"
+            className="flex-1 h-12 sm:h-14 px-5 rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm flex items-center justify-between shadow-lg shadow-blue-600/30 active:scale-[0.98] transition-all cursor-pointer border border-white/10"
           >
-            <div className="flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5" />
-              <span>Añadir al Carrito</span>
+            <div className="flex items-center gap-2.5">
+              <ShoppingBag className="w-5 h-5 stroke-[2.2]" />
+              <span className="tracking-wide">{lang === 'en' ? 'Add to Order' : 'Añadir a la Orden'}</span>
             </div>
-            <span className="bg-blue-700/60 px-3 py-1 rounded-xl text-xs font-black">
+            <span className="bg-black/25 backdrop-blur-md px-3 py-1 rounded-xl text-xs font-bold font-mono">
               Q{totalPrice.toFixed(2)}
             </span>
           </button>
-        </div>
+        </footer>
       </m.div>
     </div>
   );
 }
+

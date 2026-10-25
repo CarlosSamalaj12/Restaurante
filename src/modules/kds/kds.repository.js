@@ -5,6 +5,25 @@ const { query } = require("../../common/db");
 const { nowSql } = require("../../common/utils");
 
 const kdsRepository = {
+  // ─── Control de Módulo Premium en app_settings ───
+  async isModuleEnabled() {
+    const [rows] = await query(
+      `SELECT setting_value FROM app_settings WHERE setting_key = 'module_kds_enabled' LIMIT 1`
+    );
+    if (!rows.length) return false;
+    return String(rows[0].setting_value).trim() === "1";
+  },
+
+  async setModuleEnabled(enabled) {
+    const val = enabled ? "1" : "0";
+    await query(
+      `INSERT INTO app_settings (setting_key, setting_value)
+       VALUES ('module_kds_enabled', ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [val]
+    );
+  },
+
   /**
    * Obtiene los platillos enviados y activos de cuentas abiertas.
    */

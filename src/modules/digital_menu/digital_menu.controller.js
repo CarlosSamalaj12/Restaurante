@@ -155,6 +155,23 @@ const digitalMenuController = {
     const result = await digitalMenuService.updateProductDigitalInfo(id, req.body || {});
     res.json(result);
   }),
+
+  // ─── Gestión de Traducciones ───
+  getTranslations: asyncHandler(async (req, res) => {
+    const { menuId } = req.query;
+    const data = await digitalMenuService.getTranslations(menuId ? Number(menuId) : null);
+    res.json(data);
+  }),
+
+  saveTranslations: asyncHandler(async (req, res) => {
+    const result = await digitalMenuService.saveTranslations(req.body);
+    res.json(result);
+  }),
+
+  autoTranslate: asyncHandler(async (req, res) => {
+    const result = await digitalMenuService.autoTranslate(req.body);
+    res.json(result);
+  }),
 };
 
 module.exports = digitalMenuController;

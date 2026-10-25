@@ -24,6 +24,15 @@ async function ensureDigitalMenuTables() {
   await safeExec(`ALTER TABLE products ADD COLUMN rating_avg DECIMAL(3,2) NOT NULL DEFAULT 5.00`);
   await safeExec(`ALTER TABLE products ADD COLUMN rating_count INT NOT NULL DEFAULT 0`);
 
+  // 2.1 Columnas para soporte multilingüe (Español / Inglés)
+  await safeExec(`ALTER TABLE products ADD COLUMN name_en VARCHAR(255) NULL`);
+  await safeExec(`ALTER TABLE products ADD COLUMN description_en TEXT NULL`);
+  await safeExec(`ALTER TABLE product_categories ADD COLUMN name_en VARCHAR(120) NULL`);
+  await safeExec(`ALTER TABLE modifier_groups ADD COLUMN name_en VARCHAR(120) NULL`);
+  await safeExec(`ALTER TABLE modifier_options ADD COLUMN name_en VARCHAR(120) NULL`);
+  await safeExec(`ALTER TABLE digital_menus ADD COLUMN name_en VARCHAR(120) NULL`);
+  await safeExec(`ALTER TABLE digital_menus ADD COLUMN description_en TEXT NULL`);
+
   // 3. Extensión de columnas en 'accounts' para trazabilidad de auto-comanda sin mesero
   await safeExec(
     `ALTER TABLE accounts ADD COLUMN order_source ENUM('pos_waiter', 'qr_guest', 'kiosk') NOT NULL DEFAULT 'pos_waiter'`

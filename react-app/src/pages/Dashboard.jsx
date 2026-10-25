@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { useSocket } from '../hooks/useSocket';
 import api from '../api';
 import { MacDock } from '../components/MacDock';
 import { CenterSelectorBar } from '../components/CenterSelectorBar';
@@ -49,6 +50,23 @@ export function Dashboard({ onNavigate, onSelectTable }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeAccountIndex, setActiveAccountIndex] = useState(0);
+
+  // Estado del Módulo KDS
+  const [kdsEnabled, setKdsEnabled] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.kds.getStatus().then((res) => {
+      if (isMounted && res) setKdsEnabled(Boolean(res.enabled));
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, []);
+
+  useSocket({
+    'settings:module_kds_toggled': ({ enabled }) => {
+      setKdsEnabled(Boolean(enabled));
+    },
+  });
 
   // Modales
   const [showQuickTableModal, setShowQuickTableModal] = useState(false);
@@ -193,7 +211,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
       const min = getElapsedMinutes(o.created_at || o.opened_at);
       return min >= 15;
     });
-    if (delayedOrders.length > 0) {
+    if (delayedOrders.length > 0 && kdsEnabled) {
       list.push({
         id: 'delayed-kds',
         type: 'warning',
@@ -453,6 +471,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
   ];
 
   const visibleModules = moduleCards.filter((m) => {
+    if (m.id === 'kds' && !kdsEnabled && userRole !== 'superadmin') return false;
     if (userRole === 'superadmin') return true;
     if (m.id === 'settings') {
       return ['superadmin', 'admin', 'manager'].includes(userRole);

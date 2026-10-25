@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
+import { t } from '../../utils/menuTranslations';
 
 export function CartDrawer({
   isOpen,
@@ -30,6 +31,7 @@ export function CartDrawer({
   sessionData,
   onOrderSuccess,
   onRequestBill,
+  lang = 'es',
 }) {
   const toast = useToast();
   const [paymentMethod, setPaymentMethod] = useState('cash');
@@ -111,15 +113,22 @@ export function CartDrawer({
             </div>
             <div>
               <h2 className="font-black text-base text-white tracking-tight">
-                {isKiosk ? 'Tu Pedido en Kiosco' : `Comanda ${tableCode ? `Mesa ${tableCode}` : ''}`}
+                {isKiosk
+                  ? (lang === 'en' ? 'Your Kiosk Order' : 'Tu Pedido en Kiosco')
+                  : (lang === 'en'
+                      ? `Table ${tableCode || ''} Order`
+                      : `Comanda ${tableCode ? `Mesa ${tableCode}` : ''}`)}
               </h2>
               {sessionData?.checkNumber ? (
                 <span className="text-[11px] text-slate-400 font-mono">
-                  Cuenta activa: #{sessionData.checkNumber}
+                  {lang === 'en' ? 'Active account' : 'Cuenta activa'}: #{sessionData.checkNumber}
                 </span>
               ) : (
                 <span className="text-[11px] text-slate-400">
-                  {cart.length} {cart.length === 1 ? 'producto seleccionado' : 'productos seleccionados'}
+                  {cart.length}{' '}
+                  {cart.length === 1
+                    ? (lang === 'en' ? 'item selected' : 'producto seleccionado')
+                    : (lang === 'en' ? 'items selected' : 'productos seleccionados')}
                 </span>
               )}
             </div>
@@ -130,7 +139,7 @@ export function CartDrawer({
               setSuccessInfo(null);
               onClose();
             }}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition active:scale-95"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition active:scale-95 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -142,18 +151,24 @@ export function CartDrawer({
             <div className="w-20 h-20 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-xl shadow-emerald-500/10">
               <CheckCircle2 className="w-10 h-10" />
             </div>
-            <h3 className="text-2xl font-black text-white">¡Comanda Enviada!</h3>
+            <h3 className="text-2xl font-black text-white">
+              {lang === 'en' ? 'Order Sent!' : '¡Comanda Enviada!'}
+            </h3>
             <p className="text-xs text-slate-300 max-w-xs leading-relaxed">
-              Tus platillos entraron directamente al sistema de cocina. Te notificaremos cuando estén listos.
+              {lang === 'en'
+                ? 'Your order entered directly into the kitchen system. We will notify you when ready.'
+                : 'Tus platillos entraron directamente al sistema de cocina. Te notificaremos cuando estén listos.'}
             </p>
             <div className="p-4 bg-slate-900/80 rounded-2xl border border-slate-800 w-full max-w-xs text-xs space-y-2 shadow-inner">
               <div className="flex justify-between text-slate-400">
-                <span>Número de Cuenta:</span>
+                <span>{lang === 'en' ? 'Account Number:' : 'Número de Cuenta:'}</span>
                 <span className="font-bold text-white font-mono">{successInfo.checkNumber}</span>
               </div>
               <div className="flex justify-between text-slate-400">
-                <span>Platillos enviados:</span>
-                <span className="font-bold text-emerald-400">{successInfo.itemsSent} ítems</span>
+                <span>{lang === 'en' ? 'Items sent:' : 'Platillos enviados:'}</span>
+                <span className="font-bold text-emerald-400">
+                  {successInfo.itemsSent} {lang === 'en' ? 'items' : 'ítems'}
+                </span>
               </div>
             </div>
 
@@ -162,9 +177,9 @@ export function CartDrawer({
                 setSuccessInfo(null);
                 onClose();
               }}
-              className="mt-4 px-6 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg shadow-blue-600/30 transition active:scale-95"
+              className="mt-4 px-6 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg shadow-blue-600/30 transition active:scale-95 cursor-pointer"
             >
-              Seguir Explorando el Menú
+              {lang === 'en' ? 'Continue Exploring Menu' : 'Seguir Explorando el Menú'}
             </button>
           </div>
         ) : (
@@ -176,8 +191,8 @@ export function CartDrawer({
                   <div className="w-16 h-16 rounded-3xl bg-slate-900/90 border border-slate-800 flex items-center justify-center text-3xl shadow-inner">
                     🛒
                   </div>
-                  <span className="text-slate-400 font-medium">Tu carrito está vacío.</span>
-                  <span className="text-slate-500 text-[11px]">¡Explora la carta y agrega tus especialidades favoritas!</span>
+                  <span className="text-slate-400 font-medium">{t(lang, 'cartEmpty')}</span>
+                  <span className="text-slate-500 text-[11px]">{t(lang, 'cartEmptyHint')}</span>
                 </div>
               ) : (
                 cart.map((item, idx) => (
@@ -191,13 +206,15 @@ export function CartDrawer({
                           {item.qty}x
                         </span>
                         <span className="font-black text-white text-sm">
-                          {item.name}
+                          {lang === 'en' && item.name_en ? item.name_en : item.name}
                         </span>
                       </div>
 
                       {item.modifiers && item.modifiers.length > 0 && (
                         <div className="text-[11px] text-slate-400 pl-1">
-                          {item.modifiers.map((m) => m.name).join(', ')}
+                          {item.modifiers
+                            .map((m) => (lang === 'en' && m.name_en ? m.name_en : m.name))
+                            .join(', ')}
                         </div>
                       )}
 
@@ -231,53 +248,55 @@ export function CartDrawer({
                 {/* Selector de Método de Pago */}
                 <div>
                   <span className="text-xs font-bold text-slate-300 block mb-2">
-                    Forma de pago preferida:
+                    {lang === 'en' ? 'Preferred payment method:' : 'Forma de pago preferida:'}
                   </span>
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('cash')}
-                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 cursor-pointer ${
                         paymentMethod === 'cash'
                           ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300 ring-2 ring-emerald-500/40 shadow-md shadow-emerald-500/10'
                           : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
                       <Banknote className="w-4 h-4 text-emerald-400" />
-                      <span>Efectivo</span>
+                      <span>{lang === 'en' ? 'Cash' : 'Efectivo'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('card')}
-                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 cursor-pointer ${
                         paymentMethod === 'card'
                           ? 'border-blue-500 bg-blue-950/40 text-blue-300 ring-2 ring-blue-500/40 shadow-md shadow-blue-500/10'
                           : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
                       <CreditCard className="w-4 h-4 text-blue-400" />
-                      <span>POS Tarjeta</span>
+                      <span>{lang === 'en' ? 'Card' : 'POS Tarjeta'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('transfer')}
-                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 cursor-pointer ${
                         paymentMethod === 'transfer'
                           ? 'border-amber-500 bg-amber-950/40 text-amber-300 ring-2 ring-amber-500/40 shadow-md shadow-amber-500/10'
                           : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
                       <QrCode className="w-4 h-4 text-amber-400" />
-                      <span>Transferencia</span>
+                      <span>{lang === 'en' ? 'Transfer' : 'Transferencia'}</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Subtotal */}
                 <div className="flex items-center justify-between text-sm font-bold pt-1">
-                  <span className="text-slate-400">Total Comanda:</span>
+                  <span className="text-slate-400">
+                    {lang === 'en' ? 'Order Total:' : 'Total Comanda:'}
+                  </span>
                   <span className="text-xl font-black text-white">Q {subtotal.toFixed(2)}</span>
                 </div>
 
@@ -285,17 +304,19 @@ export function CartDrawer({
                 <button
                   disabled={isSending}
                   onClick={handleSendOrder}
-                  className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-blue-600/35 active:scale-98 transition disabled:opacity-50"
+                  className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-blue-600/35 active:scale-98 transition disabled:opacity-50 cursor-pointer"
                 >
                   {isSending ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Enviando a Cocina...</span>
+                      <span>{lang === 'en' ? 'Sending to Kitchen...' : 'Enviando a Cocina...'}</span>
                     </>
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
-                      <span>Confirmar y Enviar Comanda</span>
+                      <span>
+                        {lang === 'en' ? 'Confirm and Send Order' : 'Confirmar y Enviar Comanda'}
+                      </span>
                     </>
                   )}
                 </button>
@@ -307,46 +328,46 @@ export function CartDrawer({
               <div className="relative z-10 p-4 bg-[#0A0E17]/95 border-t border-slate-800/80 space-y-3">
                 <div>
                   <span className="text-xs font-bold text-slate-300 block mb-2">
-                    ¿Cómo deseas pagar la cuenta?
+                    {lang === 'en' ? 'How would you like to pay the bill?' : '¿Cómo deseas pagar la cuenta?'}
                   </span>
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('cash')}
-                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 cursor-pointer ${
                         paymentMethod === 'cash'
                           ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300 ring-2 ring-emerald-500/40 shadow-md'
                           : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
                       <Banknote className="w-4 h-4 text-emerald-400" />
-                      <span>Efectivo</span>
+                      <span>{lang === 'en' ? 'Cash' : 'Efectivo'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('card')}
-                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 cursor-pointer ${
                         paymentMethod === 'card'
                           ? 'border-blue-500 bg-blue-950/40 text-blue-300 ring-2 ring-blue-500/40 shadow-md'
                           : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
                       <CreditCard className="w-4 h-4 text-blue-400" />
-                      <span>POS Tarjeta</span>
+                      <span>{lang === 'en' ? 'Card' : 'POS Tarjeta'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('transfer')}
-                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 ${
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1 text-[11px] font-bold transition active:scale-95 cursor-pointer ${
                         paymentMethod === 'transfer'
                           ? 'border-amber-500 bg-amber-950/40 text-amber-300 ring-2 ring-amber-500/40 shadow-md'
                           : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white'
                       }`}
                     >
                       <QrCode className="w-4 h-4 text-amber-400" />
-                      <span>Transferencia</span>
+                      <span>{lang === 'en' ? 'Transfer' : 'Transferencia'}</span>
                     </button>
                   </div>
                 </div>
@@ -354,10 +375,12 @@ export function CartDrawer({
                 <button
                   disabled={requestingBill}
                   onClick={handleBill}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-black text-xs flex items-center justify-center gap-2 hover:bg-amber-500/20 transition active:scale-98 shadow-lg shadow-amber-500/10"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-black text-xs flex items-center justify-center gap-2 hover:bg-amber-500/20 transition active:scale-98 shadow-lg shadow-amber-500/10 cursor-pointer"
                 >
                   <Receipt className="w-4 h-4" />
-                  {requestingBill ? 'Solicitando...' : 'Solicitar la Cuenta en Mesa'}
+                  {requestingBill
+                    ? (lang === 'en' ? 'Requesting...' : 'Solicitando...')
+                    : (lang === 'en' ? 'Request Bill at Table' : 'Solicitar la Cuenta en Mesa')}
                 </button>
               </div>
             )}

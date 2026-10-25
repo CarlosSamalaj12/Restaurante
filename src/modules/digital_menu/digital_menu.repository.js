@@ -122,7 +122,7 @@ const digitalMenuRepository = {
   // ─── Categorías y Productos asignados al Menú ───
   async getMenuCategories(menuId) {
     const [rows] = await query(
-      `SELECT pc.id, pc.name, pc.color, dmc.sort_order
+      `SELECT pc.id, pc.name, pc.name_en, pc.color, dmc.sort_order
        FROM digital_menu_categories dmc
        INNER JOIN product_categories pc ON pc.id = dmc.category_id
        WHERE dmc.menu_id = ? AND pc.is_active = 1
@@ -141,8 +141,8 @@ const digitalMenuRepository = {
     }
 
     const [rows] = await query(
-      `SELECT p.id, p.category_id, p.name, p.base_price,
-              p.image_url, p.description, p.dietary_tags, p.estimated_prep_min,
+      `SELECT p.id, p.category_id, p.name, p.name_en, p.base_price,
+              p.image_url, p.description, p.description_en, p.dietary_tags, p.estimated_prep_min,
               COALESCE(p.rating_avg, 5.0) AS rating_avg,
               COALESCE(p.rating_count, 0) AS rating_count,
               dmp.is_featured, dmp.sort_order
@@ -185,8 +185,8 @@ const digitalMenuRepository = {
   // ─── Detalle de Producto con Grupos de Modificadores ───
   async getProductDetail(productId) {
     const [products] = await query(
-      `SELECT p.id, p.category_id, p.name, p.base_price,
-              p.image_url, p.description, p.dietary_tags, p.estimated_prep_min,
+      `SELECT p.id, p.category_id, p.name, p.name_en, p.base_price,
+              p.image_url, p.description, p.description_en, p.dietary_tags, p.estimated_prep_min,
               COALESCE(p.rating_avg, 5.0) AS rating_avg,
               COALESCE(p.rating_count, 0) AS rating_count
        FROM products p
@@ -198,7 +198,7 @@ const digitalMenuRepository = {
 
     // Obtener grupos de modificadores
     const [groups] = await query(
-      `SELECT mg.id, mg.name, mg.group_type, mg.min_select, mg.max_select, mg.is_mandatory, mg.display_method
+      `SELECT mg.id, mg.name, mg.name_en, mg.group_type, mg.min_select, mg.max_select, mg.is_mandatory, mg.display_method
        FROM product_modifier_groups pmg
        INNER JOIN modifier_groups mg ON mg.id = pmg.group_id
        WHERE pmg.product_id = ? AND mg.is_active = 1
@@ -211,7 +211,7 @@ const digitalMenuRepository = {
 
     if (groupIds.length) {
       const [options] = await query(
-        `SELECT id, group_id, name, price_delta
+        `SELECT id, group_id, name, name_en, price_delta
          FROM modifier_options
          WHERE group_id IN (?) AND is_active = 1
          ORDER BY sort_order ASC, name ASC`,
@@ -248,6 +248,67 @@ const digitalMenuRepository = {
       modifier_groups: modifierGroups,
       reviews,
     };
+  },
+
+  // ─── Gestión de Traducciones (ES -> EN) ───
+  async getTranslationCatalog(menuId = null) {
+    let catQuery = `SELECT id, name, name_en, color FROM product_categories WHERE is_active = 1 ORDER BY name ASC`;
+    let prodQuery = `
+      SELECT p.id, p.category_id, p.name, p.name_en, p.description, p.description_en, p.base_price, pc.name AS category_name
+      FROM products p
+      LEFT JOIN product_categories pc ON pc.id = p.category_id
+      WHERE p.is_active = 1
+      ORDER BY pc.name ASC, p.name ASC
+    `;
+
+    if (menuId) {
+      catQuery = `
+        SELECT pc.id, pc.name, pc.name_en, pc.color
+        FROM digital_menu_categories dmc
+        INNER JOIN product_categories pc ON pc.id = dmc.category_id
+        WHERE dmc.menu_id = ? AND pc.is_active = 1
+        ORDER BY dmc.sort_order ASC, pc.name ASC
+      `;
+      prodQuery = `
+        SELECT p.id, p.category_id, p.name, p.name_en, p.description, p.description_en, p.base_price, pc.name AS category_name
+        FROM digital_menu_products dmp
+        INNER JOIN products p ON p.id = dmp.product_id
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        WHERE dmp.menu_id = ? AND p.is_active = 1
+        ORDER BY pc.name ASC, p.name ASC
+      `;
+    }
+
+    const [categories] = await query(catQuery, menuId ? [menuId] : []);
+    const [products] = await query(prodQuery, menuId ? [menuId] : []);
+    return { categories, products };
+  },
+
+  async saveTranslations({ categories = [], products = [] }) {
+    await withTransaction(async (conn) => {
+      for (const cat of categories) {
+        if (cat.id) {
+          await query(
+            `UPDATE product_categories SET name_en = ? WHERE id = ?`,
+            [cat.name_en ? String(cat.name_en).trim() : null, cat.id],
+            conn
+          );
+        }
+      }
+      for (const prod of products) {
+        if (prod.id) {
+          await query(
+            `UPDATE products SET name_en = ?, description_en = ? WHERE id = ?`,
+            [
+              prod.name_en ? String(prod.name_en).trim() : null,
+              prod.description_en ? String(prod.description_en).trim() : null,
+              prod.id,
+            ],
+            conn
+          );
+        }
+      }
+    });
   },
 
   // ─── Promociones (Hero Carousel) ───

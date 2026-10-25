@@ -725,6 +725,8 @@ export const api = {
   
   // KDS - Kitchen Display System
   kds: {
+    getStatus: () => request('/kds/status'),
+    toggleModule: (enabled) => request('/kds/toggle', { method: 'POST', body: { enabled } }),
     getMyStation: (params = {}) => {
       const qs = new URLSearchParams();
       if (params.terminalId) qs.append('terminalId', params.terminalId);
@@ -975,6 +977,18 @@ export const api = {
     updateProductInfo: (id, data) =>
       request(`/admin/digital-menu/products/${id}`, {
         method: 'PUT',
+        body: data,
+      }),
+    getTranslations: (menuId = '') =>
+      request(`/admin/digital-menu/translations${menuId ? `?menuId=${menuId}` : ''}`),
+    saveTranslations: (data) =>
+      request('/admin/digital-menu/translations', {
+        method: 'POST',
+        body: data,
+      }),
+    autoTranslate: (data) =>
+      request('/admin/digital-menu/auto-translate', {
+        method: 'POST',
         body: data,
       }),
   },
