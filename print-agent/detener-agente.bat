@@ -5,7 +5,6 @@ echo ==============================================================
 echo           DETENIENDO SAMAPOS PRINT AGENT
 echo ==============================================================
 echo.
-taskkill /fi "WINDOWTITLE eq SamaPos Print Agent*" /t /f >nul 2>nul
-taskkill /fi "IMAGENAME eq node.exe" /fi "MEMUSAGE gt 5000" /f >nul 2>nul
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*agent.js*' -or $_.CommandLine -like '*start-agent.bat*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>nul
 echo [OK] Servicio del agente detenido.
 timeout /t 3 >nul

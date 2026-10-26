@@ -6,7 +6,23 @@ const path = require("path");
 const http = require("http");
 const https = require("https");
 const { io } = require("socket.io-client");
+const net = require("net");
 const { buildKitchenTicket, buildCustomerReceipt, buildTestPage } = require("./builders");
+
+// ───────── Bloqueo de Instancia Única ─────────
+// Evita que se abran múltiples agentes en la misma computadora que dupliquen tickets
+const LOCK_PORT = 29199;
+const lockServer = net.createServer();
+lockServer.once("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.warn("\n=======================================================");
+    console.warn("  [AVISO] Ya hay una instancia de SamaPos Print Agent activa");
+    console.warn("  en esta computadora. Esta nueva instancia se cerrará.");
+    console.warn("=======================================================\n");
+    process.exit(0);
+  }
+});
+lockServer.listen(LOCK_PORT, "127.0.0.1");
 
 // ───────── Cargar Configuración ─────────
 const configPath = path.join(__dirname, "config.json");
@@ -50,20 +66,25 @@ let isProcessingQueue = false;
 
 function enqueueJob(job) {
   if (!job) return;
-  if (!job.jobId) {
-    job.jobId = Date.now();
-  }
-  if (processedJobIds.has(Number(job.jobId))) return;
+  const id = Number(job.jobId) || Date.now();
+  job.jobId = id;
 
-  const exists = jobQueue.some((q) => Number(q.jobId) === Number(job.jobId));
-  if (!exists) {
-    if (job.jobType === "test") {
-      jobQueue.unshift(job);
-    } else {
-      jobQueue.push(job);
-    }
-    processQueue();
+  // Si ya se procesó o se está procesando, ignorar inmediatamente
+  if (processedJobIds.has(id)) return;
+
+  // Si ya está esperando en cola, ignorar
+  const exists = jobQueue.some((q) => Number(q.jobId) === id);
+  if (exists) return;
+
+  // Registrar de inmediato en el Set para blindar contra cualquier llegada concurrente
+  processedJobIds.add(id);
+
+  if (job.jobType === "test") {
+    jobQueue.unshift(job);
+  } else {
+    jobQueue.push(job);
   }
+  processQueue();
 }
 
 async function processQueue() {
@@ -354,9 +375,13 @@ socket.on("connect_error", (err) => {
   console.warn(`[RECONECTANDO] No se pudo conectar a ${config.serverUrl}: ${err.message}`);
 });
 
-// Iniciar chequeo periódico (failsafe cada 15s)
-const pollInterval = Math.max(Number(config.pollIntervalMs) || 15000, 5000);
-setInterval(pollPendingJobs, pollInterval);
+// Iniciar chequeo periódico como respaldo (failsafe solo si el WebSocket está desconectado)
+const pollInterval = Math.max(Number(config.pollIntervalMs) || 20000, 10000);
+setInterval(() => {
+  if (!socket || !socket.connected) {
+    pollPendingJobs();
+  }
+}, pollInterval);
 
 // Cierre limpio
 process.on("SIGINT", () => {

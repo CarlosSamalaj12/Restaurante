@@ -89,11 +89,23 @@ function unregisterAgent(socket) {
 
 async function getPendingJobs(limit = 50) {
   const lim = Math.min(Math.max(Number(limit) || 50, 1), 200);
+
+  // 1. Limpiar automáticamente trabajos pendientes obsoletos (> 10 minutos)
+  try {
+    await query(
+      `UPDATE print_jobs
+       SET status = 'failed', error_message = 'Cancelado automáticamente por antigüedad (>10m)', completed_at = NOW()
+       WHERE status = 'pending' AND created_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)`
+    );
+  } catch (_) {}
+
+  // 2. Obtener solo trabajos pendientes recientes
   const [rows] = await query(
     `SELECT id, printer_target, printer_ip, printer_port, job_type, account_id,
             payload_size, payload_json, status, attempts, error_message, created_at
      FROM print_jobs
      WHERE status = 'pending'
+       AND created_at >= DATE_SUB(NOW(), INTERVAL 10 MINUTE)
      ORDER BY id ASC
      LIMIT ?`,
     [lim]
