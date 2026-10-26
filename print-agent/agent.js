@@ -49,12 +49,19 @@ const processedJobIds = new Set();
 let isProcessingQueue = false;
 
 function enqueueJob(job) {
-  if (!job || !job.jobId) return;
+  if (!job) return;
+  if (!job.jobId) {
+    job.jobId = Date.now();
+  }
   if (processedJobIds.has(Number(job.jobId))) return;
 
   const exists = jobQueue.some((q) => Number(q.jobId) === Number(job.jobId));
   if (!exists) {
-    jobQueue.push(job);
+    if (job.jobType === "test") {
+      jobQueue.unshift(job);
+    } else {
+      jobQueue.push(job);
+    }
     processQueue();
   }
 }

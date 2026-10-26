@@ -69,10 +69,10 @@ async function logPrintJob({
         status,
         attempts,
         error,
-        status === "pending" ? null : nowSql(),
       ]
     );
-    return res?.insertId || null;
+    const insertId = res?.insertId || res?.[0]?.insertId || null;
+    return insertId;
   } catch (e) {
     console.error("[PRINT] No pude loguear print_job:", e.message);
     return null;
@@ -169,7 +169,7 @@ async function dispatchPrint({ target, jobType, accountId, payloadData, builder,
   const payloadSize = payloadString ? Buffer.byteLength(payloadString, "utf8") : 0;
 
   // Registrar trabajo en cola con payload completo
-  const jobId = await logPrintJob({
+  let jobId = await logPrintJob({
     target: printerName,
     ip,
     port,
@@ -180,6 +180,10 @@ async function dispatchPrint({ target, jobType, accountId, payloadData, builder,
     payloadSize,
     payloadJson: payloadString,
   });
+
+  if (!jobId) {
+    jobId = Date.now();
+  }
 
   // Consultar modo de enrutamiento ('auto', 'direct', 'agent')
   let routingMode = "auto";
@@ -240,7 +244,7 @@ async function dispatchPrint({ target, jobType, accountId, payloadData, builder,
     printAgentService.emitNewJob(jobObj);
 
     if (waitResult) {
-      const ackResult = await printAgentService.waitForJobAck(jobId, 5000);
+      const ackResult = await printAgentService.waitForJobAck(jobId, 10000);
       return { ok: ackResult.ok, error: ackResult.error, jobId, delegatedToAgent: true };
     }
     return { ok: true, jobId, delegatedToAgent: true };
