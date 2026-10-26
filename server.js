@@ -250,6 +250,13 @@ if (require("fs").existsSync(reactDistPath)) {
       express.static(assetsPath, {
         maxAge: "1y",
         immutable: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith(".js")) {
+            res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+          } else if (filePath.endsWith(".css")) {
+            res.setHeader("Content-Type", "text/css; charset=utf-8");
+          }
+        },
       })
     );
   }
@@ -261,6 +268,13 @@ if (require("fs").existsSync(reactDistPath)) {
       setHeaders: (res, filePath) => {
         if (filePath.endsWith("index.html") || filePath.endsWith("sw.js")) {
           res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        }
+        if (filePath.endsWith(".html")) {
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+        } else if (filePath.endsWith(".js")) {
+          res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        } else if (filePath.endsWith(".json")) {
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
         }
       },
     })
@@ -282,6 +296,45 @@ if (require("fs").existsSync(uploadsPath)) {
 }
 
 app.use(express.static(path.join(__dirname, "public"), { maxAge: "1d" }));
+
+// Sanitizador automático de codificación para respuestas JSON (prevención de mojibake en clientes)
+const MOJIBAKE_REGEX = /Ã|Â|â€/;
+const MOJIBAKE_REPLACEMENTS = [
+  [/Ã¡/g, "á"], [/Ã©/g, "é"], [/Ã­/g, "í"], [/Ã³/g, "ó"], [/Ãº/g, "ú"], [/Ã±/g, "ñ"],
+  [/Ã /g, "Á"], [/Ã‰/g, "É"], [/Ã /g, "Í"], [/Ã“/g, "Ó"], [/Ãš/g, "Ú"], [/Ã‘/g, "Ñ"],
+  [/Ã¼/g, "ü"], [/Ãœ/g, "Ü"], [/Â¿/g, "¿"], [/Â¡/g, "¡"], [/Â°/g, "°"],
+  [/â€“/g, "–"], [/â€”/g, "—"], [/â€œ/g, "“"], [/â€ /g, "”"], [/â€™/g, "’"],
+];
+
+function sanitizeMojibake(val) {
+  if (typeof val === "string") {
+    if (!MOJIBAKE_REGEX.test(val)) return val;
+    let s = val;
+    for (const [re, rep] of MOJIBAKE_REPLACEMENTS) {
+      s = s.replace(re, rep);
+    }
+    return s;
+  }
+  if (Array.isArray(val)) {
+    return val.map(sanitizeMojibake);
+  }
+  if (val !== null && typeof val === "object") {
+    const out = {};
+    for (const k of Object.keys(val)) {
+      out[k] = sanitizeMojibake(val[k]);
+    }
+    return out;
+  }
+  return val;
+}
+
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    return originalJson(sanitizeMojibake(body));
+  };
+  next();
+});
 
 // Middleware global de licenciamiento
 // /api/license/*, /api/public/* y /api/print-agent están exentos para comensales, enrollment y print agent
@@ -364,6 +417,7 @@ app.use((req, res, next) => {
   }
   const indexPath = path.join(reactDistPath, "index.html");
   if (require("fs").existsSync(indexPath)) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.sendFile(indexPath);
   }
   next();
@@ -372,6 +426,7 @@ app.use((req, res, next) => {
 const port = Number(process.env.PORT || 3000);
 server.listen(port, async () => {
   try {
+    await pool.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
     await ensureConfigTables();
     await pool.query("SELECT 1");
     console.log(`POS activo en http://localhost:${port}`);

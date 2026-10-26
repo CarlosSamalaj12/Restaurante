@@ -215,6 +215,7 @@ export function PaymentMethodReportPage({ onBack }) {
       <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="utf-8" />
           <title>Arqueo por Forma de Pago</title>
           <style>
             body { font-family: monospace; width: 78mm; margin: 0 auto; padding: 4px; font-size: 11px; }

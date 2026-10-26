@@ -585,6 +585,7 @@ export function DigitalMenuSection({ authUser }) {
       <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="utf-8" />
           <title>Fichas QR - ${selectedMenu?.name || 'Menú Digital'}</title>
           <style>
             @page { size: letter portrait; margin: 10mm; }

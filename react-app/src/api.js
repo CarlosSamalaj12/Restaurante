@@ -7,6 +7,36 @@ import {
   getTerminalCode,
 } from './lib/offlineCorrelatives';
 
+const MOJIBAKE_REGEX = /Ã|Â|â€/;
+const MOJIBAKE_REPLACEMENTS = [
+  [/Ã¡/g, 'á'], [/Ã©/g, 'é'], [/Ã­/g, 'í'], [/Ã³/g, 'ó'], [/Ãº/g, 'ú'], [/Ã±/g, 'ñ'],
+  [/Ã /g, 'Á'], [/Ã‰/g, 'É'], [/Ã /g, 'Í'], [/Ã“/g, 'Ó'], [/Ãš/g, 'Ú'], [/Ã‘/g, 'Ñ'],
+  [/Ã¼/g, 'ü'], [/Ãœ/g, 'Ü'], [/Â¿/g, '¿'], [/Â¡/g, '¡'], [/Â°/g, '°'],
+  [/â€“/g, '–'], [/â€”/g, '—'], [/â€œ/g, '“'], [/â€ /g, '”'], [/â€™/g, '’'],
+];
+
+export function cleanMojibake(value) {
+  if (typeof value === 'string') {
+    if (!MOJIBAKE_REGEX.test(value)) return value;
+    let res = value;
+    for (const [re, rep] of MOJIBAKE_REPLACEMENTS) {
+      res = res.replace(re, rep);
+    }
+    return res;
+  }
+  if (Array.isArray(value)) {
+    return value.map(cleanMojibake);
+  }
+  if (value !== null && typeof value === 'object') {
+    const cleaned = {};
+    for (const k of Object.keys(value)) {
+      cleaned[k] = cleanMojibake(value[k]);
+    }
+    return cleaned;
+  }
+  return value;
+}
+
 const API_BASE = '/api';
 
 async function request(endpoint, options = {}) {
@@ -41,7 +71,8 @@ async function request(endpoint, options = {}) {
     }
     return;
   }
-  const data = await response.json().catch(() => null);
+  const rawData = await response.json().catch(() => null);
+  const data = cleanMojibake(rawData);
 
   // Licencia revocada/vencida → notificar inmediatamente a useLicense para bloquear pantalla
   if (response.status === 403 && data?.code && String(data.code).startsWith('LICENSE_')) {

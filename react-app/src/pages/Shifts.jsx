@@ -261,9 +261,15 @@ export function ShiftsPage({ onBack }) {
         note: '',
         closingCash: closingCash !== '' ? Number(closingCash) : null,
       });
-      toast.success('Turno cerrado exitosamente');
-      // Print final Z closure
-      handlePrint('Z', result.summary, result.openedAt, result.closedAt);
+      toast.success('Turno cerrado exitosamente. Imprimiendo Corte Z...');
+      // Disparar automáticamente la impresión física del Corte Z con los datos finales calculados
+      handlePrint(
+        'Z',
+        result.summary,
+        result.openedAt,
+        result.closedAt,
+        result.shiftId || result.summary?.shiftId || currentShift?.id
+      );
       // Reset state
       setCurrentShift(null);
       setPreviewData(null);
@@ -404,7 +410,7 @@ export function ShiftsPage({ onBack }) {
   const selectedCenterName = centers.find(c => c.id === selectedCenter)?.name || 'Sucursal Principal';
 
   // Print Corte X (Audit preview modal) or Corte Z (Definitive closure automatic thermal print)
-  const handlePrint = (type = 'X', customSummary = null, customOpened = null, customClosed = null) => {
+  const handlePrint = (type = 'X', customSummary = null, customOpened = null, customClosed = null, customShiftId = null) => {
     if (type === 'X') {
       setTicketModalType('X');
       setShowTicketModal(true);
@@ -416,7 +422,7 @@ export function ShiftsPage({ onBack }) {
         type: 'Z',
         shiftData: {
           ...(customSummary || s),
-          shiftId: currentShift?.id || '0001',
+          shiftId: customShiftId || customSummary?.shiftId || currentShift?.id || '0001',
           openedAt: customOpened || shiftDates.openedAt,
           closedAt: customClosed || shiftDates.closedAt || new Date().toISOString(),
           closingCash: closingCashNum,

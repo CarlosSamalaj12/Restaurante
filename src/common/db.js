@@ -9,9 +9,15 @@ const pool = mysql.createPool({
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "",
   database: process.env.DB_NAME || "restaurant_pos",
+  charset: "utf8mb4",
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+});
+
+// Forzar codificación UTF-8 multibyte en cada conexión adquirida por el pool
+pool.on("connection", (connection) => {
+  connection.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci", () => {});
 });
 
 /**

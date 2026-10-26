@@ -1,9 +1,9 @@
-function u({account:o,items:c=[],totals:a={},businessProfile:t={}}){const e=window.open("","_blank","width=400,height=600");if(!e)throw new Error("Permite ventanas emergentes para imprimir");const g=(t==null?void 0:t.business_subtitle)||"POS RESTAURANTE & BAR",x=(t==null?void 0:t.restaurant_name)||o.center_name||"RESTAURANTE",s=(t==null?void 0:t.address)||o.center_name||"Ciudad de Guatemala",h=(t==null?void 0:t.tax_id)||(t==null?void 0:t.nit)||"8492048-2",w=(t==null?void 0:t.phone)||"(502) 2345-6789",m=(t==null?void 0:t.receipt_logo_url)||null,b=(t==null?void 0:t.receipt_footer)||"¡Gracias por su preferencia!",l=o.check_number||`CHK-${String(o.id||"").padStart(4,"0")}`,v=o.table_code?`Mesa ${o.table_code}`:o.table_name||"Mostrador / Barra",f=o.waiter_name||"Personal POS",y=new Date().toLocaleString("es-GT"),i=a.subtotal!==void 0?Number(a.subtotal):c.reduce((n,d)=>n+Number(d.line_total||d.qty*d.unit_price||0),0),r=Number(a.discountTotal||0),p=Number(a.tipAmount||(a.tipPercent?i*a.tipPercent/100:0)),$=a.total!==void 0?Number(a.total):i-r+p;e.document.open(),e.document.write(`
+function k({account:n,items:l=[],totals:a={},businessProfile:t={}}){const w=(t==null?void 0:t.business_subtitle)||"POS RESTAURANTE & BAR",b=(t==null?void 0:t.restaurant_name)||n.center_name||"RESTAURANTE",f=(t==null?void 0:t.address)||n.center_name||"Ciudad de Guatemala",v=(t==null?void 0:t.tax_id)||(t==null?void 0:t.nit)||"8492048-2",u=(t==null?void 0:t.phone)||"(502) 2345-6789",g=(t==null?void 0:t.receipt_logo_url)||null,y=(t==null?void 0:t.receipt_footer)||"¡Gracias por su preferencia!",s=n.check_number||`CHK-${String(n.id||"").padStart(4,"0")}`,_=n.table_code?`Mesa ${n.table_code}`:n.table_name||"Mostrador / Barra",$=n.waiter_name||"Personal POS",T=new Date().toLocaleString("es-GT"),p=a.subtotal!==void 0?Number(a.subtotal):l.reduce((e,o)=>e+Number(o.line_total||o.qty*o.unit_price||0),0),d=Number(a.discountTotal||0),c=Number(a.tipAmount||(a.tipPercent?p*a.tipPercent/100:0)),N=a.total!==void 0?Number(a.total):p-d+c,x=`
     <!DOCTYPE html>
     <html lang="es">
     <head>
       <meta charset="utf-8">
-      <title>Precuenta - ${l}</title>
+      <title>Precuenta - ${s}</title>
       <style>
         * {
           box-sizing: border-box;
@@ -126,25 +126,25 @@ function u({account:o,items:c=[],totals:a={},businessProfile:t={}}){const e=wind
     </head>
     <body>
       <div class="center">
-        ${m?`
+        ${g?`
           <div class="logo-box">
-            <img src="${m}" alt="Logo" />
+            <img src="${g}" alt="Logo" />
           </div>
         `:""}
-        <div class="subtitle">${g}</div>
-        <div class="main-title">${x}</div>
-        <div class="branch-info">${s}</div>
-        <div class="tax-info">NIT: ${h} • Tel: ${w}</div>
+        <div class="subtitle">${w}</div>
+        <div class="main-title">${b}</div>
+        <div class="branch-info">${f}</div>
+        <div class="tax-info">NIT: ${v} • Tel: ${u}</div>
       </div>
 
       <div class="doc-banner">*** PRE-CUENTA / ESTADO ***</div>
       <div class="doc-subnotice">DOCUMENTO DE CONTROL • NO ES FACTURA CONTABLE</div>
 
       <div class="meta-box">
-        <div class="meta-row"><span>Comanda / Check:</span><span class="bold">#${l}</span></div>
-        <div class="meta-row"><span>Mesa / Ubicación:</span><span class="bold">${v}</span></div>
-        <div class="meta-row"><span>Atiende:</span><span>${f}</span></div>
-        <div class="meta-row"><span>Fecha y Hora:</span><span>${y}</span></div>
+        <div class="meta-row"><span>Comanda / Check:</span><span class="bold">#${s}</span></div>
+        <div class="meta-row"><span>Mesa / Ubicación:</span><span class="bold">${_}</span></div>
+        <div class="meta-row"><span>Atiende:</span><span>${$}</span></div>
+        <div class="meta-row"><span>Fecha y Hora:</span><span>${T}</span></div>
       </div>
 
       <table class="items-table">
@@ -156,11 +156,11 @@ function u({account:o,items:c=[],totals:a={},businessProfile:t={}}){const e=wind
           </tr>
         </thead>
         <tbody>
-          ${c.map(n=>`
+          ${l.map(e=>`
             <tr>
-              <td style="font-weight:bold;">${n.qty}x</td>
-              <td>${n.product_name}</td>
-              <td style="text-align:right;font-weight:bold;">Q${Number(n.line_total||n.qty*n.unit_price||0).toFixed(2)}</td>
+              <td style="font-weight:bold;">${e.qty}x</td>
+              <td>${e.product_name}</td>
+              <td style="text-align:right;font-weight:bold;">Q${Number(e.line_total||e.qty*e.unit_price||0).toFixed(2)}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -169,36 +169,45 @@ function u({account:o,items:c=[],totals:a={},businessProfile:t={}}){const e=wind
       <div style="margin-top:4px;">
         <div class="tot-row">
           <span>Subtotal:</span>
-          <span>Q${i.toFixed(2)}</span>
+          <span>Q${p.toFixed(2)}</span>
         </div>
-        ${r>0?`
+        ${d>0?`
           <div class="tot-row">
             <span>Descuento:</span>
-            <span>-Q${r.toFixed(2)}</span>
+            <span>-Q${d.toFixed(2)}</span>
           </div>
         `:""}
-        ${p>0?`
+        ${c>0?`
           <div class="tot-row">
             <span>Propina sugerida:</span>
-            <span>+Q${p.toFixed(2)}</span>
+            <span>+Q${c.toFixed(2)}</span>
           </div>
         `:""}
         <div class="grand-total">
           <span>TOTAL:</span>
-          <span>Q${$.toFixed(2)}</span>
+          <span>Q${N.toFixed(2)}</span>
         </div>
       </div>
 
       <div class="footer-note">
-        ${b}
+        ${y}
       </div>
 
       <script>
         window.onload = function() {
-          window.print();
-          setTimeout(function() { window.close(); }, 300);
+          if (!window.__precheckPrinted) {
+            window.__precheckPrinted = true;
+            try {
+              window.print();
+            } catch (err) {}
+            if (window.self === window.top) {
+              setTimeout(function() {
+                try { window.close(); } catch (err) {}
+              }, 400);
+            }
+          }
         };
       <\/script>
     </body>
     </html>
-  `),e.document.close()}export{u as p};
+  `;try{const e="__precheck_thermal_print_iframe__";let o=document.getElementById(e);o&&o.remove(),o=document.createElement("iframe"),o.id=e,o.setAttribute("style","position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;opacity:0;pointer-events:none;"),document.body.appendChild(o);const h=o.contentWindow||o.contentDocument,m=h.document||h;m.open(),m.write(x),m.close(),setTimeout(()=>{try{o.contentWindow&&!o.contentWindow.__precheckPrinted&&(o.contentWindow.__precheckPrinted=!0,o.contentWindow.focus(),o.contentWindow.print())}catch{}setTimeout(()=>{try{const i=document.getElementById(e);i&&i.remove()}catch{}},3500)},300);return}catch(e){console.warn("[PRINT] Fallback a window.open para precuenta:",e)}const r=window.open("","_blank","width=400,height=600");if(!r)throw new Error("Permite ventanas emergentes para imprimir");r.document.open(),r.document.write(x),r.document.close()}export{k as p};

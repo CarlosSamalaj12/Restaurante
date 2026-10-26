@@ -51,6 +51,14 @@ const maintenanceRepository = {
         INSERT INTO system_versions (version_tag, title, changelog, is_current)
         VALUES ('v1.0.0', 'Versión Inicial de Producción', 'Sistema POS, control de mesas, órdenes KDS y soporte PWA.', 1)
       `);
+    } else {
+      // Reparar automáticamente si la versión inicial fue guardada previamente con codificación corrupta (mojibake)
+      await query(`
+        UPDATE system_versions
+        SET title = 'Versión Inicial de Producción',
+            changelog = 'Sistema POS, control de mesas, órdenes KDS y soporte PWA.'
+        WHERE version_tag = 'v1.0.0' AND (title LIKE '%Ã%' OR changelog LIKE '%Ã%' OR title LIKE '%â%')
+      `).catch(() => {});
     }
   },
 

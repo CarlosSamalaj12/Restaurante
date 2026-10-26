@@ -21,6 +21,61 @@ const MODULE_DEFAULTS = [
 ];
 
 async function ensureConfigTables() {
+  // 0. Asegurar que la base de datos y todas las tablas utilicen utf8mb4 para evitar caracteres extraños en producción
+  try {
+    await safeExec("ALTER DATABASE CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+    const [tables] = await query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'"
+    );
+    if (Array.isArray(tables)) {
+      for (const t of tables) {
+        const tblName = t.table_name || t.TABLE_NAME;
+        if (tblName) {
+          await safeExec(`ALTER TABLE \`${tblName}\` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+        }
+      }
+    }
+    // 0.1 Reparación automática de cadenas corruptas (mojibake) en todas las tablas del sistema
+    try {
+      const mojibakeReplacements = [
+        ["Ã¡", "á"], ["Ã©", "é"], ["Ã­", "í"], ["Ã³", "ó"], ["Ãº", "ú"], ["Ã±", "ñ"],
+        ["Ã", "Á"], ["Ã‰", "É"], ["Ã", "Í"], ["Ã“", "Ó"], ["Ãš", "Ú"], ["Ã‘", "Ñ"],
+        ["Â¿", "¿"], ["Â¡", "¡"], ["Â°", "°"], ["Ã¼", "ü"], ["Ãœ", "Ü"],
+        ["â€“", "–"], ["â€”", "—"], ["â€œ", "“"], ["â€", "”"], ["â€™", "’"]
+      ];
+
+      const targetTables = [
+        { table: "system_versions", cols: ["title", "changelog"] },
+        { table: "payment_methods", cols: ["label"] },
+        { table: "roles", cols: ["name", "description"] },
+        { table: "permissions", cols: ["name", "description"] },
+        { table: "kitchen_quick_notes", cols: ["label"] },
+        { table: "categorias_impresion", cols: ["nombre", "descripcion"] },
+        { table: "discount_presets", cols: ["name"] },
+        { table: "business_profile", cols: ["restaurant_name", "receipt_footer"] },
+        { table: "dining_areas", cols: ["name"] },
+        { table: "operation_centers", cols: ["name"] },
+        { table: "products", cols: ["name", "description"] },
+        { table: "product_categories", cols: ["name"] },
+        { table: "production_centers", cols: ["name"] }
+      ];
+
+      for (const { table, cols } of targetTables) {
+        for (const col of cols) {
+          for (const [bad, good] of mojibakeReplacements) {
+            await safeExec(
+              `UPDATE \`${table}\` SET \`${col}\` = REPLACE(\`${col}\`, '${bad}', '${good}') WHERE \`${col}\` LIKE '%${bad}%'`
+            );
+          }
+        }
+      }
+    } catch (healErr) {
+      console.warn("[MIGRATION] Auto-reparación de caracteres corruptos:", healErr.message);
+    }
+  } catch (err) {
+    console.warn("[MIGRATION] Verificación utf8mb4 en base de datos:", err.message);
+  }
+
   await query(
     `CREATE TABLE IF NOT EXISTS payment_methods (
       code VARCHAR(30) PRIMARY KEY,
@@ -28,7 +83,7 @@ async function ensureConfigTables() {
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       sort_order INT NOT NULL DEFAULT 0,
       applies_tip TINYINT(1) NOT NULL DEFAULT 1
-    )`
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
   await safeExec(`ALTER TABLE payment_methods ADD COLUMN applies_tip TINYINT(1) NOT NULL DEFAULT 1`);
 

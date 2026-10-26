@@ -521,10 +521,17 @@ export function generateShiftTicketHtml({
 
       <script>
         window.onload = function() {
-          window.print();
-          setTimeout(function() {
-            window.close();
-          }, 300);
+          if (!window.__shiftPrinted) {
+            window.__shiftPrinted = true;
+            try {
+              window.print();
+            } catch (err) {}
+            if (window.self === window.top) {
+              setTimeout(function() {
+                try { window.close(); } catch (err) {}
+              }, 400);
+            }
+          }
         };
       <\/script>
     </body>
@@ -536,11 +543,58 @@ export function generateShiftTicketHtml({
  * Función utilitaria para disparar la impresión directa física sin pasar por el modal
  */
 export function printShiftTicket(params) {
+  const html = generateShiftTicketHtml(params);
+
+  // 1. Usar un iframe oculto en el DOM para evitar que el bloqueador de ventanas emergentes
+  // del navegador bloquee la impresión automática cuando se ejecuta tras peticiones asíncronas.
+  try {
+    const iframeId = '__shift_thermal_print_iframe__';
+    let iframe = document.getElementById(iframeId);
+    if (iframe) {
+      iframe.remove();
+    }
+
+    iframe = document.createElement('iframe');
+    iframe.id = iframeId;
+    iframe.setAttribute(
+      'style',
+      'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;opacity:0;pointer-events:none;'
+    );
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow || iframe.contentDocument;
+    const iframeDoc = doc.document || doc;
+    iframeDoc.open();
+    iframeDoc.write(html);
+    iframeDoc.close();
+
+    // Respaldo de ejecución en caso de que onload no se dispare en ciertos navegadores
+    setTimeout(() => {
+      try {
+        if (iframe.contentWindow && !iframe.contentWindow.__shiftPrinted) {
+          iframe.contentWindow.__shiftPrinted = true;
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        }
+      } catch (_) {}
+      setTimeout(() => {
+        try {
+          const el = document.getElementById(iframeId);
+          if (el) el.remove();
+        } catch (_) {}
+      }, 3500);
+    }, 300);
+
+    return;
+  } catch (err) {
+    console.warn('[PRINT] Fallback a window.open para ticket de turno:', err);
+  }
+
+  // 2. Fallback estándar si el navegador bloquea manipulación de iframes
   const win = window.open('', '_blank', 'width=420,height=650');
   if (!win) {
     throw new Error('Permite ventanas emergentes para imprimir');
   }
-  const html = generateShiftTicketHtml(params);
   win.document.open();
   win.document.write(html);
   win.document.close();

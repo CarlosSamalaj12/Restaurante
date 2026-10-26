@@ -7,6 +7,9 @@
 CREATE DATABASE IF NOT EXISTS restaurant_pos CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE restaurant_pos;
 
+SET NAMES utf8mb4;
+SET CHARACTER SET utf8mb4;
+
 -- ----------------------------------------------------------------------------
 -- 1. CONFIGURACIÓN Y PERFIL DE NEGOCIO
 -- ----------------------------------------------------------------------------

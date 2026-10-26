@@ -324,8 +324,9 @@ export function ReprintPage({ onBack, onSelectAccount }) {
 
     win.document.write(`
       <!DOCTYPE html>
-      <html>
+      <html lang="es">
       <head>
+        <meta charset="utf-8" />
         <title>Ticket - #${account.check_number}</title>
         <style>
           * {
@@ -591,8 +592,9 @@ export function ReprintPage({ onBack, onSelectAccount }) {
 
     win.document.write(`
       <!DOCTYPE html>
-      <html>
+      <html lang="es">
       <head>
+        <meta charset="utf-8" />
         <title>Comanda Cocina - #${account.check_number}</title>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }

@@ -102,7 +102,7 @@ function sendToNetworkPrinter(ip, port, builder) {
     const device = new escpos.Network(ip, Number(port) || 9100, {
       timeout: CONNECT_TIMEOUT_MS,
     });
-    const printer = new escpos.Printer(device);
+    const printer = new escpos.Printer(device, { encoding: "CP850" });
     let settled = false;
     const fail = (err) => {
       if (settled) return;
@@ -119,6 +119,9 @@ function sendToNetworkPrinter(ip, port, builder) {
       device.open((openErr) => {
         if (openErr) return fail(new Error(`No se pudo abrir ${ip}:${port} — ${openErr.message || openErr}`));
         try {
+          if (typeof printer.setCharacterCodeTable === "function") {
+            try { printer.setCharacterCodeTable(2); } catch (_) {}
+          }
           const built = builder(printer);
           const finalPrinter = built && typeof built.close === "function" ? built : printer;
           finalPrinter.flush((flushErr) => {

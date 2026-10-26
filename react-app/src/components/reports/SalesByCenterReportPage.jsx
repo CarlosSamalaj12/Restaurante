@@ -182,8 +182,9 @@ export function SalesByCenterReportPage({ onBack }) {
 
     const content = `
       <!DOCTYPE html>
-      <html>
+      <html lang="es">
         <head>
+          <meta charset="utf-8" />
           <title>Resumen de Ventas por Centro</title>
           <style>
             body { font-family: monospace; width: 78mm; margin: 0 auto; padding: 4px; font-size: 11px; }

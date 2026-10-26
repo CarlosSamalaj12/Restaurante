@@ -194,8 +194,9 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
 
       win.document.write(`
         <!DOCTYPE html>
-        <html>
+        <html lang="es">
         <head>
+          <meta charset="utf-8" />
           <title>Corte X - Auditoría Parcial</title>
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color: #000 !important; }

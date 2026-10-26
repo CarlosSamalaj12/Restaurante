@@ -176,8 +176,9 @@ export function VoidedReportPage({ onBack }) {
   const handlePrintThermalSummary = () => {
     const content = `
       <!DOCTYPE html>
-      <html>
+      <html lang="es">
         <head>
+          <meta charset="utf-8" />
           <title>Resumen de Anulaciones</title>
           <style>
             body { font-family: monospace; width: 78mm; margin: 0 auto; font-size: 11px; }

@@ -134,8 +134,9 @@ export function TipsReportPage({ onBack }) {
     const centerName = centers.find(c => c.id === Number(filterCenterId))?.name || 'Todos los centros';
     const content = `
       <!DOCTYPE html>
-      <html>
+      <html lang="es">
         <head>
+          <meta charset="utf-8" />
           <title>Resumen de Propinas</title>
           <style>
             body { font-family: monospace; width: 78mm; margin: 0 auto; font-size: 11px; }
