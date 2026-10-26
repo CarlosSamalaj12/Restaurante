@@ -74,16 +74,16 @@ settingsRouter.delete("/production-centers/:centerId", requireSuperadmin, settin
 
 // Catálogo Central de Impresoras y Diagnóstico (Exclusivo Superadmin)
 settingsRouter.get("/printers", settingsController.getPrinters);
-settingsRouter.post("/printers", requireSuperadmin, settingsController.createPrinter);
-settingsRouter.put("/printers/:printerId", requireSuperadmin, settingsController.updatePrinter);
-settingsRouter.delete("/printers/:printerId", requireSuperadmin, settingsController.deletePrinter);
-settingsRouter.post("/printers/:printerId/test", requireSuperadmin, settingsController.testPrinterDirect);
 settingsRouter.get("/printers/audit", settingsController.auditPrinters);
-settingsRouter.post("/printers/test", requireSuperadmin, settingsController.testPrinter);
 settingsRouter.get("/printers/status", settingsController.getPrintersStatus);
 settingsRouter.get("/printers/mode", settingsController.getPrinterRoutingMode);
 settingsRouter.put("/printers/mode", requireSuperadmin, settingsController.setPrinterRoutingMode);
 settingsRouter.get("/printers/recent", settingsController.getRecentPrintJobs);
+settingsRouter.post("/printers/test", requireSuperadmin, settingsController.testPrinter);
+settingsRouter.post("/printers", requireSuperadmin, settingsController.createPrinter);
+settingsRouter.put("/printers/:printerId", requireSuperadmin, settingsController.updatePrinter);
+settingsRouter.delete("/printers/:printerId", requireSuperadmin, settingsController.deletePrinter);
+settingsRouter.post("/printers/:printerId/test", requireSuperadmin, settingsController.testPrinterDirect);
 
 // Usuarios del Sistema (Exclusivo Superadmin)
 settingsRouter.post("/staff-users", requireSuperadmin, settingsController.createStaffUser);

@@ -139,3 +139,21 @@ test("print-agent builders: generación de secuencias ESC/POS", () => {
   assert.ok(testTexts.some((t) => t.includes("PRUEBA DE IMPRESION")));
   assert.ok(testTexts.some((t) => t.includes("192.168.1.52:9100")));
 });
+
+test("settingsService: validación de setPrinterRoutingMode", async () => {
+  const settingsService = require("../../src/modules/settings/settings.service");
+  const { BadRequestError } = require("../../src/common/errors");
+
+  await assert.rejects(
+    async () => settingsService.setPrinterRoutingMode("invalido"),
+    BadRequestError
+  );
+  await assert.rejects(
+    async () => settingsService.setPrinterRoutingMode(null),
+    BadRequestError
+  );
+  await assert.rejects(
+    async () => settingsService.setPrinterRoutingMode(""),
+    BadRequestError
+  );
+});
