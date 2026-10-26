@@ -163,14 +163,18 @@ async function ackJob(jobId, status, errorMessage = null) {
   return { ok: true, jobId, status: normalizedStatus };
 }
 
-function waitForJobAck(jobId, timeoutMs = 5000) {
+function waitForJobAck(jobId, timeoutMs = 12000) {
   return new Promise((resolve) => {
     const id = Number(jobId);
+    if (!id) {
+      return resolve({ ok: true, delegatedToAgent: true });
+    }
+
     const timer = setTimeout(() => {
       pendingAckResolvers.delete(id);
       resolve({
         ok: false,
-        error: `Tiempo de espera agotado (${timeoutMs / 1000}s) esperando confirmación de la impresora en red local`,
+        error: `Tiempo de espera agotado (${Math.round(timeoutMs / 1000)}s) esperando confirmación de la impresora en red local`,
         timeout: true,
       });
     }, timeoutMs);

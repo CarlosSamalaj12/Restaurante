@@ -244,8 +244,14 @@ async function dispatchPrint({ target, jobType, accountId, payloadData, builder,
     printAgentService.emitNewJob(jobObj);
 
     if (waitResult) {
-      const ackResult = await printAgentService.waitForJobAck(jobId, 10000);
-      return { ok: ackResult.ok, error: ackResult.error, jobId, delegatedToAgent: true };
+      const ackResult = await printAgentService.waitForJobAck(jobId, 12000);
+      if (ackResult.ok) {
+        return { ok: true, jobId, delegatedToAgent: true };
+      }
+      if (ackResult.timeout) {
+        return { ok: true, jobId, delegatedToAgent: true, message: "Página enviada al Print Agent (procesando en red local)" };
+      }
+      return { ok: false, error: ackResult.error, jobId, delegatedToAgent: true };
     }
     return { ok: true, jobId, delegatedToAgent: true };
   }
