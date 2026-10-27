@@ -97,20 +97,20 @@ export function MacDock({ currentView = 'dashboard', onNavigate, kitchenOrdersCo
   const visibleItems = dockItems.filter((item) => item.allowed);
 
   return (
-    <div className="fixed bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-40 pointer-events-none select-none">
+    <div className="fixed bottom-2.5 sm:bottom-4 left-1/2 -translate-x-1/2 z-40 pointer-events-none select-none max-w-[calc(100vw-1rem)]">
       {/* Contenedor Flotante Estilo Dock macOS Blanco Semi-Transparente */}
       <m.nav
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-        className="pointer-events-auto bg-white/85 backdrop-blur-2xl border border-white/90 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.05)] ring-1 ring-black/5 rounded-[26px] sm:rounded-[28px] px-3 py-2 flex items-center gap-1.5 sm:gap-2.5"
+        className="pointer-events-auto bg-white/90 backdrop-blur-2xl border border-white/90 shadow-[0_12px_40px_rgba(0,0,0,0.14),0_4px_12px_rgba(0,0,0,0.06)] ring-1 ring-black/5 rounded-[22px] sm:rounded-[28px] px-2 sm:px-3 py-1.5 sm:py-2 flex items-center gap-1 sm:gap-2.5 max-w-full"
       >
         {visibleItems.map((item) => {
           if (item.isDivider) {
             return (
               <div
                 key={item.id}
-                className="w-px h-8 bg-slate-300/80 mx-1 self-center rounded-full"
+                className="w-px h-7 sm:h-8 bg-slate-300/80 mx-0.5 sm:mx-1 self-center rounded-full"
               />
             );
           }
@@ -130,8 +130,8 @@ export function MacDock({ currentView = 'dashboard', onNavigate, kitchenOrdersCo
               <m.button
                 type="button"
                 whileHover={{
-                  y: -5,
-                  scale: 1.12,
+                  y: -4,
+                  scale: 1.1,
                   transition: { type: 'spring', stiffness: 450, damping: 18 },
                 }}
                 whileTap={{
@@ -140,21 +140,21 @@ export function MacDock({ currentView = 'dashboard', onNavigate, kitchenOrdersCo
                   transition: { duration: 0.1 },
                 }}
                 onClick={() => onNavigate && onNavigate(item.id)}
-                className="flex flex-col items-center justify-center p-1 sm:p-1.5 rounded-2xl transition-colors focus:outline-none relative cursor-pointer"
+                className="flex flex-col items-center justify-center p-0.5 sm:p-1.5 rounded-2xl transition-colors focus:outline-none relative cursor-pointer"
               >
                 {/* Cuadro de ícono estilo squircle con gradiente vivo */}
                 <div
-                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-[18px] sm:rounded-2xl flex items-center justify-center transition-all duration-200 relative ${
+                  className={`w-10 h-10 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-2xl flex items-center justify-center transition-all duration-200 relative ${
                     item.gradient
                   } ${item.shadow} ${
                     isActive ? 'ring-2 ring-white ring-offset-2 ring-offset-blue-500/20 scale-102' : ''
                   }`}
                 >
-                  <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 text-white" strokeWidth={2.2} />
+                  <IconComponent className="w-4 h-4 sm:w-6 sm:h-6 text-white" strokeWidth={2.2} />
 
                   {/* Badge de KDS / Notificación */}
                   {item.badge && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow ring-2 ring-white animate-pulse">
+                    <span className="absolute -top-1 -right-1 min-w-[16px] sm:min-w-[18px] h-4 sm:h-[18px] px-1 bg-rose-500 text-white text-[9px] sm:text-[10px] font-black rounded-full flex items-center justify-center shadow ring-2 ring-white animate-pulse">
                       {item.badge}
                     </span>
                   )}
@@ -162,7 +162,7 @@ export function MacDock({ currentView = 'dashboard', onNavigate, kitchenOrdersCo
 
                 {/* Etiqueta de texto debajo */}
                 <span
-                  className={`text-[11px] sm:text-xs tracking-tight leading-tight mt-1 transition-colors ${
+                  className={`text-[10px] sm:text-xs tracking-tight leading-tight mt-0.5 sm:mt-1 transition-colors ${
                     isActive
                       ? 'text-slate-900 font-bold'
                       : 'text-slate-600 font-medium group-hover:text-slate-900'

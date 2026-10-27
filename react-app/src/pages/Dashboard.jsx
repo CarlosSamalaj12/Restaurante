@@ -195,10 +195,13 @@ export function Dashboard({ onNavigate, onSelectTable }) {
   // Cocina y tiempos (conteo estricto de órdenes reales en KDS)
   const kitchenOrdersCount = Array.isArray(kdsOrders) ? kdsOrders.length : 0;
   
-  // Mesa con mayor tiempo de espera o sentados
+  // Mesa con mayor tiempo de espera o sentados (compatible con iOS Safari)
   const getElapsedMinutes = (dateStr) => {
     if (!dateStr) return 0;
-    const diff = Math.max(0, Date.now() - new Date(dateStr).getTime());
+    const safeStr = typeof dateStr === 'string' ? dateStr.replace(' ', 'T') : dateStr;
+    const time = new Date(safeStr).getTime();
+    if (isNaN(time)) return 0;
+    const diff = Math.max(0, Date.now() - time);
     return Math.floor(diff / 60000);
   };
 
@@ -483,7 +486,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
   });
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 pb-28 select-none font-sans antialiased">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 pb-40 sm:pb-32 select-none font-sans antialiased">
       {/* ========================================================================= */}
       {/* 1. TOP HEADER BAR                                                         */}
       {/* ========================================================================= */}
@@ -491,48 +494,60 @@ export function Dashboard({ onNavigate, onSelectTable }) {
         {/* ========================================================================= */}
         {/* TIER 1: Branding, Usuario & Acciones Principales                          */}
         {/* ========================================================================= */}
-        <div className="px-4 lg:px-6 py-2.5">
-          <div className="flex items-center justify-between gap-3 max-w-[1700px] mx-auto flex-wrap sm:flex-nowrap">
+        <div className="px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 max-w-[1700px] mx-auto">
             
             {/* Lado Izquierdo: Branding, Saludo, Estado y Roles */}
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="w-11 h-11 rounded-xl bg-slate-950 text-white font-mono font-bold flex items-center justify-center text-sm shadow-sm ring-1 ring-black/5 overflow-hidden flex-shrink-0">
-                {logoUrl ? (
-                  <img src={logoUrl} alt={restaurantName || 'POS'} className="w-full h-full object-contain p-1" />
-                ) : (
-                  <span>{`{cs}`}</span>
-                )}
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="font-bold text-slate-900 text-base lg:text-lg leading-tight">
-                    {greeting}, {user?.full_name?.split(' ')[0] || 'Carlos'}
-                  </h1>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    En línea
-                  </span>
-                  {userRole === 'superadmin' && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-700 border border-purple-200 shadow-xs">
-                      <Shield className="w-3 h-3 text-purple-600" /> Superadmin
-                    </span>
+            <div className="flex items-center justify-between sm:justify-start gap-2.5 sm:gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-950 text-white font-mono font-bold flex items-center justify-center text-sm shadow-sm ring-1 ring-black/5 overflow-hidden shrink-0">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt={restaurantName || 'POS'} className="w-full h-full object-contain p-1" />
+                  ) : (
+                    <span>{`{cs}`}</span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5">
-                  <span className={userRole === 'superadmin' ? 'font-bold text-purple-700' : ''}>
-                    {currentRoleLabel}
-                  </span>
-                  <span>•</span>
-                  <span>{activeShift ? `Turno #${activeShift.id}` : 'Turno General'}</span>
-                  <span>•</span>
-                  <span>Caja #01</span>
-                </p>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h1 className="font-bold text-slate-900 text-sm sm:text-base lg:text-lg leading-tight truncate">
+                      {greeting}, {user?.full_name?.split(' ')[0] || 'Carlos'}
+                    </h1>
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70 shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      En línea
+                    </span>
+                    {userRole === 'superadmin' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-purple-100 text-purple-700 border border-purple-200 shadow-xs shrink-0">
+                        <Shield className="w-3 h-3 text-purple-600" /> Superadmin
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 truncate">
+                    <span className={userRole === 'superadmin' ? 'font-bold text-purple-700' : ''}>
+                      {currentRoleLabel}
+                    </span>
+                    <span>•</span>
+                    <span>{activeShift ? `Turno #${activeShift.id}` : 'Turno General'}</span>
+                    <span>•</span>
+                    <span>Caja #01</span>
+                  </p>
+                </div>
               </div>
+
+              {/* Botón Salir visible en móvil en fila superior para acceso rápido */}
+              <button
+                onClick={logout}
+                className="sm:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-xs font-semibold shrink-0 cursor-pointer"
+                title="Cerrar sesión"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Salir</span>
+              </button>
             </div>
 
             {/* Lado Derecho: Reloj, Sincronización, Notificaciones y Salir */}
-            <div className="flex items-center gap-2 shrink-0 ml-auto">
+            <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
               {/* Reloj y Período */}
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100/80 rounded-xl border border-slate-200/70 text-xs font-medium text-slate-700 shrink-0">
                 <Clock className="w-3.5 h-3.5 text-blue-600" />
@@ -664,10 +679,10 @@ export function Dashboard({ onNavigate, onSelectTable }) {
                 </AnimatePresence>
               </div>
 
-              {/* Botón Salir */}
+              {/* Botón Salir (Desktop) */}
               <button
                 onClick={logout}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50/50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-colors text-xs font-semibold shrink-0 cursor-pointer"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50/50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-colors text-xs font-semibold shrink-0 cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Salir</span>

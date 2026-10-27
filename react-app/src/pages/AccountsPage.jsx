@@ -6,6 +6,7 @@ import api from '../api';
 import { BackButton } from '../components/BackButton';
 import { printPrecheckThermal } from '../utils/printReceipts';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { formatElapsedTime, safeMinutesSince, safeFormatLocaleTime } from '../utils/dateUtils';
 import { 
   Receipt, 
   Printer, 
@@ -245,15 +246,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
   };
 
   const timeSince = (dateStr) => {
-    if (!dateStr) return { text: '', isLong: false };
-    const now = new Date();
-    const then = new Date(dateStr);
-    const diff = Math.max(0, Math.floor((now - then) / 60000));
-    const hrs = Math.floor(diff / 60);
-    const mins = diff % 60;
-    const isLong = hrs >= 24;
-    if (hrs === 0) return { text: `${mins}m`, isLong: false };
-    return { text: `${hrs}h ${mins}m`, isLong };
+    return formatElapsedTime(dateStr);
   };
 
   // Metrics calculations
@@ -274,13 +267,17 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
   }, [accounts]);
 
   const avgTimeFormatted = useMemo(() => {
-    if (accounts.length === 0) return '0 min';
+    if (!accounts || accounts.length === 0) return '0 min';
+    let validCount = 0;
     const totalMinutes = accounts.reduce((sum, a) => {
       if (!a.opened_at) return sum;
-      const diff = Math.max(0, Math.floor((new Date() - new Date(a.opened_at)) / 60000));
-      return sum + diff;
+      const mins = safeMinutesSince(a.opened_at);
+      validCount += 1;
+      return sum + mins;
     }, 0);
-    const avg = totalMinutes / accounts.length;
+    if (validCount === 0) return '0 min';
+    const avg = totalMinutes / validCount;
+    if (isNaN(avg) || avg <= 0) return '0 min';
     if (avg < 60) return `${Math.round(avg)} min`;
     const hrs = Math.floor(avg / 60);
     const mins = Math.round(avg % 60);
@@ -1021,7 +1018,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-400 mt-0.5">
-                              Cerrada: {account.closed_at ? new Date(account.closed_at).toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' }) : '---'}
+                              Cerrada: {safeFormatLocaleTime(account.closed_at, '---')}
                             </p>
                           </div>
 

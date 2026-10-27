@@ -5,6 +5,7 @@ import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { BackButton } from '../components/BackButton';
 import { ShiftTicketModal, printShiftTicket } from '../components/ShiftTicketModal';
+import { safeFormatLocaleTime, safeParseDate } from '../utils/dateUtils';
 import {
   ArrowLeft,
   PlayCircle,
@@ -381,9 +382,9 @@ export function ShiftsPage({ onBack }) {
   // Elapsed time helper
   const getElapsedTime = (openedAt) => {
     if (!openedAt) return '0h 00m';
-    const start = new Date(openedAt).getTime();
-    const now = Date.now();
-    const diffMs = Math.max(0, now - start);
+    const parsed = safeParseDate(openedAt);
+    if (!parsed) return '0h 00m';
+    const diffMs = Math.max(0, Date.now() - parsed.getTime());
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return `${diffHours}h ${String(diffMinutes).padStart(2, '0')}m`;
@@ -559,7 +560,7 @@ export function ShiftsPage({ onBack }) {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Iniciado hoy a las {shiftDates.openedAt ? new Date(shiftDates.openedAt).toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' }) : '08:30 AM'} por {user?.full_name || 'Carlos Samalaj'} • {selectedCenterName}
+                    Iniciado hoy a las {safeFormatLocaleTime(shiftDates.openedAt, '08:30 AM')} por {user?.full_name || 'Carlos Samalaj'} • {selectedCenterName}
                   </p>
                 </div>
               </div>
@@ -1124,7 +1125,7 @@ export function ShiftsPage({ onBack }) {
                                   <span className="text-xs text-slate-500">• Mesero: {account.waiter_name || 'General'}</span>
                                   {account.closed_at && (
                                     <span className="text-[11px] text-slate-400">
-                                      {new Date(account.closed_at).toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' })}
+                                      {safeFormatLocaleTime(account.closed_at, '')}
                                     </span>
                                   )}
                                 </div>
@@ -1210,7 +1211,7 @@ export function ShiftsPage({ onBack }) {
                           <div>
                             <div className="font-bold text-sm text-slate-900">{expense.reason}</div>
                             <div className="text-xs text-slate-500">
-                              Autorizado por: {expense.authorizer_name || 'Supervisor'} • {new Date(expense.created_at).toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' })}
+                              Autorizado por: {expense.authorizer_name || 'Supervisor'} • {safeFormatLocaleTime(expense.created_at, '---')}
                             </div>
                           </div>
                           <span className="text-base font-extrabold text-rose-600">

@@ -386,13 +386,22 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
       {/* ─── MENÚ DESPLEGABLE / MODAL FLOTANTE DE TODOS LOS CENTROS ─── */}
       <AnimatePresence>
         {isOpen && (
-          <m.div
-            initial={{ opacity: 0, y: 10, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.96 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute top-full mt-2.5 left-1/2 -translate-x-1/2 md:left-auto md:right-0 md:translate-x-0 w-80 sm:w-96 bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl shadow-indigo-950/20 border border-slate-200/90 p-4 z-50 overflow-hidden"
-          >
+          <>
+            {/* Backdrop sutil en móvil para enfocar el selector */}
+            <m.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsOpen(false)}
+              className="fixed inset-0 bg-slate-900/35 backdrop-blur-xs z-40 sm:hidden"
+            />
+            <m.div
+              initial={{ opacity: 0, y: 10, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="fixed inset-x-3 top-28 sm:absolute sm:top-full sm:mt-2.5 sm:inset-x-auto sm:right-0 sm:left-auto sm:translate-x-0 w-auto sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl shadow-indigo-950/25 border border-slate-200/90 p-4 z-50 overflow-hidden"
+            >
             {/* Cabecera con Gradiente Suave y Badge */}
             <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -511,8 +520,9 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
               )}
             </div>
           </m.div>
-        )}
-      </AnimatePresence>
+        </>
+      )}
+    </AnimatePresence>
     </div>
   );
 }
