@@ -1,5 +1,4 @@
 import { Zap, Split, CheckCircle2, Trash2, Plus, AlertCircle, Check, Loader2 } from 'lucide-react';
-import api from '../../api';
 import { DEFAULT_METHODS } from './constants';
 
 export function PaymentMethodList({
@@ -20,6 +19,7 @@ export function PaymentMethodList({
   handleDeleteExistingPayment,
   handleSelectSimpleMethod,
   handleAddPaymentLine,
+  handleChangeLineMethod,
   updateLineField,
   removeLine,
   totalAssigned,
@@ -34,8 +34,6 @@ export function PaymentMethodList({
   wantsInvoice,
   handleCloseAccountDirectly,
   handlePay,
-  setCxcClients,
-  searchPmsRooms,
 }) {
   return (
     <div className="w-full md:w-5/12 lg:w-4/12 flex flex-col bg-white border-r border-slate-200 h-full overflow-hidden">
@@ -247,24 +245,7 @@ export function PaymentMethodList({
                         <select
                           value={line.method}
                           aria-label={`Método de pago para línea ${idx + 1}`}
-                          onChange={async (e) => {
-                            const newMethod = paymentMethods.find((m) => m.code === e.target.value);
-                            if (!newMethod) return;
-                            updateLineField(line.id, 'method', newMethod.code);
-                            updateLineField(line.id, 'methodLabel', newMethod.label);
-                            if (newMethod.code === 'cash') {
-                              updateLineField(line.id, 'received', line.amount);
-                            }
-                            if (newMethod.code === 'cxc') {
-                              try {
-                                const data = await api.cxc.getClients();
-                                setCxcClients(data.filter((c) => c.cxc_enabled));
-                              } catch (err) {}
-                            }
-                            if (newMethod.code === 'room_charge') {
-                              searchPmsRooms('');
-                            }
-                          }}
+                          onChange={(e) => handleChangeLineMethod?.(line.id, e.target.value)}
                           className="text-xs font-bold bg-white border border-slate-300 rounded-lg px-2 py-0.5 text-slate-800 focus:outline-hidden cursor-pointer"
                         >
                           {paymentMethods.map((m) => (

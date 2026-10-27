@@ -452,6 +452,31 @@ export function usePaymentModal({ accountId, totals, onClose, onSuccess }) {
     [remaining, searchPmsRooms, toast]
   );
 
+  const handleChangeLineMethod = useCallback(
+    async (lineId, methodCode) => {
+      const newMethod = paymentMethods.find((m) => m.code === methodCode);
+      if (!newMethod) return;
+      updateLineField(lineId, 'method', newMethod.code);
+      updateLineField(lineId, 'methodLabel', newMethod.label);
+      if (newMethod.code === 'cash') {
+        const line = lines.find((l) => l.id === lineId);
+        updateLineField(lineId, 'received', line?.amount || '0.00');
+      }
+      if (newMethod.code === 'cxc') {
+        try {
+          const data = await api.cxc.getClients();
+          setCxcClients(data.filter((c) => c.cxc_enabled));
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      if (newMethod.code === 'room_charge') {
+        searchPmsRooms('');
+      }
+    },
+    [paymentMethods, updateLineField, lines, searchPmsRooms]
+  );
+
   const removeLine = useCallback((id) => {
     setLines((prev) => {
       if (prev.length <= 1) return prev;
@@ -848,6 +873,7 @@ export function usePaymentModal({ accountId, totals, onClose, onSuccess }) {
     loading,
     step,
     cxcClients,
+    setCxcClients,
     cxcSearch,
     setCxcSearch,
     creditLimitAlert,
@@ -864,6 +890,7 @@ export function usePaymentModal({ accountId, totals, onClose, onSuccess }) {
     pmsSearch,
     setPmsSearch,
     loadingPmsRooms,
+    searchPmsRooms,
     activeLine,
     felConfig,
     wantsInvoice,
@@ -890,6 +917,7 @@ export function usePaymentModal({ accountId, totals, onClose, onSuccess }) {
     handleSetCF,
     handleSelectSimpleMethod,
     handleAddPaymentLine,
+    handleChangeLineMethod,
     removeLine,
     handleExactCash,
     handleBillClick,

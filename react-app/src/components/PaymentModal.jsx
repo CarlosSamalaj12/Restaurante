@@ -41,6 +41,7 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
     pmsSearch,
     setPmsSearch,
     loadingPmsRooms,
+    searchPmsRooms,
     activeLine,
     felConfig,
     wantsInvoice,
@@ -66,6 +67,7 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
     handleSetCF,
     handleSelectSimpleMethod,
     handleAddPaymentLine,
+    handleChangeLineMethod,
     removeLine,
     handleExactCash,
     handleBillClick,
@@ -191,6 +193,7 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
               handleDeleteExistingPayment={handleDeleteExistingPayment}
               handleSelectSimpleMethod={handleSelectSimpleMethod}
               handleAddPaymentLine={handleAddPaymentLine}
+              handleChangeLineMethod={handleChangeLineMethod}
               updateLineField={updateLineField}
               removeLine={removeLine}
               totalAssigned={totalAssigned}
@@ -205,8 +208,6 @@ export function PaymentModal({ accountId, totals, onClose, onSuccess }) {
               wantsInvoice={wantsInvoice}
               handleCloseAccountDirectly={handleCloseAccountDirectly}
               handlePay={handlePay}
-              setCxcClients={setCxcClients}
-              searchPmsRooms={searchPmsRooms}
             />
 
             {/* COLUMNA DERECHA: HERRAMIENTAS TÁCTILES Y NUMPAD */}
