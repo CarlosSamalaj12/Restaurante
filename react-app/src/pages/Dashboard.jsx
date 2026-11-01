@@ -62,10 +62,24 @@ export function Dashboard({ onNavigate, onSelectTable }) {
     return () => { isMounted = false; };
   }, []);
 
+  // Sincronización en tiempo real vía Socket.IO (sin necesidad de botón refrescar manual)
   useSocket({
     'settings:module_kds_toggled': ({ enabled }) => {
       setKdsEnabled(Boolean(enabled));
     },
+    'sales:order': () => loadData(selectedCenter, false),
+    'sales:payment': () => loadData(selectedCenter, false),
+    'sales:closed': () => loadData(selectedCenter, false),
+    'sales:update': () => loadData(selectedCenter, false),
+    'account:updated': () => loadData(selectedCenter, false),
+    'orders:self_service_new': () => loadData(selectedCenter, false),
+    'table:update': () => loadData(selectedCenter, false),
+    'table:call_waiter': () => loadData(selectedCenter, false),
+    'table:request_bill': () => loadData(selectedCenter, false),
+    'table:call_waiter_dismissed': () => loadData(selectedCenter, false),
+    'shifts:opened': () => loadData(selectedCenter, false),
+    'shifts:closed': () => loadData(selectedCenter, false),
+    'sync:completed': () => loadData(selectedCenter, false),
   });
 
   // Modales
@@ -495,60 +509,48 @@ export function Dashboard({ onNavigate, onSelectTable }) {
         {/* TIER 1: Branding, Usuario & Acciones Principales                          */}
         {/* ========================================================================= */}
         <div className="px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 max-w-[1700px] mx-auto">
+          <div className="flex items-center justify-between gap-2 sm:gap-3 max-w-[1700px] mx-auto">
             
             {/* Lado Izquierdo: Branding, Saludo, Estado y Roles */}
-            <div className="flex items-center justify-between sm:justify-start gap-2.5 sm:gap-3 min-w-0">
-              <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-950 text-white font-mono font-bold flex items-center justify-center text-sm shadow-sm ring-1 ring-black/5 overflow-hidden shrink-0">
-                  {logoUrl ? (
-                    <img src={logoUrl} alt={restaurantName || 'POS'} className="w-full h-full object-contain p-1" />
-                  ) : (
-                    <span>{`{cs}`}</span>
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <h1 className="font-bold text-slate-900 text-sm sm:text-base lg:text-lg leading-tight truncate">
-                      {greeting}, {user?.full_name?.split(' ')[0] || 'Carlos'}
-                    </h1>
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70 shrink-0">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      En línea
-                    </span>
-                    {userRole === 'superadmin' && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-purple-100 text-purple-700 border border-purple-200 shadow-xs shrink-0">
-                        <Shield className="w-3 h-3 text-purple-600" /> Superadmin
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 truncate">
-                    <span className={userRole === 'superadmin' ? 'font-bold text-purple-700' : ''}>
-                      {currentRoleLabel}
-                    </span>
-                    <span>•</span>
-                    <span>{activeShift ? `Turno #${activeShift.id}` : 'Turno General'}</span>
-                    <span>•</span>
-                    <span>Caja #01</span>
-                  </p>
-                </div>
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-slate-950 text-white font-mono font-bold flex items-center justify-center text-xs sm:text-sm shadow-sm ring-1 ring-black/5 overflow-hidden shrink-0">
+                {logoUrl ? (
+                  <img src={logoUrl} alt={restaurantName || 'POS'} className="w-full h-full object-contain p-1" />
+                ) : (
+                  <span>{`{cs}`}</span>
+                )}
               </div>
 
-              {/* Botón Salir visible en móvil en fila superior para acceso rápido */}
-              <button
-                onClick={logout}
-                className="sm:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-xs font-semibold shrink-0 cursor-pointer"
-                title="Cerrar sesión"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Salir</span>
-              </button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h1 className="font-bold text-slate-900 text-sm sm:text-base lg:text-lg leading-tight truncate">
+                    {greeting}, {user?.full_name?.split(' ')[0] || 'Carlos'}
+                  </h1>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    En línea
+                  </span>
+                  {userRole === 'superadmin' && (
+                    <span className="hidden xs:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-purple-100 text-purple-700 border border-purple-200 shadow-xs shrink-0">
+                      <Shield className="w-3 h-3 text-purple-600" /> Superadmin
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] sm:text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 truncate">
+                  <span className={userRole === 'superadmin' ? 'font-bold text-purple-700' : ''}>
+                    {currentRoleLabel}
+                  </span>
+                  <span>•</span>
+                  <span>{activeShift ? `Turno #${activeShift.id}` : 'Turno General'}</span>
+                  <span>•</span>
+                  <span>Caja #01</span>
+                </p>
+              </div>
             </div>
 
-            {/* Lado Derecho: Reloj, Sincronización, Notificaciones y Salir */}
+            {/* Lado Derecho: Reloj, Notificaciones y Salir */}
             <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
-              {/* Reloj y Período */}
+              {/* Reloj y Período (Desktop) */}
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100/80 rounded-xl border border-slate-200/70 text-xs font-medium text-slate-700 shrink-0">
                 <Clock className="w-3.5 h-3.5 text-blue-600" />
                 <span className="font-mono font-semibold tracking-wider">
@@ -601,15 +603,6 @@ export function Dashboard({ onNavigate, onSelectTable }) {
 
               {/* Botón Instalar PWA */}
               <InstallPwaButton variant="header" />
-
-              {/* Botón Sincronizar */}
-              <button
-                onClick={() => loadData(selectedCenter, true)}
-                title="Sincronizar información"
-                className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70 transition-colors shrink-0 cursor-pointer"
-              >
-                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
-              </button>
 
               {/* Notificaciones */}
               <div className="relative shrink-0">
@@ -679,13 +672,14 @@ export function Dashboard({ onNavigate, onSelectTable }) {
                 </AnimatePresence>
               </div>
 
-              {/* Botón Salir (Desktop) */}
+              {/* Botón Salir */}
               <button
                 onClick={logout}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50/50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-colors text-xs font-semibold shrink-0 cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-red-200 bg-red-50/70 text-red-600 hover:bg-red-100 hover:text-red-700 transition-colors text-xs font-semibold shrink-0 cursor-pointer"
+                title="Cerrar sesión"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Salir</span>
+                <span className="hidden sm:inline">Salir</span>
               </button>
             </div>
           </div>
@@ -716,39 +710,39 @@ export function Dashboard({ onNavigate, onSelectTable }) {
       {/* ========================================================================= */}
       {/* CONTENEDOR PRINCIPAL                                                      */}
       {/* ========================================================================= */}
-      <main className="max-w-[1700px] mx-auto px-4 lg:px-6 pt-5 space-y-6">
+      <main className="max-w-[1700px] mx-auto px-3 sm:px-4 lg:px-6 pt-3 sm:pt-5 space-y-4 sm:space-y-6">
 
         {/* ========================================================================= */}
-        {/* 2. TOP METRICS CARDS (4 TARJETAS)                                         */}
+        {/* 2. TOP METRICS CARDS (2x2 en móvil / 4 en desktop)                        */}
         {/* ========================================================================= */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
           
           {/* Card 1: Mesas Libres (Verde Menta) */}
           <m.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
-            className="bg-[#F0FDF4] rounded-2xl p-4 border border-[#DCFCE7] shadow-sm relative overflow-hidden flex flex-col justify-between"
+            className="bg-[#F0FDF4] rounded-2xl p-3 sm:p-4 border border-[#DCFCE7] shadow-sm relative overflow-hidden flex flex-col justify-between min-w-0"
           >
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-8 h-8 rounded-xl bg-[#DCFCE7] flex items-center justify-center text-[#15803D]">
-                  <LayoutGrid className="w-4 h-4" />
+              <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#DCFCE7] flex items-center justify-center text-[#15803D] shrink-0">
+                  <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#DCFCE7] text-[#15803D]">
-                  +{freeTablesCount} disponibles
+                <span className="px-1.5 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-[#DCFCE7] text-[#15803D] truncate">
+                  +{freeTablesCount} libres
                 </span>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-slate-900 tracking-tight">{freeTablesCount}</span>
-                <span className="text-xs font-extrabold uppercase tracking-wide text-[#15803D]">Mesas Libres</span>
+              <div className="flex items-baseline gap-1.5 sm:gap-2">
+                <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{freeTablesCount}</span>
+                <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-wide text-[#15803D] truncate">Mesas Libres</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 font-medium">
-                {availableRate}% de capacidad en área disponible
+              <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 font-medium truncate">
+                {availableRate}% capacidad libre
               </p>
             </div>
             {/* Barra de progreso */}
-            <div className="w-full bg-[#DCFCE7] h-1.5 rounded-full overflow-hidden mt-3">
+            <div className="w-full bg-[#DCFCE7] h-1 sm:h-1.5 rounded-full overflow-hidden mt-2 sm:mt-3">
               <div 
                 className="bg-[#22C55E] h-full rounded-full transition-all duration-500" 
                 style={{ width: `${Math.min(100, Math.max(5, availableRate))}%` }} 
@@ -761,33 +755,33 @@ export function Dashboard({ onNavigate, onSelectTable }) {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-[#FFFBEB] rounded-2xl p-4 border border-[#FEF3C7] shadow-sm relative overflow-hidden flex flex-col justify-between"
+            className="bg-[#FFFBEB] rounded-2xl p-3 sm:p-4 border border-[#FEF3C7] shadow-sm relative overflow-hidden flex flex-col justify-between min-w-0"
           >
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-8 h-8 rounded-xl bg-[#FEF3C7] flex items-center justify-center text-[#D97706]">
-                  <Users className="w-4 h-4" />
+              <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#FEF3C7] flex items-center justify-center text-[#D97706] shrink-0">
+                  <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF3C7] text-[#D97706] flex items-center gap-1">
+                <span className="px-1.5 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-[#FEF3C7] text-[#D97706] flex items-center gap-1 shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#D97706]" />
                   Activas
                 </span>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-slate-900 tracking-tight">{busyTablesCount}</span>
-                <span className="text-xs font-extrabold uppercase tracking-wide text-[#D97706]">
-                  {busyTablesCount === 1 ? 'Mesa Ocupada' : 'Mesas Ocupadas'}
+              <div className="flex items-baseline gap-1.5 sm:gap-2">
+                <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{busyTablesCount}</span>
+                <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-wide text-[#D97706] truncate">
+                  {busyTablesCount === 1 ? 'Ocupada' : 'Ocupadas'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 font-medium truncate">
+              <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 font-medium truncate">
                 {currentActiveAccount 
-                  ? `Mesa ${currentActiveAccount.table_code} (${currentActiveAccount.guest_count || 2} personas) • ${getElapsedMinutes(currentActiveAccount.opened_at)} min sentados`
-                  : 'Ninguna mesa ocupada en este momento'
+                  ? `Mesa ${currentActiveAccount.table_code} (${currentActiveAccount.guest_count || 2} pax)`
+                  : 'Sin mesas ocupadas'
                 }
               </p>
             </div>
             {/* Barra de progreso */}
-            <div className="w-full bg-[#FEF3C7] h-1.5 rounded-full overflow-hidden mt-3">
+            <div className="w-full bg-[#FEF3C7] h-1 sm:h-1.5 rounded-full overflow-hidden mt-2 sm:mt-3">
               <div 
                 className="bg-[#F59E0B] h-full rounded-full transition-all duration-500" 
                 style={{ width: `${Math.min(100, Math.max(5, occupancyRate))}%` }} 
@@ -800,30 +794,30 @@ export function Dashboard({ onNavigate, onSelectTable }) {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="bg-[#EFF6FF] rounded-2xl p-4 border border-[#DBEAFE] shadow-sm relative overflow-hidden flex flex-col justify-between"
+            className="bg-[#EFF6FF] rounded-2xl p-3 sm:p-4 border border-[#DBEAFE] shadow-sm relative overflow-hidden flex flex-col justify-between min-w-0"
           >
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-8 h-8 rounded-xl bg-[#DBEAFE] flex items-center justify-center text-[#2563EB]">
-                  <Clock className="w-4 h-4" />
+              <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#DBEAFE] flex items-center justify-center text-[#2563EB] shrink-0">
+                  <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#DBEAFE] text-[#2563EB]">
-                  En cocina: {kitchenOrdersCount}
+                <span className="px-1.5 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-[#DBEAFE] text-[#2563EB] truncate">
+                  Cocina: {kitchenOrdersCount}
                 </span>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              <div className="flex items-baseline gap-1.5 sm:gap-2">
+                <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                   {Math.max(kitchenOrdersCount, busyTablesCount, 1)}
                 </span>
-                <span className="text-xs font-extrabold uppercase tracking-wide text-[#2563EB]">Órdenes Hoy</span>
+                <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-wide text-[#2563EB] truncate">Órdenes Hoy</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 font-medium">
-                {currentActiveAccount?.check_number ? `Ticket #${currentActiveAccount.check_number}` : 'Tickets al día'} • Tiempo prom: 14 min
+              <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 font-medium truncate">
+                {currentActiveAccount?.check_number ? `#${currentActiveAccount.check_number}` : 'Al día'} • Prom 14m
               </p>
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 mt-3">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-              <span>KDS sincronizado sin demoras</span>
+            <div className="flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-emerald-700 mt-2 sm:mt-3 truncate">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+              <span className="truncate">KDS sincronizado</span>
             </div>
           </m.div>
 
@@ -832,36 +826,36 @@ export function Dashboard({ onNavigate, onSelectTable }) {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-[#FAF5FF] rounded-2xl p-4 border border-[#F3E8FF] shadow-sm relative overflow-hidden flex flex-col justify-between"
+            className="bg-[#FAF5FF] rounded-2xl p-3 sm:p-4 border border-[#F3E8FF] shadow-sm relative overflow-hidden flex flex-col justify-between min-w-0"
           >
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-8 h-8 rounded-xl bg-[#F3E8FF] flex items-center justify-center text-[#7E22CE] font-bold text-sm">
+              <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#F3E8FF] flex items-center justify-center text-[#7E22CE] font-bold text-xs sm:text-sm shrink-0">
                   Q
                 </div>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#F3E8FF] text-[#7E22CE] flex items-center gap-1">
-                  <ArrowRight className="w-3 h-3 -rotate-45" />
-                  Turno actual
+                <span className="px-1.5 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-[#F3E8FF] text-[#7E22CE] flex items-center gap-0.5 sm:gap-1 shrink-0">
+                  <ArrowRight className="w-2.5 h-2.5 sm:w-3 sm:h-3 -rotate-45" />
+                  Turno
                 </span>
               </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-xs font-bold text-slate-500">GTQ</span>
-                <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              <div className="flex items-baseline gap-1">
+                <span className="text-[10px] sm:text-xs font-bold text-slate-500">Q</span>
+                <span className="text-xl sm:text-3xl font-extrabold text-slate-900 tracking-tight truncate">
                   {shiftSalesTotal.toFixed(2)}
                 </span>
-                <span className="text-xs font-extrabold uppercase tracking-wide text-[#7E22CE]">Ventas Día</span>
+                <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-wide text-[#7E22CE] truncate">Ventas</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 font-medium truncate">
-                Pendiente de facturar en área: <strong className="text-slate-700">Q {pendingFloorTotal.toFixed(2)}</strong>
+              <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 font-medium truncate">
+                Por cobrar: <strong className="text-slate-700">Q {pendingFloorTotal.toFixed(2)}</strong>
               </p>
             </div>
-            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium mt-3 pt-2 border-t border-purple-100">
-              <span>Fondo inicial: Q {openingCash.toFixed(2)}</span>
+            <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 font-medium mt-2 sm:mt-3 pt-1.5 sm:pt-2 border-t border-purple-100">
+              <span className="truncate">Fondo: Q {openingCash.toFixed(0)}</span>
               <button 
                 onClick={() => onNavigate('shifts')}
-                className="text-[#7E22CE] font-bold hover:underline flex items-center gap-0.5"
+                className="text-[#7E22CE] font-bold hover:underline flex items-center gap-0.5 shrink-0"
               >
-                Arqueo X <ChevronRight className="w-3 h-3" />
+                Arqueo <ChevronRight className="w-3 h-3" />
               </button>
             </div>
           </m.div>
@@ -870,31 +864,31 @@ export function Dashboard({ onNavigate, onSelectTable }) {
         {/* ========================================================================= */}
         {/* 3. SECCIÓN MEDIA: ACCIONES RÁPIDAS (IZQ) & ACTIVIDAD EN VIVO (DER)       */}
         {/* ========================================================================= */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
           
           {/* ======================================================================= */}
           {/* COLUMNA IZQUIERDA: ACCIONES RÁPIDAS & MÓDULOS (7 DE 12 COLS)           */}
           {/* ======================================================================= */}
-          <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+          <div className="lg:col-span-7 xl:col-span-8 space-y-3 sm:space-y-4">
             
             {/* Header de la sección de módulos */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-3">
               <div>
                 <h2 className="text-xs font-black text-slate-400 tracking-wider uppercase">
                   Acciones Rápidas & Módulos
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                <p className="text-xs text-slate-500 mt-0.5 font-medium hidden sm:block">
                   Selecciona una estación táctil para gestionar el servicio
                 </p>
               </div>
 
               {/* Botones de acción superior */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
                   onClick={() => setShowSearchModal(true)}
-                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-sm transition-all"
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-sm transition-all min-h-[38px] cursor-pointer"
                 >
-                  <Search className="w-3.5 h-3.5 text-slate-400" />
+                  <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <span>Buscar Ticket</span>
                 </button>
 
@@ -905,16 +899,16 @@ export function Dashboard({ onNavigate, onSelectTable }) {
                     setQuickGuests(2);
                     setShowQuickTableModal(true);
                   }}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all active:scale-[0.98] min-h-[38px] cursor-pointer"
                 >
-                  <Plus className="w-4 h-4 stroke-[2.5]" />
-                  <span>Abrir Mesa Rápida</span>
+                  <Plus className="w-4 h-4 stroke-[2.5] shrink-0" />
+                  <span>Mesa Rápida</span>
                 </button>
               </div>
             </div>
 
-            {/* Grid de 6 Tarjetas de Módulos */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {/* Grid de 6 Tarjetas de Módulos (2 columnas táctiles en móvil) */}
+            <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-4">
               {visibleModules.map((item, index) => {
                 const IconComponent = item.icon;
                 return (
@@ -926,40 +920,40 @@ export function Dashboard({ onNavigate, onSelectTable }) {
                     whileHover={{ y: -3, transition: { duration: 0.15 } }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => onNavigate(item.id)}
-                    className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md transition-all text-left flex flex-col justify-between h-44 group relative overflow-hidden"
+                    className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200/80 shadow-sm hover:shadow-md transition-all text-left flex flex-col justify-between h-36 sm:h-44 group relative overflow-hidden cursor-pointer"
                   >
                     {/* Encabezado de la tarjeta: Icono + Badge */}
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className={`w-11 h-11 rounded-xl ${item.iconBg} flex items-center justify-center shadow-sm`}>
-                          <IconComponent className="w-5 h-5" />
+                      <div className="flex items-center justify-between mb-2 sm:mb-3">
+                        <div className={`w-8 h-8 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl ${item.iconBg} flex items-center justify-center shadow-sm shrink-0`}>
+                          <IconComponent className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${item.badgeColor}`}>
+                        <span className={`px-1.5 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold border truncate max-w-[100px] ${item.badgeColor}`}>
                           {item.badge}
                         </span>
                       </div>
 
                       {/* Título y Subtítulo */}
                       <div className="flex items-center justify-between">
-                        <h3 className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors">
+                        <h3 className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-blue-600 transition-colors truncate">
                           {item.title}
                         </h3>
-                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+                        <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all shrink-0" />
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                      <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 sm:mt-1 line-clamp-2 leading-relaxed">
                         {item.subtitle}
                       </p>
                     </div>
 
                     {/* Footer de estado */}
-                    <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-                      <span className={`flex items-center gap-1.5 ${item.footerLeftColor}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                        {item.footerLeft}
+                    <div className="pt-2 sm:pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] sm:text-xs">
+                      <span className={`flex items-center gap-1 sm:gap-1.5 truncate ${item.footerLeftColor}`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
+                        <span className="truncate">{item.footerLeft}</span>
                       </span>
-                      <span className={`flex items-center gap-1.5 ${item.footerRightColor}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                        {item.footerRight}
+                      <span className={`flex items-center gap-1 sm:gap-1.5 truncate hidden xs:flex ${item.footerRightColor}`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
+                        <span className="truncate">{item.footerRight}</span>
                       </span>
                     </div>
                   </m.button>

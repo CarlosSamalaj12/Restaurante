@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { useSocket } from '../hooks/useSocket';
 import api from '../api';
 import { BackButton } from '../components/BackButton';
 import { printPrecheckThermal } from '../utils/printReceipts';
@@ -15,7 +16,6 @@ import {
   Check, 
   Users, 
   Clock, 
-  RefreshCw, 
   Loader2, 
   ArrowLeft,
   Search,
@@ -71,8 +71,8 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
   const [selectedArea, setSelectedArea] = useState('ALL');
   const [filterMyTables, setFilterMyTables] = useState(false);
 
-  const loadAccounts = async () => {
-    setLoading(true);
+  const loadAccounts = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [accountsRes, tablesRes, bootstrapRes] = await Promise.allSettled([
         api.getOpenAccounts(null),
@@ -83,10 +83,12 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
       if (accountsRes.status === 'fulfilled') {
         const accs = accountsRes.value || [];
         setAccounts(accs);
-        // If user has accounts, default to their tables
-        const myCount = accs.filter(a => a.waiter_id === user?.id).length;
-        if (myCount > 0) {
-          setFilterMyTables(true);
+        // If user has accounts, default to their tables only on full initial load
+        if (!silent) {
+          const myCount = accs.filter(a => a.waiter_id === user?.id).length;
+          if (myCount > 0) {
+            setFilterMyTables(true);
+          }
         }
       }
       if (tablesRes.status === 'fulfilled') {
@@ -103,14 +105,14 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
         }
       }
     } catch (err) {
-      toast.error('Error al cargar cuentas');
+      if (!silent) toast.error('Error al cargar cuentas');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [user?.id, selectedCenterId, toast]);
 
-  const loadClosedAccounts = async (centerId = selectedCenterId) => {
-    setLoadingClosed(true);
+  const loadClosedAccounts = useCallback(async (centerId = selectedCenterId, silent = false) => {
+    if (!silent) setLoadingClosed(true);
     try {
       const cId = centerId || centers[0]?.id || 1;
       const today = new Date().toISOString().split('T')[0];
@@ -119,15 +121,45 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
     } catch (err) {
       console.error('Error al cargar cuentas cerradas:', err);
     } finally {
-      setLoadingClosed(false);
+      if (!silent) setLoadingClosed(false);
     }
-  };
+  }, [selectedCenterId, centers, searchQuery]);
+
+  // Actualización en tiempo real vía Socket.IO (sin necesidad de botón manual)
+  useSocket({
+    'sales:order': () => loadAccounts(true),
+    'sales:payment': () => {
+      loadAccounts(true);
+      if (activeTab === 'closed') loadClosedAccounts(selectedCenterId, true);
+    },
+    'sales:closed': () => {
+      loadAccounts(true);
+      if (activeTab === 'closed') loadClosedAccounts(selectedCenterId, true);
+    },
+    'sales:update': () => {
+      loadAccounts(true);
+      if (activeTab === 'closed') loadClosedAccounts(selectedCenterId, true);
+    },
+    'account:updated': () => {
+      loadAccounts(true);
+      if (activeTab === 'closed') loadClosedAccounts(selectedCenterId, true);
+    },
+    'orders:self_service_new': () => loadAccounts(true),
+    'table:update': () => loadAccounts(true),
+    'table:call_waiter': () => loadAccounts(true),
+    'table:request_bill': () => loadAccounts(true),
+    'table:call_waiter_dismissed': () => loadAccounts(true),
+    'sync:completed': () => {
+      loadAccounts(true);
+      if (activeTab === 'closed') loadClosedAccounts(selectedCenterId, true);
+    },
+  });
 
   useEffect(() => {
     if (activeTab === 'closed') {
       loadClosedAccounts();
     }
-  }, [activeTab, selectedCenterId]);
+  }, [activeTab, selectedCenterId, loadClosedAccounts]);
 
   const handleReopenAccount = (account) => {
     if (account.shift_status === 'closed') {
@@ -355,27 +387,29 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
     <div className="min-h-screen bg-[#f4f7f9] text-slate-800 pb-16">
       {/* Top Header Bar */}
       <header className="bg-white border-b border-slate-200/80 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-[1600px] mx-auto px-4 lg:px-6 py-3 flex items-center justify-between gap-3">
+        <div className="max-w-[1600px] mx-auto px-2.5 sm:px-4 lg:px-6 py-2 sm:py-3 flex items-center justify-between gap-2 sm:gap-3">
           {/* Left: Back & Title */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <BackButton 
               onClick={onBack}
               label="Volver"
               title="Volver"
+              labelClassName="hidden sm:inline"
+              className="shrink-0"
             />
-            <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-200/70 flex items-center justify-center text-[#0a4855] shadow-xs flex-shrink-0">
-              <Receipt className="w-5 h-5 stroke-[2.2]" />
+            <div className="hidden sm:flex w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-teal-50 border border-teal-200/70 items-center justify-center text-[#0a4855] shadow-xs shrink-0">
+              <Receipt className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-tight">
-                  {activeTab === 'open' ? 'Cuentas Abiertas' : 'Cuentas Cerradas / Reabrir'}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h1 className="text-sm sm:text-lg font-black text-slate-900 tracking-tight leading-tight whitespace-nowrap">
+                  {activeTab === 'open' ? 'Cuentas Abiertas' : 'Cuentas Cerradas'}
                 </h1>
-                <span className="bg-[#e1f5f7] text-[#0c7585] text-xs font-semibold px-2.5 py-0.5 rounded-full border border-[#b2e7ed]">
-                  {activeTab === 'open' ? `${accounts.length} activas` : `${closedAccounts.length} cerradas (hoy)`}
+                <span className="bg-[#e1f5f7] text-[#0c7585] text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-full border border-[#b2e7ed] shrink-0">
+                  {activeTab === 'open' ? `${accounts.length}` : `${closedAccounts.length}`}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-normal leading-tight hidden sm:block">
+              <p className="text-[11px] text-slate-400 font-normal leading-tight hidden sm:block truncate">
                 {activeTab === 'open'
                   ? 'Control de mesas activas y facturación en curso'
                   : 'Historial de hoy y reapertura de cuentas para modificaciones contables'}
@@ -383,7 +417,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
             </div>
           </div>
 
-          {/* Center: Search Box */}
+          {/* Center: Search Box (Desktop) */}
           <div className="relative flex-1 max-w-md hidden md:block">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -404,46 +438,38 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
           </div>
 
           {/* Right: Actions & User Chip */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             {activeTab === 'open' && accounts.length >= 2 && (
               <button
                 onClick={() => {
                   setSelectMode(!selectMode);
                   setSelected([]);
                 }}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-xs ${
+                className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer min-h-[36px] ${
                   selectMode
                     ? 'bg-[#0a4855] text-white shadow-[#0a4855]/20 shadow-md'
                     : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90'
                 }`}
+                title="Unir Cuentas"
               >
-                <Link2 className="w-3.5 h-3.5" />
-                <span>{selectMode ? 'Cancelar' : 'Unir Cuentas'}</span>
+                <Link2 className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">{selectMode ? 'Cancelar' : 'Unir Cuentas'}</span>
               </button>
             )}
 
-            <button
-              onClick={activeTab === 'open' ? loadAccounts : () => loadClosedAccounts()}
-              disabled={activeTab === 'open' ? loading : loadingClosed}
-              title="Actualizar cuentas"
-              className="w-9 h-9 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-600 transition-colors shadow-xs disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${(activeTab === 'open' ? loading : loadingClosed) ? 'animate-spin text-teal-600' : ''}`} />
-            </button>
-
-            {/* Subtle Divider */}
-            <div className="h-7 w-px bg-slate-200 hidden sm:block" />
-
             {/* User Profile Chip */}
-            <div className="flex items-center gap-2.5 pl-1">
-              <div className="w-9 h-9 rounded-full bg-[#0a4855] text-white font-bold text-xs flex items-center justify-center shadow-xs flex-shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 pl-0.5">
+              <div 
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#0a4855] text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0"
+                title={`${userName} (${userRoleText})`}
+              >
                 {userInitials}
               </div>
               <div className="hidden lg:block text-left">
-                <p className="text-xs font-bold text-slate-800 leading-tight">
+                <p className="text-xs font-bold text-slate-800 leading-tight truncate max-w-[110px]">
                   {userName}
                 </p>
-                <p className="text-[10px] text-slate-400 leading-tight">
+                <p className="text-[10px] text-slate-400 leading-tight truncate max-w-[110px]">
                   {userRoleText}
                 </p>
               </div>
@@ -452,22 +478,22 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
             {/* Botón Salir (PIN) */}
             <button
               onClick={logout}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer ml-1"
+              className="flex items-center gap-1 p-2 sm:px-3 sm:py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer min-h-[36px] shrink-0"
               title="Cerrar sesión / Salir (PIN)"
             >
-              <LogOut className="w-4 h-4 text-red-600" />
+              <LogOut className="w-4 h-4 text-red-600 shrink-0" />
               <span className="hidden sm:inline">Salir (PIN)</span>
             </button>
           </div>
         </div>
 
         {/* Tab switch row */}
-        <div className="px-4 lg:px-6 pb-2.5 pt-1 max-w-[1600px] mx-auto flex items-center justify-between flex-wrap gap-2 border-t border-slate-100">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+        <div className="px-3 sm:px-4 lg:px-6 pb-2 pt-1 max-w-[1600px] mx-auto flex items-center justify-between flex-wrap gap-2 border-t border-slate-100 overflow-x-auto scrollbar-none">
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0">
               <button
                 onClick={() => setActiveTab('open')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap min-h-[34px] ${
                   activeTab === 'open'
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
@@ -478,31 +504,31 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
               </button>
               <button
                 onClick={() => setActiveTab('closed')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap min-h-[34px] ${
                   activeTab === 'closed'
                     ? 'bg-[#0a4855] text-white shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Cerradas (Hoy) ({closedAccounts.length})</span>
+                <span>Cerradas ({closedAccounts.length})</span>
               </button>
             </div>
 
             {onNavigate && (
               <button
                 onClick={() => onNavigate('cxc')}
-                className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all shadow-2xs cursor-pointer"
+                className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all shadow-2xs cursor-pointer whitespace-nowrap shrink-0 min-h-[34px]"
                 title="Abrir Cuentas por Cobrar (Clientes, Créditos y Folios)"
               >
                 <Users className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Cuentas por Cobrar (CXC)</span>
+                <span>CXC</span>
               </button>
             )}
           </div>
 
           {activeTab === 'closed' && centers.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
                 <Building2 className="w-3.5 h-3.5" /> Centro:
               </span>
@@ -522,20 +548,20 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
         </div>
 
         {/* Mobile Search Row */}
-        <div className="px-4 pb-3 md:hidden">
+        <div className="px-3 pb-2.5 md:hidden">
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar por mesa, comanda o mesero..."
-              className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-xs text-slate-800 placeholder-slate-400"
+              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-600/20"
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 p-1"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -545,139 +571,136 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
       </header>
 
       {/* Main Container */}
-      <main className="max-w-[1600px] mx-auto px-4 lg:px-6 pt-5">
+      <main className="max-w-[1600px] mx-auto px-3 sm:px-4 lg:px-6 pt-3 sm:pt-5">
         {activeTab === 'open' ? (
           <>
-            {/* Metric Cards Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-          {/* Card 1: TOTAL PENDIENTE */}
-          <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                TOTAL PENDIENTE
-              </span>
-              <p className="text-2xl font-black text-slate-900 tracking-tight mt-1">
-                Q{totalPending.toFixed(2)}
-              </p>
-            </div>
-            <div className="w-11 h-11 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shadow-xs">
-              <Coins className="w-5 h-5 stroke-[2]" />
-            </div>
-          </div>
+            {/* Metric Cards Row: 2x2 en móvil para ahorrar espacio vertical */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-3 sm:mb-5">
+              {/* Card 1: TOTAL PENDIENTE */}
+              <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
+                <div className="min-w-0">
+                  <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                    TOTAL PENDIENTE
+                  </span>
+                  <p className="text-base sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5 sm:mt-1 truncate">
+                    Q{totalPending.toFixed(2)}
+                  </p>
+                </div>
+                <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shadow-xs shrink-0 ml-1">
+                  <Coins className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
+                </div>
+              </div>
 
-          {/* Card 2: MESAS OCUPADAS */}
-          <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                MESAS OCUPADAS
-              </span>
-              <p className="text-2xl font-black text-slate-900 tracking-tight mt-1">
-                {occupiedTablesCount}{' '}
-                <span className="text-xs font-medium text-slate-500 font-sans tracking-normal">
-                  de {totalTablesCount} mesas
+              {/* Card 2: MESAS OCUPADAS */}
+              <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
+                <div className="min-w-0">
+                  <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                    MESAS OCUPADAS
+                  </span>
+                  <p className="text-base sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5 sm:mt-1 truncate">
+                    {occupiedTablesCount}{' '}
+                    <span className="text-[10px] sm:text-xs font-medium text-slate-500 font-sans tracking-normal">
+                      / {totalTablesCount}
+                    </span>
+                  </p>
+                </div>
+                <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 shadow-xs shrink-0 ml-1">
+                  <Users className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
+                </div>
+              </div>
+
+              {/* Card 3: SIN PEDIDOS */}
+              <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
+                <div className="min-w-0">
+                  <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                    SIN PEDIDOS
+                  </span>
+                  <p className="text-base sm:text-2xl font-black text-amber-500 tracking-tight mt-0.5 sm:mt-1 truncate">
+                    {emptyOrdersCount}{' '}
+                    <span className="text-[10px] sm:text-xs font-medium text-amber-600/90 font-sans tracking-normal">
+                      urgentes
+                    </span>
+                  </p>
+                </div>
+                <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500 shadow-xs shrink-0 ml-1">
+                  <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
+                </div>
+              </div>
+
+              {/* Card 4: TIEMPO PROMEDIO */}
+              <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
+                <div className="min-w-0">
+                  <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                    TIEMPO PROM.
+                  </span>
+                  <p className="text-base sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5 sm:mt-1 truncate">
+                    {avgTimeFormatted}
+                  </p>
+                </div>
+                <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500 shadow-xs shrink-0 ml-1">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
+                </div>
+              </div>
+            </div>
+
+            {/* Filters Row: Adaptado para evitar desbordes en móvil */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 mb-3.5 sm:mb-5">
+              {/* Toggle Mis Mesas vs Todas las Áreas */}
+              <div className="flex items-center gap-2 self-stretch sm:self-auto order-1 sm:order-2">
+                <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200/70 w-full sm:w-auto">
+                  <button
+                    onClick={() => setFilterMyTables(true)}
+                    className={`flex-1 sm:flex-initial px-3 py-1.5 sm:py-1 rounded-lg text-xs font-bold transition-all text-center cursor-pointer min-h-[34px] flex items-center justify-center ${
+                      filterMyTables
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Mis Mesas ({myAccountsCount})
+                  </button>
+                  <button
+                    onClick={() => setFilterMyTables(false)}
+                    className={`flex-1 sm:flex-initial px-3 py-1.5 sm:py-1 rounded-lg text-xs font-bold transition-all text-center cursor-pointer min-h-[34px] flex items-center justify-center ${
+                      !filterMyTables
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Todas las Áreas
+                  </button>
+                </div>
+              </div>
+
+              {/* Área Pills horizontales con scroll táctil suave */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full scrollbar-none order-2 sm:order-1">
+                <span className="text-xs font-bold text-slate-400 mr-1 shrink-0">
+                  Área:
                 </span>
-              </p>
+                <button
+                  onClick={() => setSelectedArea('ALL')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-xs cursor-pointer min-h-[34px] ${
+                    selectedArea === 'ALL'
+                      ? 'bg-[#0c4e5b] text-white shadow-sm'
+                      : 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200/90'
+                  }`}
+                >
+                  Todas ({baseAccountsForAreas.length})
+                </button>
+                {areaGroups.map((group) => (
+                  <button
+                    key={group.key}
+                    onClick={() => setSelectedArea(group.key)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-xs cursor-pointer min-h-[34px] ${
+                      selectedArea === group.key
+                        ? 'bg-[#0c4e5b] text-white shadow-sm'
+                        : 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200/90'
+                    }`}
+                  >
+                    {group.label} ({group.count})
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="w-11 h-11 rounded-full bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 shadow-xs">
-              <Users className="w-5 h-5 stroke-[2.5]" />
-            </div>
-          </div>
-
-          {/* Card 3: SIN PEDIDOS */}
-          <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                SIN PEDIDOS
-              </span>
-              <p className="text-2xl font-black text-amber-500 tracking-tight mt-1">
-                {emptyOrdersCount}{' '}
-                <span className="text-xs font-medium text-amber-600/90 font-sans tracking-normal">
-                  requieren comanda
-                </span>
-              </p>
-            </div>
-            <div className="w-11 h-11 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500 shadow-xs">
-              <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
-            </div>
-          </div>
-
-          {/* Card 4: TIEMPO PROMEDIO */}
-          <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                TIEMPO PROMEDIO
-              </span>
-              <p className="text-2xl font-black text-slate-900 tracking-tight mt-1">
-                {avgTimeFormatted}
-              </p>
-            </div>
-            <div className="w-11 h-11 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500 shadow-xs">
-              <Clock className="w-5 h-5 stroke-[2.5]" />
-            </div>
-          </div>
-        </div>
-
-        {/* Filters Row */}
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
-          {/* Left: Área Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full scrollbar-none">
-            <span className="text-xs font-bold text-slate-400 mr-1 flex-shrink-0">
-              Área:
-            </span>
-            <button
-              onClick={() => setSelectedArea('ALL')}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-xs ${
-                selectedArea === 'ALL'
-                  ? 'bg-[#0c4e5b] text-white shadow-sm'
-                  : 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200/90'
-              }`}
-            >
-              Todas ({baseAccountsForAreas.length})
-            </button>
-            {areaGroups.map((group) => (
-              <button
-                key={group.key}
-                onClick={() => setSelectedArea(group.key)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-xs ${
-                  selectedArea === group.key
-                    ? 'bg-[#0c4e5b] text-white shadow-sm'
-                    : 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200/90'
-                }`}
-              >
-                {group.label} ({group.count})
-              </button>
-            ))}
-          </div>
-
-          {/* Right: Filtrar por Toggle */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-xs font-bold text-slate-400 mr-1">
-              Filtrar por:
-            </span>
-            <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200/70">
-              <button
-                onClick={() => setFilterMyTables(true)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  filterMyTables
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Mis Mesas ({myAccountsCount})
-              </button>
-              <button
-                onClick={() => setFilterMyTables(false)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  !filterMyTables
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Todas las Áreas
-              </button>
-            </div>
-          </div>
-        </div>
 
         {/* Join Selection Sticky Bar (when selectMode is active) */}
         <AnimatePresence>
@@ -719,7 +742,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
             <p className="text-xs font-semibold">Cargando cuentas activas...</p>
           </div>
         ) : filteredAccounts.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center border border-slate-200/80 shadow-xs max-w-md mx-auto my-8">
+          <div className="bg-white rounded-2xl p-8 sm:p-12 text-center border border-slate-200/80 shadow-xs max-w-md mx-auto my-6 sm:my-8">
             <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-slate-400 border border-slate-100">
               <Receipt className="w-6 h-6" />
             </div>
@@ -738,14 +761,14 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                   setSelectedArea('ALL');
                   setFilterMyTables(false);
                 }}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
               >
                 Restablecer Filtros
               </button>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {filteredAccounts.map((account) => {
               const isMine = account.waiter_id === user?.id;
               const isSelected = selected.includes(account.id);
@@ -767,7 +790,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                   }`}
                 >
                   {/* Card Header (Deep Teal #0c4451) */}
-                  <div className="bg-[#0c4451] text-white px-4 py-3 relative">
+                  <div className="bg-[#0c4451] text-white px-3.5 py-2.5 sm:px-4 sm:py-3 relative">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-extrabold tracking-wide uppercase">
@@ -796,42 +819,39 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                   </div>
 
                   {/* Card Body */}
-                  <div className="p-4 flex-1 flex flex-col justify-between">
+                  <div className="p-3.5 sm:p-4 flex-1 flex flex-col justify-between">
                     {/* Waiter row & status badge */}
-                    <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <User className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span className="text-xs font-semibold text-slate-700 truncate">
                           {account.waiter_name}
                         </span>
                       </div>
                       {isEmpty ? (
-                        <span className="bg-amber-50 text-amber-700 border border-amber-200/70 text-[10px] font-semibold px-2 py-0.5 rounded-md flex-shrink-0">
+                        <span className="bg-amber-50 text-amber-700 border border-amber-200/70 text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0">
                           Esperando orden
                         </span>
                       ) : account.area_name ? (
-                        <span className="text-[10px] text-slate-400 font-medium truncate flex-shrink-0">
+                        <span className="text-[10px] text-slate-400 font-medium truncate shrink-0">
                           {account.area_name}
                         </span>
                       ) : (
-                        <span className="bg-sky-50 text-sky-700 border border-sky-200/70 text-[10px] font-semibold px-2 py-0.5 rounded-md flex-shrink-0">
+                        <span className="bg-sky-50 text-sky-700 border border-sky-200/70 text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0">
                           Cuenta Activa
                         </span>
                       )}
                     </div>
 
                     {/* Products list or empty state */}
-                    <div className="min-h-[110px] flex flex-col justify-center my-1">
+                    <div className="min-h-[50px] sm:min-h-[100px] flex flex-col justify-center my-1">
                       {isEmpty ? (
-                        <div className="text-center py-2">
-                          <div className="w-9 h-9 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center mx-auto mb-1.5 text-slate-300">
-                            <ShoppingBag className="w-4 h-4" />
-                          </div>
+                        <div className="text-center py-2 bg-slate-50/60 rounded-xl border border-dashed border-slate-200/70">
                           <p className="text-xs font-medium text-slate-500 italic">
                             Sin productos agregados
                           </p>
                           <p className="text-[10px] text-slate-400 mt-0.5">
-                            Toca entrar para registrar comanda
+                            Toca tomar pedido para registrar comanda
                           </p>
                         </div>
                       ) : (
@@ -839,14 +859,14 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                           {(account.items || []).slice(0, 4).map((item, idx) => (
                             <div key={idx} className="flex items-center justify-between text-xs">
                               <div className="flex items-center min-w-0 mr-2">
-                                <span className="font-bold text-sky-700 mr-1.5 flex-shrink-0">
+                                <span className="font-bold text-sky-700 mr-1.5 shrink-0">
                                   {Number(item.qty || 1).toFixed(2)}x
                                 </span>
                                 <span className="text-slate-700 font-normal truncate">
                                   {item.product_name}
                                 </span>
                               </div>
-                              <span className="font-semibold text-slate-700 flex-shrink-0 whitespace-nowrap">
+                              <span className="font-semibold text-slate-700 shrink-0 whitespace-nowrap">
                                 Q{Number(item.line_total || 0).toFixed(2)}
                               </span>
                             </div>
@@ -881,7 +901,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
                           SUBTOTAL
                         </span>
-                        <span className="text-xl font-black text-slate-900 tracking-tight">
+                        <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
                           Q{Number(account.total || 0).toFixed(2)}
                         </span>
                       </div>
@@ -896,7 +916,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                           e.stopPropagation();
                           toggleSelect(account.id);
                         }}
-                        className={`w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                        className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs min-h-[44px] cursor-pointer ${
                           isSelected
                             ? 'bg-[#0a4855] text-white shadow-[#0a4855]/20 shadow-sm'
                             : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
@@ -917,7 +937,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                             handlePrint(account.id);
                           }}
                           disabled={printing === account.id}
-                          className="py-2 px-3 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-200/90 shadow-xs transition-colors disabled:opacity-50"
+                          className="py-2.5 px-3 bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-200/90 shadow-2xs transition-colors disabled:opacity-50 min-h-[44px] cursor-pointer"
                         >
                           {printing === account.id ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -933,7 +953,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                               e.stopPropagation();
                               onSelectAccount(account);
                             }}
-                            className="flex-1 py-2 px-3 bg-[#0e1d28] hover:bg-[#1a2d3b] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-xs transition-colors"
+                            className="flex-1 py-2.5 px-3 bg-[#0e1d28] hover:bg-[#1a2d3b] active:bg-black text-white rounded-xl text-xs font-black flex items-center justify-center gap-1 shadow-xs transition-colors min-h-[44px] cursor-pointer"
                           >
                             + Tomar Pedido
                           </button>
@@ -943,7 +963,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                               e.stopPropagation();
                               onSelectAccount(account);
                             }}
-                            className="flex-1 py-2 px-3 bg-[#0a4855] hover:bg-[#083a45] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-xs transition-colors"
+                            className="flex-1 py-2.5 px-3 bg-[#0a4855] hover:bg-[#083a45] active:bg-[#062c34] text-white rounded-xl text-xs font-black flex items-center justify-center gap-1 shadow-xs transition-colors min-h-[44px] cursor-pointer"
                           >
                             Entrar →
                           </button>
@@ -990,7 +1010,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                 {closedAccounts.map((account) => {
                   const isClosedShift = account.shift_status === 'closed';
                   const isReopening = reopeningId === account.id;
@@ -1055,7 +1075,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                         {isClosedShift ? (
                           <div
                             title="No se puede reabrir porque el turno de caja ya fue cerrado."
-                            className="w-full py-2 bg-slate-100 text-slate-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-not-allowed border border-slate-200"
+                            className="w-full py-2.5 min-h-[44px] bg-slate-100 text-slate-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-not-allowed border border-slate-200"
                           >
                             <Lock className="w-3.5 h-3.5 text-slate-400" />
                             <span>Turno Cerrado (Bloqueado)</span>
@@ -1065,7 +1085,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                             type="button"
                             onClick={() => handleReopenAccount(account)}
                             disabled={isReopening}
-                            className="w-full py-2 bg-amber-500 hover:bg-amber-600 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all disabled:opacity-50"
+                            className="w-full py-2.5 min-h-[44px] bg-amber-500 hover:bg-amber-600 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all disabled:opacity-50"
                           >
                             {isReopening ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />

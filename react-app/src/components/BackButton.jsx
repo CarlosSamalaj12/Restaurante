@@ -15,6 +15,7 @@ export function BackButton({
   size = 'md',        // 'sm' | 'md' | 'lg'
   iconOnly = false,
   className = '',
+  labelClassName = '',
   disabled = false,
   ...props
 }) {
@@ -94,7 +95,7 @@ export function BackButton({
 
       {/* Texto descriptivo del botón */}
       {!iconOnly && label && (
-        <span className="font-semibold tracking-tight whitespace-nowrap leading-none drop-shadow-2xs">
+        <span className={`font-semibold tracking-tight whitespace-nowrap leading-none drop-shadow-2xs ${labelClassName}`}>
           {label}
         </span>
       )}

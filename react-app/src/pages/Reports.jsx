@@ -34,6 +34,7 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { api } from '../api';
+import { BackButton } from '../components/BackButton';
 
 // Subpáginas de reportes individuales existentes
 import { CXCPage } from './CXC';
@@ -488,61 +489,74 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
       {/* ─────────────────────────────────────────────────────────── */}
       {/* 1. HEADER SUPERIOR CONTEXTUAL */}
       {/* ─────────────────────────────────────────────────────────── */}
-      <header className="bg-white border-b border-slate-200/90 sticky top-0 z-30 shadow-xs px-4 py-3">
-        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-3">
-          {/* Volver + Título & Badge */}
-          <div className="flex items-center gap-3 w-full lg:w-auto">
-            <button
-              type="button"
-              onClick={onBack}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all active:scale-95 cursor-pointer shrink-0"
-              title="Volver a la vista principal del POS [ESC]"
-            >
-              <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
-              <span>Volver al POS</span>
-            </button>
+      <header className="bg-white border-b border-slate-200/90 sticky top-0 z-30 shadow-xs px-3 sm:px-4 py-2 sm:py-3">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
+          {/* Fila Superior en Móvil: Volver + Título & Badge + Avatar/Salir */}
+          <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <BackButton
+                onClick={onBack}
+                label="Volver al POS"
+                title="Volver a la vista principal del POS [ESC]"
+                labelClassName="hidden sm:inline"
+                className="shrink-0"
+              />
 
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-slate-900 text-lg leading-tight tracking-tight">
-                  Centro de Reportes & Analíticas
-                </h1>
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-sky-50 text-sky-700 border border-sky-200 shrink-0">
-                  v3.4 POS
-                </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h1 className="font-extrabold text-slate-900 text-sm sm:text-lg leading-tight tracking-tight whitespace-nowrap">
+                    Reportes & Analíticas
+                  </h1>
+                  <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-extrabold bg-sky-50 text-sky-700 border border-sky-200 shrink-0">
+                    v3.4
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 truncate hidden sm:block">
+                  Consultas consolidadas, auditoria de ventas, inventario y cierres
+                </p>
               </div>
-              <p className="text-xs text-slate-500 truncate">
-                Consultas consolidadas, auditoria de ventas, inventario y cierres
-              </p>
+            </div>
+
+            {/* Avatar & Salir rápido en móvil */}
+            <div className="flex sm:hidden items-center gap-1.5 shrink-0">
+              <div
+                className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-extrabold flex items-center justify-center text-xs shadow-2xs"
+                title={user?.full_name || 'Carlos Samalaj'}
+              >
+                {userInitials || 'CS'}
+              </div>
+              <button
+                type="button"
+                onClick={logout}
+                className="p-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-xl flex items-center justify-center transition-colors min-h-[34px] min-w-[34px] cursor-pointer"
+                title="Cerrar sesión / Bloquear pantalla con PIN"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
-          {/* Centro de Operación + Usuario + Salir PIN */}
-          <div className="flex items-center gap-3 w-full lg:w-auto justify-end flex-wrap">
+          {/* Centro de Operación + Usuario + Salir PIN (Desktop / Fila 2 Móvil) */}
+          <div className="flex items-center gap-2 sm:gap-3 justify-between sm:justify-end shrink-0">
             {/* Selector de Centro */}
-            <div className="relative">
-              <span className="block text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-0.5">
-                Centro de Operación
-              </span>
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl text-xs font-bold text-slate-700 transition-colors">
-                <Store className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                <select
-                  value={selectedCenter}
-                  onChange={(e) => setSelectedCenter(e.target.value)}
-                  className="bg-transparent border-none outline-none font-bold text-slate-800 text-xs cursor-pointer pr-4"
-                >
-                  {centers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                  {centers.length === 0 && <option value="1">Restaurante Principal — Área A & Terraza</option>}
-                </select>
-              </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl text-xs font-bold text-slate-700 transition-colors flex-1 sm:flex-initial">
+              <Store className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <select
+                value={selectedCenter}
+                onChange={(e) => setSelectedCenter(e.target.value)}
+                className="bg-transparent border-none outline-none font-bold text-slate-800 text-xs cursor-pointer w-full sm:w-auto pr-2"
+              >
+                {centers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+                {centers.length === 0 && <option value="1">Restaurante Principal</option>}
+              </select>
             </div>
 
-            {/* Usuario Badge */}
-            <div className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl">
+            {/* Usuario Badge Desktop */}
+            <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl">
               <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-extrabold flex items-center justify-center text-xs shrink-0 shadow-2xs">
                 {userInitials || 'CS'}
               </div>
@@ -557,11 +571,11 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
               </div>
             </div>
 
-            {/* Salir PIN */}
+            {/* Salir PIN Desktop */}
             <button
               type="button"
               onClick={logout}
-              className="px-3 py-2 bg-rose-50/70 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="hidden sm:flex px-3 py-2 bg-rose-50/70 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs rounded-xl items-center gap-1.5 transition-colors cursor-pointer"
               title="Cerrar sesión / Bloquear pantalla con PIN"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -574,82 +588,82 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
       {/* ─────────────────────────────────────────────────────────── */}
       {/* CONTENIDO PRINCIPAL */}
       {/* ─────────────────────────────────────────────────────────── */}
-      <main className="max-w-7xl mx-auto w-full p-4 sm:p-5 space-y-4">
+      <main className="max-w-7xl mx-auto w-full p-3 sm:p-5 space-y-3.5 sm:space-y-4 pb-20 sm:pb-16">
         {/* ───────────────────────────────────────────────────────── */}
-        {/* 2. TOP SUMMARY KPI CARDS (4 TARJETAS) */}
+        {/* 2. TOP SUMMARY KPI CARDS (2x2 en móvil / 4 en desktop) */}
         {/* ───────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
           {/* Tarjeta 1: Ventas Totales */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-2xs flex items-center justify-between">
+            <div className="space-y-0.5 sm:space-y-1 min-w-0">
+              <span className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block truncate">
                 Ventas Totales Hoy
               </span>
-              <div className="font-mono font-black text-slate-900 text-2xl">
+              <div className="font-mono font-black text-slate-900 text-base sm:text-2xl truncate">
                 Q {kpiMetrics.totalSales.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
-              <div className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+              <div className="text-[10px] sm:text-xs font-bold text-emerald-600 flex items-center gap-1 truncate">
                 <span>↑</span>
                 <span>{kpiMetrics.salesTrend}</span>
               </div>
             </div>
-            <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0 shadow-2xs">
-              <DollarSign className="w-5 h-5 stroke-[2.5]" />
+            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0 shadow-2xs ml-1">
+              <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
             </div>
           </div>
 
           {/* Tarjeta 2: Cuentas Cerradas */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-2xs flex items-center justify-between">
+            <div className="space-y-0.5 sm:space-y-1 min-w-0">
+              <span className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block truncate">
                 Cuentas Cerradas
               </span>
-              <div className="font-mono font-black text-slate-900 text-2xl">
+              <div className="font-mono font-black text-slate-900 text-base sm:text-2xl truncate">
                 {kpiMetrics.closedTickets} tickets
               </div>
-              <div className="text-xs font-semibold text-slate-500">
-                Ticket Prom: <strong className="text-slate-800">Q {kpiMetrics.avgTicket.toFixed(2)}</strong>
+              <div className="text-[10px] sm:text-xs font-semibold text-slate-500 truncate">
+                Ticket: <strong className="text-slate-800">Q {kpiMetrics.avgTicket.toFixed(2)}</strong>
               </div>
             </div>
-            <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0 shadow-2xs">
-              <FileText className="w-5 h-5 stroke-[2.2]" />
+            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0 shadow-2xs ml-1">
+              <FileText className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </div>
           </div>
 
           {/* Tarjeta 3: Total Propinas */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-2xs flex items-center justify-between">
+            <div className="space-y-0.5 sm:space-y-1 min-w-0">
+              <span className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block truncate">
                 Total Propinas
               </span>
-              <div className="font-mono font-black text-slate-900 text-2xl">
+              <div className="font-mono font-black text-slate-900 text-base sm:text-2xl truncate">
                 Q {kpiMetrics.totalTips.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
-              <div className="text-xs font-semibold text-slate-500">
-                <strong className="text-slate-800">{kpiMetrics.avgTipRate}</strong> tasa promedio
+              <div className="text-[10px] sm:text-xs font-semibold text-slate-500 truncate">
+                <strong className="text-slate-800">{kpiMetrics.avgTipRate}</strong> tasa prom.
               </div>
             </div>
-            <div className="w-11 h-11 rounded-2xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shrink-0 shadow-2xs">
-              <CreditCard className="w-5 h-5 stroke-[2.2]" />
+            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shrink-0 shadow-2xs ml-1">
+              <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </div>
           </div>
 
           {/* Tarjeta 4: Anulaciones del Turno */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                <span>Anulaciones del Turno</span>
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-2xs flex items-center justify-between">
+            <div className="space-y-0.5 sm:space-y-1 min-w-0">
+              <span className="text-[9px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1 truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                <span>Anulaciones</span>
               </span>
-              <div className="font-mono font-black text-slate-900 text-2xl">
-                {kpiMetrics.voidCount} registros
+              <div className="font-mono font-black text-slate-900 text-base sm:text-2xl truncate">
+                {kpiMetrics.voidCount} reg.
               </div>
-              <div className="text-xs font-bold text-amber-700">
-                Impacto: Q {kpiMetrics.voidAmount.toFixed(2)} (Supervisado)
+              <div className="text-[10px] sm:text-xs font-bold text-amber-700 truncate">
+                Q {kpiMetrics.voidAmount.toFixed(2)}
               </div>
             </div>
-            <div className="w-11 h-11 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0 shadow-2xs">
-              <AlertTriangle className="w-5 h-5 stroke-[2.2]" />
+            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0 shadow-2xs ml-1">
+              <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </div>
           </div>
         </div>
@@ -657,32 +671,32 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
         {/* ───────────────────────────────────────────────────────── */}
         {/* 3. LIGHT EXECUTIVE ACTION BANNER: CIERRE Y ARQUEO */}
         {/* ───────────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 text-slate-800 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-4 border border-slate-200/90">
-          <div className="flex items-center gap-3.5 w-full md:w-auto">
-            <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-center text-blue-600 shrink-0 shadow-2xs">
-              <Printer className="w-5 h-5 stroke-[2.2]" />
+        <div className="bg-white rounded-2xl p-3.5 sm:p-5 text-slate-800 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 sm:gap-4 border border-slate-200/90">
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-center text-blue-600 shrink-0 shadow-2xs">
+              <Printer className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </div>
-            <div className="space-y-0.5">
-              <h2 className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight">
+            <div className="space-y-0.5 min-w-0">
+              <h2 className="font-extrabold text-slate-900 text-xs sm:text-base tracking-tight truncate sm:whitespace-normal">
                 Acciones Rápidas de Cierre y Arqueo de Caja
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-[11px] sm:text-xs text-slate-500 hidden sm:block">
                 Genera la tirilla térmica inmediata de corte de caja o exporta la auditoria del turno actual.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto justify-end shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 w-full md:w-auto justify-stretch sm:justify-end shrink-0">
             {/* Imprimir Corte Parcial (X) */}
             <button
               type="button"
               disabled={printingCut}
               onClick={handlePrintCorteX}
-              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-2 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+              className="flex-1 sm:flex-initial px-3 sm:px-4 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 sm:gap-2 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50 min-h-[44px]"
               title="Imprime tira de auditoría parcial X [Ctrl+P]"
             >
               {printingCut ? <Loader2 className="w-4 h-4 animate-spin text-blue-600" /> : <Printer className="w-4 h-4 text-slate-600" />}
-              <span>Imprimir Corte Parcial (X)</span>
+              <span className="truncate">Corte Parcial (X)</span>
             </button>
 
             {/* Cierre Definitivo del Turno (Z) */}
@@ -695,11 +709,11 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
                   setCloseShiftModal(true);
                 }
               }}
-              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all active:scale-95 cursor-pointer shadow-blue-500/20"
+              className="flex-1 sm:flex-initial px-3 sm:px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 sm:gap-2 transition-all active:scale-95 cursor-pointer shadow-blue-500/20 min-h-[44px]"
               title="Iniciar cierre fiscal definitivo Z de turno"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>Cierre Definitivo del Turno (Z)</span>
+              <span className="truncate">Cierre Definitivo (Z)</span>
             </button>
           </div>
         </div>
@@ -707,9 +721,9 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
         {/* ───────────────────────────────────────────────────────── */}
         {/* 4. FILTERS & SEARCH CARD */}
         {/* ───────────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-2xs space-y-3 sm:space-y-3.5">
           {/* Fila 1: Búsqueda de reportes + Presets de Fechas */}
-          <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 sm:gap-3">
             {/* Buscador */}
             <div className="relative w-full md:max-w-md">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -717,14 +731,14 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar reporte por nombre, métrica o módulo (ej. propinas, anulación, inventario)..."
-                className="w-full pl-9 pr-8 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl text-xs font-medium text-slate-800 outline-none transition-all placeholder:text-slate-400"
+                placeholder="Buscar reporte por nombre o métrica (ej. propinas, anulación)..."
+                className="w-full pl-9 pr-8 py-2.5 sm:py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl text-xs font-medium text-slate-800 outline-none transition-all placeholder:text-slate-400"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -732,12 +746,12 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
             </div>
 
             {/* Presets de fecha + Indicador de rango */}
-            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-end">
-              <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-1 border border-slate-200/60">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto justify-end">
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-0.5 sm:gap-1 border border-slate-200/60 w-full sm:w-auto overflow-x-auto scrollbar-none">
                 <button
                   type="button"
                   onClick={() => handleDatePresetChange('today')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex-1 sm:flex-initial text-center px-2.5 sm:px-3 py-1.5 sm:py-1 rounded-lg text-xs font-bold transition-all cursor-pointer min-h-[32px] flex items-center justify-center ${
                     datePreset === 'today'
                       ? 'bg-white text-slate-900 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -748,18 +762,18 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
                 <button
                   type="button"
                   onClick={() => handleDatePresetChange('shift')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex-1 sm:flex-initial text-center px-2.5 sm:px-3 py-1.5 sm:py-1 rounded-lg text-xs font-bold transition-all cursor-pointer min-h-[32px] flex items-center justify-center ${
                     datePreset === 'shift'
                       ? 'bg-white text-slate-900 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  Turno Actual
+                  Turno
                 </button>
                 <button
                   type="button"
                   onClick={() => handleDatePresetChange('week')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex-1 sm:flex-initial text-center px-2.5 sm:px-3 py-1.5 sm:py-1 rounded-lg text-xs font-bold transition-all cursor-pointer min-h-[32px] flex items-center justify-center ${
                     datePreset === 'week'
                       ? 'bg-white text-slate-900 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -770,7 +784,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
                 <button
                   type="button"
                   onClick={() => handleDatePresetChange('month')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex-1 sm:flex-initial text-center px-2.5 sm:px-3 py-1.5 sm:py-1 rounded-lg text-xs font-bold transition-all cursor-pointer min-h-[32px] flex items-center justify-center ${
                     datePreset === 'month'
                       ? 'bg-white text-slate-900 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -781,23 +795,23 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
               </div>
 
               {/* Botón de Rango de Fecha */}
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200/90 rounded-xl text-xs font-mono font-bold text-slate-700">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <span>
+              <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200/90 rounded-xl text-xs font-mono font-bold text-slate-700 min-h-[34px]">
+                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="truncate">
                   {startDate} — {endDate}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Fila 2: Categorías Pills */}
-          <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-100">
-            <span className="text-xs font-bold text-slate-400 mr-1">Filtrar:</span>
+          {/* Fila 2: Categorías Pills con Scroll Táctil Horizontal Suave */}
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none pb-1 pt-2 border-t border-slate-100 whitespace-nowrap">
+            <span className="text-xs font-bold text-slate-400 mr-1 shrink-0">Filtrar:</span>
 
             <button
               type="button"
               onClick={() => setCategoryFilter('all')}
-              className={`px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer min-h-[34px] flex items-center ${
                 categoryFilter === 'all'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
@@ -809,7 +823,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
             <button
               type="button"
               onClick={() => setCategoryFilter('finances')}
-              className={`px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer min-h-[34px] flex items-center ${
                 categoryFilter === 'finances'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
@@ -821,7 +835,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
             <button
               type="button"
               onClick={() => setCategoryFilter('operations')}
-              className={`px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer min-h-[34px] flex items-center ${
                 categoryFilter === 'operations'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
@@ -833,7 +847,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
             <button
               type="button"
               onClick={() => setCategoryFilter('inventory')}
-              className={`px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer min-h-[34px] flex items-center ${
                 categoryFilter === 'inventory'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
@@ -845,7 +859,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
             <button
               type="button"
               onClick={() => setCategoryFilter('staff')}
-              className={`px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer min-h-[34px] flex items-center ${
                 categoryFilter === 'staff'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
@@ -878,42 +892,42 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
               {filteredReports.map((card) => {
                 const IconComponent = card.icon;
                 return (
                   <div
                     key={card.id}
-                    className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between space-y-4"
+                    className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between space-y-3 sm:space-y-4"
                   >
                     {/* Header: Icono + Título + Badge + Descripción */}
                     <div className="space-y-2">
-                      <div className="flex items-start gap-3.5">
+                      <div className="flex items-start gap-2.5 sm:gap-3.5">
                         <div
-                          className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs ${card.iconBg}`}
+                          className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 shadow-2xs ${card.iconBg}`}
                         >
-                          <IconComponent className="w-5 h-5 stroke-[2.2]" />
+                          <IconComponent className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                         </div>
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="min-w-0 flex-1 space-y-0.5 sm:space-y-1">
+                          <div className="flex items-center justify-between gap-1.5 sm:gap-2 flex-wrap">
                             <h4 className="font-extrabold text-slate-900 text-sm sm:text-base leading-snug">
                               {card.title}
                             </h4>
                             <span
-                              className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border tracking-wider shrink-0 ${card.tagColor}`}
+                              className={`text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-md border tracking-wider shrink-0 ${card.tagColor}`}
                             >
                               {card.tag}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-500 leading-relaxed">{card.desc}</p>
+                          <p className="text-[11px] sm:text-xs text-slate-500 leading-relaxed">{card.desc}</p>
                         </div>
                       </div>
 
                       {/* Caja de Métricas (3 Columnas) */}
-                      <div className="bg-slate-50/90 rounded-xl p-3 border border-slate-100 grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-slate-50/90 rounded-xl p-2 sm:p-3 border border-slate-100 grid grid-cols-3 gap-1 sm:gap-2 text-center">
                         {card.metrics.map((m, idx) => (
                           <div key={idx} className="space-y-0.5">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                            <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
                               {m.label}
                             </span>
                             <span
@@ -930,14 +944,14 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
 
                     {/* Footer: Nota + Botón Acción */}
                     <div className="flex items-center justify-between pt-2 border-t border-slate-100 gap-2">
-                      <span className={`text-xs ${card.noteColor} truncate`}>{card.footerNote}</span>
+                      <span className={`text-[11px] sm:text-xs ${card.noteColor} truncate`}>{card.footerNote}</span>
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                         {/* Botón Tirilla rápida */}
                         <button
                           type="button"
                           onClick={() => setActiveReport(card.id)}
-                          className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+                          className="w-9 h-9 sm:w-8 sm:h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer min-h-[38px] min-w-[38px]"
                           title="Ver formato impreso"
                         >
                           <FileText className="w-4 h-4" />
@@ -947,7 +961,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
                         <button
                           type="button"
                           onClick={() => setActiveReport(card.id)}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                          className="px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer min-h-[38px]"
                         >
                           <span>{card.actionText}</span>
                         </button>
@@ -964,23 +978,23 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
       {/* ─────────────────────────────────────────────────────────── */}
       {/* 6. BOTTOM FIXED STATUS BAR */}
       {/* ───────────────────────────────────────────────────────── */}
-      <footer className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 px-4 py-2 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-500 font-medium">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>
-            Servidor POS: <strong>Sincronizado</strong>
+      <footer className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-xs border-t border-slate-200 px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between gap-2 text-[10px] sm:text-[11px] text-slate-500 font-medium">
+        <div className="flex items-center gap-1.5 sm:gap-2 truncate">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+          <span className="truncate">
+            POS: <strong className="text-slate-700">En línea</strong>
           </span>
-          <span>|</span>
-          <span>
-            Base de datos local activa: <strong>99.9% disponible</strong>
+          <span className="text-slate-300">|</span>
+          <span className="truncate hidden xs:inline">
+            BD Local: <strong className="text-slate-700">99.9%</strong>
           </span>
-          <span>|</span>
-          <span>
-            Terminal: <strong>TPV-SALON-01</strong>
+          <span className="text-slate-300 hidden xs:inline">|</span>
+          <span className="truncate">
+            Terminal: <strong className="text-slate-700">TPV-01</strong>
           </span>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="hidden sm:flex items-center gap-2.5 flex-wrap shrink-0">
           <span>
             <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono font-bold text-slate-700">
               F1
