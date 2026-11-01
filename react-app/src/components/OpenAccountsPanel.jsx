@@ -16,11 +16,12 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { useSocket } from '../hooks/useSocket';
 import { printPrecheckThermal } from '../utils/printReceipts';
+import { executePrecheckPrint } from '../utils/precheckPrinter';
 import { ConfirmDialog } from './ConfirmDialog';
 import api from '../api';
 
 export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }) {
-  const { user, businessProfile } = useAuth();
+  const { user, businessProfile, selectedTerminal } = useAuth();
   const toast = useToast();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -143,15 +144,14 @@ export function OpenAccountsPanel({ selectedCenter, onSelectAccount, onRefresh }
   const handlePrint = async (accountId) => {
     setPrinting(accountId);
     try {
-      const data = await api.printPrecheck(accountId);
-      printPrecheckThermal({
-        account: data.account,
-        items: data.items,
-        businessProfile
+      await executePrecheckPrint({
+        accountId,
+        selectedTerminal,
+        businessProfile,
+        toast,
       });
-      toast.success('Precuenta enviada a imprimir');
-    } catch (err) {
-      toast.error('Error al imprimir precuenta');
+    } catch (_) {
+      // Notificado por toast dentro de executePrecheckPrint
     } finally {
       setPrinting(null);
     }

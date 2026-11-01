@@ -295,7 +295,7 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
             type="button"
             onClick={() => handleScroll(-1)}
             className="p-1.5 rounded-xl bg-white shadow-2xs hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
-            title="Ver salones anteriores"
+            title="Ver áreas anteriores"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -354,7 +354,7 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
             type="button"
             onClick={() => handleScroll(1)}
             className="p-1.5 rounded-xl bg-white shadow-2xs hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
-            title="Ver siguientes salones"
+            title="Ver siguientes áreas"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -372,7 +372,7 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
                 : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200'
               }
             `}
-            title="Ver todos los salones"
+            title="Ver todas las áreas"
           >
             <LayoutGrid className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'text-white' : 'text-indigo-600'}`} />
             <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${isOpen ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-700 border border-indigo-200/60'}`}>
@@ -411,7 +411,7 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
                 <div>
                   <h4 className="font-extrabold text-slate-900 text-sm leading-tight">Centros de Consumo</h4>
                   <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                    {centers.length} salones y áreas activas
+                    {centers.length} áreas activas
                   </p>
                 </div>
               </div>
@@ -433,7 +433,7 @@ export function CenterSelectorBar({ centers = [], selectedCenter, onSelectCenter
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar salón o centro..."
+                  placeholder="Buscar área o centro..."
                   className="w-full pl-10 pr-8 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-2xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all shadow-2xs"
                   autoFocus
                 />

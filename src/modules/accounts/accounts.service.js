@@ -8,6 +8,15 @@ const { withTransaction } = require("../../common/db");
 const { money, nowSql } = require("../../common/utils");
 const { BadRequestError, NotFoundError } = require("../../common/errors");
 
+let printService = null;
+try {
+  printService = require("../../../../server/print-service");
+} catch (_) {
+  try {
+    printService = require("../../print-service");
+  } catch (_) {}
+}
+
 const accountsService = {
   /**
    * Calcula los totales de una cuenta (subtotal, descuentos, propina, total, pagado, saldo pendiente).
@@ -143,7 +152,7 @@ const accountsService = {
   /**
    * Obtiene los datos de precuenta para impresión o vista previa.
    */
-  async getAccountPrecheck(accountId) {
+  async getAccountPrecheck(accountId, { terminalId = null, userId = null } = {}) {
     const parsedId = Number(accountId);
     if (!parsedId) throw new BadRequestError("accountId inválido");
 
@@ -151,7 +160,126 @@ const accountsService = {
     if (!account) throw new NotFoundError("Cuenta no encontrada");
 
     const items = await accountsRepository.findOrderItems(parsedId);
-    return { account, items };
+    const totals = await this.getAccountTotals(parsedId);
+
+    let businessProfile = null;
+    try {
+      businessProfile = await settingsService.getBusinessProfile();
+    } catch (_) {}
+
+    // Intentar impresión directa a la impresora configurada de la terminal
+    let printedDirectly = false;
+    let terminalName = null;
+    let printError = null;
+
+    if (printService && typeof printService.printPrecheckTicket === "function") {
+      try {
+        const terminal = await accountsRepository.findTerminalPrinter({
+          terminalId,
+          userId,
+          operationCenterId: account.operation_center_id,
+        });
+
+        if (terminal && terminal.printer_ip) {
+          terminalName = terminal.name || terminal.printer_name;
+          const printResult = await printService.printPrecheckTicket(
+            { account, items, totals },
+            terminal,
+            businessProfile
+          );
+          if (printResult && printResult.ok) {
+            printedDirectly = true;
+          } else {
+            printError = printResult?.error || "Error de comunicación con la impresora";
+          }
+        } else {
+          printError = "La terminal no tiene impresora asignada";
+        }
+      } catch (e) {
+        printError = e.message || "Fallo en el servicio de impresión";
+      }
+    }
+
+    return {
+      account,
+      items,
+      totals,
+      businessProfile,
+      printedDirectly,
+      terminalName,
+      printError,
+    };
+  },
+
+  /**
+   * Reimprime el recibo o la precuenta directamente en la terminal indicada.
+   */
+  async reprintAccountReceipt(accountId, { terminalId = null, userId = null } = {}) {
+    const parsedId = Number(accountId);
+    if (!parsedId) throw new BadRequestError("accountId inválido");
+
+    const receipt = await this.getAccountReceipt(parsedId);
+    let businessProfile = null;
+    try {
+      businessProfile = await settingsService.getBusinessProfile();
+    } catch (_) {}
+
+    let printedDirectly = false;
+    let terminalName = null;
+    let printError = null;
+
+    if (printService) {
+      try {
+        const terminal = await accountsRepository.findTerminalPrinter({
+          terminalId,
+          userId,
+          operationCenterId: receipt.account?.operation_center_id,
+        });
+
+        if (terminal && terminal.printer_ip) {
+          terminalName = terminal.name || terminal.printer_name;
+          let printResult;
+          if (receipt.account.status === "paid") {
+            printResult = await printService.printCustomerReceipt(
+              receipt,
+              terminal,
+              {
+                name: businessProfile?.restaurant_name || receipt.account.center_name,
+                commercial_name: businessProfile?.commercial_name,
+                address: businessProfile?.address,
+                nit: businessProfile?.tax_id || businessProfile?.nit,
+                phone: businessProfile?.phone,
+              },
+              { copies: 1 }
+            );
+          } else {
+            printResult = await printService.printPrecheckTicket(
+              { account: receipt.account, items: receipt.items, totals: receipt.totals },
+              terminal,
+              businessProfile
+            );
+          }
+
+          if (printResult && printResult.ok) {
+            printedDirectly = true;
+          } else {
+            printError = printResult?.error || "Error de comunicación con la impresora";
+          }
+        } else {
+          printError = "La terminal no tiene impresora asignada";
+        }
+      } catch (e) {
+        printError = e.message || "Fallo en el servicio de impresión";
+      }
+    }
+
+    return {
+      receipt,
+      businessProfile,
+      printedDirectly,
+      terminalName,
+      printError,
+    };
   },
 
   /**

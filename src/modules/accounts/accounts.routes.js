@@ -20,6 +20,7 @@ accountsRouter.get("/:accountId", accountsController.getAccountById);
 accountsRouter.delete("/:accountId", authService.requirePermissionOrSupervisor("accounts.void"), accountsController.deleteAccount);
 accountsRouter.get("/:accountId/receipt", accountsController.getAccountReceipt);
 accountsRouter.post("/:accountId/precheck", accountsController.getAccountPrecheck);
+accountsRouter.post("/:accountId/reprint", accountsController.reprintAccount);
 accountsRouter.post("/:accountId/items", authService.requirePermission("orders.create"), ordersController.addItem);
 accountsRouter.post("/:accountId/send", authService.requirePermission("orders.send"), ordersController.sendOrder);
 

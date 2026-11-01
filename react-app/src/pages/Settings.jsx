@@ -113,7 +113,7 @@ const GROUPS = [
   {
     id: 'operations',
     label: 'Piso y Operaciones',
-    description: 'Salones, estaciones, terminales e impresoras',
+    description: 'Áreas, estaciones, terminales e impresoras',
     items: [
       {
         id: 'tables',
@@ -121,7 +121,7 @@ const GROUPS = [
         shortDesc: 'Distribución y capacidad',
         icon: UtensilsCrossed,
         color: 'text-teal-600 bg-teal-50 border-teal-200/80',
-        keywords: ['salones', 'terraza', 'mesas', 'sillas', 'capacidad', 'layout'],
+        keywords: ['áreas', 'terraza', 'mesas', 'sillas', 'capacidad', 'layout'],
         getBadge: (d) => d.tables?.length,
       },
       {

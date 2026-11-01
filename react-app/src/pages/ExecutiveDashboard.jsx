@@ -375,7 +375,7 @@ export function ExecutiveDashboard({ onBack }) {
             {/* Área de Mesas */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 mb-1 flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-slate-400" /> Área / Salón
+                <MapPin className="w-3 h-3 text-slate-400" /> Área
               </label>
               <select
                 value={selectedArea}
@@ -884,10 +884,10 @@ export function ExecutiveDashboard({ onBack }) {
           <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm flex flex-col justify-between">
             <div>
               <h2 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-sky-600" /> Ventas por Área de Salón
+                <MapPin className="w-4 h-4 text-sky-600" /> Ventas por Área
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Ingresos y ocupación monetaria por salón o terraza
+                Ingresos y ocupación monetaria por área o terraza
               </p>
             </div>
 

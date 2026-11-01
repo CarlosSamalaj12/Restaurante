@@ -488,7 +488,7 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
                 onChange={e => setForm({ ...form, operationCenterId: e.target.value ? Number(e.target.value) : '' })}
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-sm"
               >
-                <option value="">Común a todos los salones / centros</option>
+                <option value="">Común a todas las áreas / centros</option>
                 {centers && centers.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}

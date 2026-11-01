@@ -141,7 +141,7 @@ export function SalesByCenterReportPage({ onBack }) {
 
   const kpis = [
     {
-      label: 'Venta Consolidada Salones',
+      label: 'Venta Consolidada por Áreas',
       value: fmt(grandTotal),
       subtext: `${grandQty.toLocaleString('es-GT')} productos servidos`,
       subtextColor: 'text-emerald-700 font-bold',
@@ -165,7 +165,7 @@ export function SalesByCenterReportPage({ onBack }) {
       iconBg: 'bg-blue-50 text-blue-600 border border-blue-100',
     },
     {
-      label: 'Catálogo por Salón',
+      label: 'Catálogo por Área',
       value: `${data?.shared_products?.length || 0} Comp. / ${data?.exclusive_products?.length || 0} Excl.`,
       subtext: 'Productos compartidos vs. exclusivos',
       subtextColor: 'text-purple-700 font-semibold',
@@ -199,13 +199,13 @@ export function SalesByCenterReportPage({ onBack }) {
         </head>
         <body>
           <div class="header">
-            <div class="title">VENTAS POR SALÓN / CENTRO</div>
+            <div class="title">VENTAS POR ÁREA / CENTRO</div>
             <div class="meta">${centerName}</div>
             <div class="meta">Periodo: ${startDate} al ${endDate}</div>
             <div class="meta">Impreso: ${nowStr}</div>
           </div>
 
-          <div style="font-weight: bold; margin-bottom: 4px;">DESGLOSE POR SALÓN:</div>
+          <div style="font-weight: bold; margin-bottom: 4px;">DESGLOSE POR ÁREA:</div>
           ${(data.center_totals || [])
             .map((ct) => {
               const pct = grandTotal > 0 ? ((Number(ct.total_sales) / grandTotal) * 100).toFixed(1) : '0';
@@ -224,7 +224,7 @@ export function SalesByCenterReportPage({ onBack }) {
           </div>
 
           <div class="footer">
-            AUDITORÍA MULTI-SALÓN • NO FISCAL
+            AUDITORÍA MULTI-ÁREA • NO FISCAL
           </div>
           <script>window.print();window.close();<\/script>
         </body>
@@ -255,7 +255,7 @@ export function SalesByCenterReportPage({ onBack }) {
           title: 'SamaPos - Ventas por Centro (Detalle)',
           subtitle: `Del ${startDate} al ${endDate} | Centro: ${centerName}`,
           headers: [
-            { label: 'Centro / Salón', width: 18 },
+            { label: 'Centro / Área', width: 18 },
             { label: 'Categoría', width: 18 },
             { label: 'Producto', width: 30 },
             { label: 'Cuenta', width: 14 },
@@ -331,9 +331,9 @@ export function SalesByCenterReportPage({ onBack }) {
   return (
     <ReportLayout
       title="Ventas por Centro de Operación"
-      badge="OPERACIONES & SALONES"
+      badge="OPERACIONES & ÁREAS"
       badgeColor="bg-cyan-50 text-cyan-800 border-cyan-200"
-      subtitle="Comparativa de volumen, salones, terrazas, productos exclusivos y cuentas unificadas"
+      subtitle="Comparativa de volumen, áreas, terrazas, productos exclusivos y cuentas unificadas"
       onBack={onBack}
       startDate={startDate}
       setStartDate={setStartDate}
@@ -413,7 +413,7 @@ export function SalesByCenterReportPage({ onBack }) {
             <div>
               <h2 className="text-sm font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-cyan-600" />
-                <span>Rendimiento y Ocupación por Salón</span>
+                <span>Rendimiento y Ocupación por Área</span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 Facturación, tickets cerrados y distribución porcentual
@@ -493,7 +493,7 @@ export function SalesByCenterReportPage({ onBack }) {
                       #{ma.check_number || ma.account_id}
                     </span>
                     <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
-                      {ma.center_name || 'Salón'}
+                      {ma.center_name || 'Área'}
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
@@ -568,7 +568,7 @@ export function SalesByCenterReportPage({ onBack }) {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-100/90 text-slate-600 font-extrabold uppercase text-[10px] tracking-wider sticky top-0 z-10 border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3">Centro / Salón</th>
+                  <th className="px-4 py-3">Centro / Área</th>
                   <th className="px-4 py-3">Categoría</th>
                   <th className="px-4 py-3">Platillo / Producto</th>
                   <th className="px-4 py-3 text-center">Cuenta</th>
@@ -635,7 +635,7 @@ export function SalesByCenterReportPage({ onBack }) {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md uppercase">
-                        Exclusivo de {p.centers[0]?.center_name || 'Salón'}
+                        Exclusivo de {p.centers[0]?.center_name || 'Área'}
                       </span>
                       <h4 className="font-bold text-slate-900 text-xs mt-1.5">
                         {p.product_name}
@@ -677,7 +677,7 @@ export function SalesByCenterReportPage({ onBack }) {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md uppercase">
-                        Compartido en {p.centers.length} salones
+                        Compartido en {p.centers.length} áreas
                       </span>
                       <h4 className="font-bold text-slate-900 text-xs mt-1.5">
                         {p.product_name}

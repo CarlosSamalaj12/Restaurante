@@ -19,12 +19,15 @@ import {
   Edit2,
   AlertCircle,
   ArrowLeft,
+  Loader2,
+  UtensilsCrossed,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { ProductIconBadge } from '../utils/productIcons';
 import { printPrecheckThermal } from '../utils/printReceipts';
+import { executePrecheckPrint } from '../utils/precheckPrinter';
 
 export function AccountActionsMenu({ accountId, account, tableId, totals, onClose, onRefresh }) {
   const [activeAction, setActiveAction] = useState(null);
@@ -36,7 +39,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       id: 'split',
       icon: SplitSquareVertical,
       label: 'Dividir Cuenta',
-      description: 'Dividir entre varias cuentas',
+      description: 'Dividir ítems entre varias cuentas',
       color: 'bg-blue-500',
       allowed: hasPermission('orders.transfer') || hasPermission('orders.shared'),
     },
@@ -44,7 +47,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       id: 'shared',
       icon: Users,
       label: 'Cuenta Compartida',
-      description: 'Dividir igual entre personas',
+      description: 'Dividir consumo en partes iguales (1/N)',
       color: 'bg-indigo-500',
       allowed: hasPermission('orders.shared'),
     },
@@ -52,7 +55,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       id: 'transfer',
       icon: ArrowRight,
       label: 'Transferir Cuenta',
-      description: 'Mover a otra cuenta (otro centro)',
+      description: 'Mover a otra mesa o centro operativo',
       color: 'bg-cyan-500',
       allowed: hasPermission('orders.transfer'),
     },
@@ -60,7 +63,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       id: 'join',
       icon: ArrowLeftRight,
       label: 'Unir Cuentas',
-      description: 'Combinar con otra cuenta',
+      description: 'Combinar con otra cuenta abierta',
       color: 'bg-teal-500',
       allowed: hasPermission('orders.transfer'),
     },
@@ -68,7 +71,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       id: 'moveSeat',
       icon: ArrowRightLeft,
       label: 'Mover Silla',
-      description: 'Transferir productos entre sillas',
+      description: 'Transferir productos entre comensales',
       color: 'bg-purple-500',
       allowed: hasPermission('orders.transfer'),
     },
@@ -76,15 +79,15 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
       id: 'discount',
       icon: Percent,
       label: 'Aplicar Descuento',
-      description: 'Agregar descuento a la cuenta',
+      description: 'Descuento porcentual o monto fijo',
       color: 'bg-green-500',
-      allowed: true, // Visible para meseros pero requiere PIN de supervisor
+      allowed: true, // Requiere PIN si no tiene permiso directo
     },
     {
       id: 'precheck',
       icon: Printer,
       label: 'Pre-Cuenta',
-      description: 'Imprimir cuenta parcial',
+      description: 'Vista previa e impresión de comanda',
       color: 'bg-amber-500',
       allowed: true,
     },
@@ -99,8 +102,8 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
     {
       id: 'close',
       icon: Trash2,
-      label: 'Cerrar/Anular Cuenta',
-      description: 'Cierra o anula la cuenta actual',
+      label: 'Cerrar / Anular Cuenta',
+      description: 'Cerrar o anular cuenta activa',
       color: 'bg-red-500',
       allowed: true, // Visible para meseros pero requiere PIN de supervisor
     },
@@ -109,25 +112,41 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
   const menuItems = allMenuItems.filter(item => item.allowed);
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <m.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl max-h-[85vh] overflow-hidden"
+        initial={{ y: '100%', opacity: 0.8 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: '100%', opacity: 0 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+        className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col shadow-2xl border border-gray-100"
       >
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        {/* Grab handle táctil para mobile */}
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto my-2.5 sm:hidden shrink-0" />
+
+        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between shrink-0 bg-slate-50/50">
           <div>
-            <h2 className="font-semibold text-gray-900">Acciones de Cuenta</h2>
-            <p className="text-sm text-gray-500">{account?.check_number}</p>
+            <div className="flex items-center gap-2">
+              <h2 className="font-extrabold text-base sm:text-lg text-gray-900 tracking-tight">Acciones de Cuenta</h2>
+              {account?.table_code && (
+                <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-[11px] font-bold">
+                  Mesa {account.table_code}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5 font-mono">
+              {account?.check_number || 'Cuenta activa'}
+            </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl">
-            <X className="w-5 h-5 text-gray-500" />
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-gray-200/70 text-gray-400 hover:text-gray-700 rounded-xl transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
+            title="Cerrar menú"
+          >
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+        <div className="p-4 space-y-2.5 overflow-y-auto max-h-[70vh] overscroll-contain">
           {menuItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -135,16 +154,16 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
                 key={item.id}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setActiveAction(item.id)}
-                className="w-full bg-gray-50 rounded-xl p-4 flex items-center gap-4 text-left"
+                className="w-full bg-slate-50 hover:bg-slate-100/90 active:bg-slate-200 border border-slate-200/70 rounded-2xl p-3.5 flex items-center gap-3.5 text-left transition-all cursor-pointer group shadow-2xs min-h-[58px]"
               >
-                <div className={`${item.color} w-12 h-12 rounded-xl flex items-center justify-center`}>
-                  <Icon className="w-6 h-6 text-white" />
+                <div className={`${item.color} w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-sm text-white group-hover:scale-105 transition-transform`}>
+                  <Icon className="w-5 h-5" />
                 </div>
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">{item.label}</p>
-                  <p className="text-sm text-gray-500">{item.description}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-gray-900 tracking-tight">{item.label}</p>
+                  <p className="text-xs text-gray-500 truncate">{item.description}</p>
                 </div>
-                <ChevronRight className="w-5 h-5 text-gray-400" />
+                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-0.5 transition-all shrink-0" />
               </m.button>
             );
           })}
@@ -234,6 +253,7 @@ export function AccountActionsMenu({ accountId, account, tableId, totals, onClos
 function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh }) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
+  const [mobileActiveTab, setMobileActiveTab] = useState(0);
 
   // Ítems iniciales activos con desglose de cantidades
   const activeItems = (account?.items || [])
@@ -303,6 +323,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
         items: []
       }
     ]);
+    setMobileActiveTab(accounts.length);
   };
 
   // Eliminar una cuenta creada (Cuenta 2+) devolviendo sus productos a Cuenta 1
@@ -329,6 +350,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
       return nextAccounts;
     });
 
+    setMobileActiveTab(prev => (prev >= removeIndex ? Math.max(0, prev - 1) : prev));
     toast.info(`'${accToRemove.name}' eliminada. Sus productos volvieron a Cuenta 1.`);
   };
 
@@ -453,62 +475,288 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-center justify-center p-3 sm:p-5">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-end sm:items-center justify-center p-0 sm:p-5">
       <m.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        className="bg-white rounded-3xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl border border-gray-100 overflow-hidden"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 30 }}
+        className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-6xl max-h-[94vh] sm:max-h-[92vh] flex flex-col shadow-2xl border border-gray-100 overflow-hidden"
       >
+        {/* Grab handle táctil para mobile */}
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto my-2.5 sm:hidden shrink-0" />
+
         {/* Header Superior */}
-        <div className="px-6 py-4 border-b border-gray-100 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-gray-100 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 flex-shrink-0">
           <div>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0">
                 <SplitSquareVertical className="w-4 h-4" />
               </div>
-              <h2 className="text-lg font-black text-gray-900 tracking-tight">Dividir Cuenta</h2>
+              <h2 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">Dividir Cuenta</h2>
               <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-0.5 rounded-full">
                 Mesa {account?.table_code || '-'}
               </span>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Transfiere productos o unidades entre cuentas. Cuenta 1 conserva el número de cuenta original.
+            <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
+              Transfiere productos o unidades entre cuentas. Cuenta 1 conserva el número original.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={handleSplitBySeat}
-              className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-purple-200 shadow-2xs cursor-pointer"
-              title="Distribuir productos automáticamente por silla"
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Por Silla</span>
-            </button>
+          <div className="flex items-center gap-2 flex-wrap justify-between sm:justify-end">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleSplitBySeat}
+                className="px-2.5 sm:px-3 py-1.5 bg-purple-50 hover:bg-purple-100 active:bg-purple-200 text-purple-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-purple-200 shadow-2xs cursor-pointer min-h-[36px]"
+                title="Distribuir productos automáticamente por silla"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Por Silla</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={handleAddAccount}
-              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-blue-200 shadow-2xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Agregar otra cuenta</span>
-            </button>
+              <button
+                type="button"
+                onClick={handleAddAccount}
+                className="px-2.5 sm:px-3 py-1.5 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-blue-200 shadow-2xs cursor-pointer min-h-[36px]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Agregar otra cuenta</span>
+              </button>
+            </div>
 
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Columnas de Cuentas */}
-        <div className="flex-1 overflow-x-auto overflow-y-auto p-4 sm:p-6 bg-slate-50/60">
+        {/* ======================================================== */}
+        {/* VISTA MÓVIL (< sm): TABS SEGMENTADOS Y CUENTA ACTIVA      */}
+        {/* ======================================================== */}
+        <div className="sm:hidden flex-1 flex flex-col overflow-hidden bg-slate-50/70">
+          {/* Barra de Tabs segmentada de cuentas */}
+          <div className="flex items-center gap-2 overflow-x-auto p-2.5 bg-slate-100/90 border-b border-slate-200 shrink-0 scrollbar-none">
+            {accounts.map((acc, accIdx) => {
+              const isSelected = (mobileActiveTab === accIdx) || (mobileActiveTab >= accounts.length && accIdx === 0);
+              const accTotal = getAccountTotal(acc);
+              const count = getAccountItemCount(acc);
+
+              return (
+                <button
+                  key={acc.id}
+                  type="button"
+                  onClick={() => setMobileActiveTab(accIdx)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all shrink-0 cursor-pointer min-h-[42px] ${
+                    isSelected
+                      ? 'bg-slate-900 text-white shadow-sm ring-2 ring-emerald-500/50'
+                      : 'bg-white text-slate-700 border border-slate-200/90 active:bg-slate-100'
+                  }`}
+                >
+                  <span className="truncate max-w-[100px]">{acc.name}</span>
+                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                    isSelected ? 'bg-emerald-400 text-slate-950 font-extrabold' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    Q{accTotal.toFixed(2)}
+                  </span>
+                  <span className="text-[10px] opacity-70">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Contenido de la cuenta activa en móvil */}
+          {(() => {
+            const currentTab = Math.min(mobileActiveTab, accounts.length - 1);
+            const acc = accounts[currentTab] || accounts[0];
+            const palette = accPalettes[currentTab % accPalettes.length];
+            const accTotal = getAccountTotal(acc);
+            const itemCount = getAccountItemCount(acc);
+            const isEditing = editingIndex === currentTab;
+
+            return (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Cabecera de la cuenta activa móvil */}
+                <div className={`${palette.header} px-4 py-3 shrink-0 flex items-center justify-between shadow-xs`}>
+                  <div className="flex items-center gap-2 flex-1 min-w-0 mr-2">
+                    {isEditing ? (
+                      <div className="flex items-center gap-1 w-full">
+                        <input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              if (editingName.trim()) {
+                                setAccounts(prev => prev.map((a, i) => i === currentTab ? { ...a, name: editingName.trim() } : a));
+                              }
+                              setEditingIndex(null);
+                            }
+                          }}
+                          autoFocus
+                          className="bg-white/20 text-white placeholder-white/60 text-xs px-2.5 py-1 rounded-lg font-bold w-full focus:outline-none focus:ring-1 focus:ring-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (editingName.trim()) {
+                              setAccounts(prev => prev.map((a, i) => i === currentTab ? { ...a, name: editingName.trim() } : a));
+                            }
+                            setEditingIndex(null);
+                          }}
+                          className="p-1 hover:bg-white/20 rounded cursor-pointer min-h-[32px] min-w-[32px] flex items-center justify-center"
+                        >
+                          <Check className="w-4 h-4 text-white" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="font-extrabold text-sm truncate tracking-tight text-white">{acc.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingIndex(currentTab);
+                            setEditingName(acc.name);
+                          }}
+                          className="p-1 text-white/70 hover:text-white rounded hover:bg-white/10 transition-colors cursor-pointer"
+                          title="Editar nombre"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <p className="text-base font-black tracking-tight text-white leading-none">Q{accTotal.toFixed(2)}</p>
+                      <p className="text-[10px] font-semibold text-white/80">{itemCount} und.</p>
+                    </div>
+
+                    {currentTab > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAccount(currentTab)}
+                        className="p-1.5 text-white/70 hover:text-white hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
+                        title="Eliminar cuenta y regresar productos a Cuenta 1"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Lista de productos en cuenta activa móvil */}
+                <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+                  {acc.items.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center py-10 text-gray-400 px-4">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center mb-2.5">
+                        <ArrowRightLeft className="w-5 h-5 text-gray-400" />
+                      </div>
+                      <p className="text-sm font-bold text-gray-700">Esta cuenta no tiene productos</p>
+                      <p className="text-xs text-gray-400 mt-1 max-w-xs">
+                        Selecciona otra cuenta arriba y pulsa &quot;Mover a {acc.name}&quot; para trasladar productos.
+                      </p>
+                    </div>
+                  ) : (
+                    acc.items.map((item) => {
+                      const lineTotal = Number(item.unitPrice || 0) * Number(item.qty || 1);
+                      return (
+                        <div
+                          key={item.id}
+                          className="bg-white border border-gray-200/90 rounded-2xl p-3 shadow-2xs space-y-2.5"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                              <ProductIconBadge productName={item.productName} size="sm" className="mt-0.5 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${palette.tag}`}>
+                                    S{item.seatNo}
+                                  </span>
+                                  <span className="text-xs font-bold text-gray-900 truncate">
+                                    {item.productName}
+                                  </span>
+                                </div>
+                                {item.qty > 1 && (
+                                  <span className="text-[10px] text-amber-700 font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded inline-block mt-1">
+                                    {item.qty} unidades
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-xs font-black text-gray-900">
+                                Q{lineTotal.toFixed(2)}
+                              </p>
+                              <p className="text-[10px] text-gray-400">
+                                {item.qty} × Q{Number(item.unitPrice || 0).toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Acciones táctiles de transferencia en móvil */}
+                          <div className="pt-2 border-t border-gray-100 flex gap-1.5 flex-wrap">
+                            {accounts.length === 2 ? (
+                              <button
+                                type="button"
+                                onClick={() => handleInitiateMove(currentTab, currentTab === 0 ? 1 : 0, item)}
+                                className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer min-h-[40px] ${
+                                  currentTab === 0
+                                    ? 'bg-emerald-50 text-emerald-700 active:bg-emerald-100 border border-emerald-200'
+                                    : 'bg-slate-100 text-slate-800 active:bg-slate-200 border border-slate-200'
+                                }`}
+                              >
+                                {currentTab === 0 ? (
+                                  <>
+                                    <span>Mover a {accounts[1].name}</span>
+                                    <ArrowRight className="w-3.5 h-3.5" />
+                                  </>
+                                ) : (
+                                  <>
+                                    <ArrowLeft className="w-3.5 h-3.5" />
+                                    <span>Devolver a Cuenta 1</span>
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <div className="w-full flex items-center gap-1.5">
+                                <span className="text-[10px] font-bold text-gray-400 shrink-0">Mover a:</span>
+                                <div className="flex-1 flex gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+                                  {accounts.map((otherAcc, otherIdx) => {
+                                    if (otherIdx === currentTab) return null;
+                                    return (
+                                      <button
+                                        key={otherAcc.id}
+                                        type="button"
+                                        onClick={() => handleInitiateMove(currentTab, otherIdx, item)}
+                                        className="flex-1 min-w-[70px] py-1.5 px-2 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 border border-slate-200 text-slate-800 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer truncate min-h-[36px]"
+                                      >
+                                        <span>→ {otherAcc.name}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* ======================================================== */}
+        {/* VISTA DESKTOP (>= sm): COLUMNAS LADO A LADO              */}
+        {/* ======================================================== */}
+        <div className="hidden sm:flex flex-1 overflow-x-auto overflow-y-auto p-4 sm:p-6 bg-slate-50/60">
           <div className="flex gap-4 items-stretch min-h-full pb-2" style={{ minWidth: `${Math.max(accounts.length * 280, 100)}px` }}>
             {accounts.map((acc, accIdx) => {
               const palette = accPalettes[accIdx % accPalettes.length];
@@ -698,12 +946,14 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
 
         {/* Modal / Selector de Cantidad cuando un producto tiene qty > 1 */}
         {moveModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-2xs z-[70] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-2xs z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4">
             <m.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl border border-gray-100 space-y-4"
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              className="bg-white rounded-t-3xl sm:rounded-2xl p-5 w-full max-w-sm shadow-2xl border border-gray-100 space-y-4"
             >
+              <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto sm:hidden shrink-0" />
+
               <div className="text-center">
                 <span className="text-[10px] font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
                   División de Cantidades
@@ -725,7 +975,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                   </span>
                 </div>
 
-                <div className="flex items-center justify-center gap-3 py-1">
+                <div className="flex items-center justify-center gap-4 py-1">
                   <button
                     type="button"
                     onClick={() => setMoveModal(prev => ({
@@ -733,13 +983,13 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                       qtyToMove: Math.max(1, prev.qtyToMove - 1)
                     }))}
                     disabled={moveModal.qtyToMove <= 1}
-                    className="w-10 h-10 rounded-xl bg-white border border-gray-200 hover:border-blue-400 text-gray-700 font-bold flex items-center justify-center shadow-2xs transition-all cursor-pointer disabled:opacity-40"
+                    className="w-11 h-11 rounded-xl bg-white border border-gray-200 hover:border-blue-400 active:bg-gray-100 text-gray-700 font-bold flex items-center justify-center shadow-2xs transition-all cursor-pointer disabled:opacity-40 min-h-[44px]"
                   >
                     <Minus className="w-4 h-4" />
                   </button>
 
-                  <div className="w-16 text-center">
-                    <span className="text-2xl font-black text-gray-900">{moveModal.qtyToMove}</span>
+                  <div className="w-20 text-center">
+                    <span className="text-3xl font-black text-gray-900 font-mono">{moveModal.qtyToMove}</span>
                     <p className="text-[10px] text-gray-400 font-medium">unidad(es)</p>
                   </div>
 
@@ -750,18 +1000,18 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                       qtyToMove: Math.min(prev.maxAvailable, prev.qtyToMove + 1)
                     }))}
                     disabled={moveModal.qtyToMove >= moveModal.maxAvailable}
-                    className="w-10 h-10 rounded-xl bg-white border border-gray-200 hover:border-blue-400 text-gray-700 font-bold flex items-center justify-center shadow-2xs transition-all cursor-pointer disabled:opacity-40"
+                    className="w-11 h-11 rounded-xl bg-white border border-gray-200 hover:border-blue-400 active:bg-gray-100 text-gray-700 font-bold flex items-center justify-center shadow-2xs transition-all cursor-pointer disabled:opacity-40 min-h-[44px]"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
                 </div>
 
                 {/* Accesos rápidos */}
-                <div className="flex gap-2 mt-2 pt-2 border-t border-slate-200/60">
+                <div className="flex gap-2 mt-3 pt-3 border-t border-slate-200/60">
                   <button
                     type="button"
                     onClick={() => setMoveModal(prev => ({ ...prev, qtyToMove: 1 }))}
-                    className={`flex-1 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer min-h-[36px] ${
                       moveModal.qtyToMove === 1
                         ? 'bg-blue-50 text-blue-700 border-blue-200'
                         : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
@@ -772,7 +1022,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                   <button
                     type="button"
                     onClick={() => setMoveModal(prev => ({ ...prev, qtyToMove: prev.maxAvailable }))}
-                    className={`flex-1 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer min-h-[36px] ${
                       moveModal.qtyToMove === moveModal.maxAvailable
                         ? 'bg-blue-50 text-blue-700 border-blue-200'
                         : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
@@ -789,11 +1039,11 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                 )}
               </div>
 
-              <div className="flex gap-2 pt-1">
+              <div className="flex gap-2.5 pt-1">
                 <button
                   type="button"
                   onClick={() => setMoveModal(null)}
-                  className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 rounded-xl font-bold text-xs transition-colors cursor-pointer min-h-[44px]"
                 >
                   Cancelar
                 </button>
@@ -806,7 +1056,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
                     moveModal.qtyToMove,
                     moveModal.item
                   )}
-                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md shadow-blue-500/25 transition-all cursor-pointer"
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl font-bold text-xs shadow-md shadow-blue-500/25 transition-all cursor-pointer min-h-[44px]"
                 >
                   Mover {moveModal.qtyToMove} {moveModal.qtyToMove === 1 ? 'unidad' : 'unidades'}
                 </button>
@@ -816,8 +1066,8 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
         )}
 
         {/* Footer Inferior */}
-        <div className="px-6 py-4 border-t border-gray-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-gray-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0">
+          <div className="flex items-center justify-between w-full sm:w-auto gap-3">
             <div className="flex items-center gap-1.5 text-xs">
               <span className="text-gray-500 font-medium">Total Mesa:</span>
               <span className="font-extrabold text-gray-900">Q{totalOriginal.toFixed(2)}</span>
@@ -831,11 +1081,11 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
             </div>
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 sm:flex-initial px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              className="flex-1 sm:flex-initial px-4 py-3 sm:py-2.5 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 rounded-xl text-xs font-bold transition-colors cursor-pointer min-h-[44px]"
             >
               Cancelar
             </button>
@@ -843,7 +1093,7 @@ function SplitAccountsModal({ accountId, account, tableId, onClose, onRefresh })
               type="button"
               onClick={handleConfirmSplit}
               disabled={loading || accounts.slice(1).every(a => a.items.length === 0)}
-              className="flex-1 sm:flex-initial px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed disabled:shadow-none"
+              className="flex-1 sm:flex-initial px-5 py-3 sm:py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed disabled:shadow-none min-h-[44px]"
             >
               {loading ? (
                 <span>Dividiendo cuentas...</span>
@@ -938,53 +1188,64 @@ function SharedAccountModal({ accountId, account, totals, onClose, onRefresh }) 
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <m.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-6xl max-h-[94vh] flex flex-col"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-6xl max-h-[94vh] flex flex-col shadow-2xl border border-gray-100 overflow-hidden"
       >
+        {/* Grab handle móvil */}
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto my-2.5 sm:hidden shrink-0" />
+
         {/* Header */}
-        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-gray-100 flex items-center justify-between flex-shrink-0 bg-slate-50/50">
           <div>
-            <h3 className="font-semibold text-gray-900">Cuenta Compartida</h3>
-            <p className="text-xs text-gray-500">Todos pagan lo mismo — cada producto se divide entre las personas</p>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+                <Users className="w-4 h-4" />
+              </div>
+              <h3 className="font-extrabold text-base text-gray-900">Cuenta Compartida</h3>
+            </div>
+            <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">Todos pagan lo mismo — cada producto se divide en partes iguales (1/N)</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl">
-            <X className="w-4 h-4 text-gray-500" />
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl min-w-[36px] min-h-[36px] flex items-center justify-center text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* People selector */}
-        <div className="px-5 py-3 border-b bg-gray-50 flex-shrink-0">
+        <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-b bg-slate-50 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">¿Entre cuántas personas?</p>
-            <div className="flex items-center gap-2">
+            <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">¿Entre cuántas personas?</p>
+            <div className="flex items-center gap-3">
               <button
+                type="button"
                 onClick={() => setPeopleCount(Math.max(2, peopleCount - 1))}
-                className="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-600 font-bold hover:bg-gray-100 flex items-center justify-center"
+                className="w-9 h-9 rounded-xl bg-white border border-gray-200 text-gray-700 font-bold hover:bg-gray-100 active:bg-gray-200 flex items-center justify-center shadow-2xs cursor-pointer min-h-[36px]"
               >
                 −
               </button>
-              <span className="w-10 text-center font-bold text-lg text-gray-900">{peopleCount}</span>
+              <span className="w-10 text-center font-black text-xl text-gray-900 font-mono">{peopleCount}</span>
               <button
+                type="button"
                 onClick={() => setPeopleCount(Math.min(12, peopleCount + 1))}
-                className="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-600 font-bold hover:bg-gray-100 flex items-center justify-center"
+                className="w-9 h-9 rounded-xl bg-white border border-gray-200 text-gray-700 font-bold hover:bg-gray-100 active:bg-gray-200 flex items-center justify-center shadow-2xs cursor-pointer min-h-[36px]"
               >
                 +
               </button>
             </div>
           </div>
           {/* Quick select buttons */}
-          <div className="flex gap-2 mt-2">
+          <div className="flex gap-1.5 mt-2.5">
             {[2, 3, 4, 5, 6, 8].filter(n => n <= 12).map(n => (
               <button
                 key={n}
+                type="button"
                 onClick={() => setPeopleCount(n)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all min-h-[36px] cursor-pointer ${
                   peopleCount === n
-                    ? 'bg-indigo-500 text-white'
-                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                    ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300'
+                    : 'bg-white border border-gray-200/90 text-gray-700 hover:bg-gray-50 active:bg-gray-100'
                 }`}
               >
                 {n}
@@ -993,8 +1254,79 @@ function SharedAccountModal({ accountId, account, totals, onClose, onRefresh }) 
           </div>
         </div>
 
-        {/* Preview: shared products + per-person columns */}
-        <div className="flex-1 overflow-x-auto overflow-y-auto p-5">
+        {/* VISTA MÓVIL (< sm): CARD RESUMEN Y LISTA VERTICAL */}
+        <div className="sm:hidden flex-1 overflow-y-auto p-3.5 space-y-3">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-sm text-gray-400">Cargando productos...</p>
+            </div>
+          ) : (
+            <>
+              {/* Card Resumen de Cobro Móvil */}
+              <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 rounded-2xl p-4 text-white shadow-md border border-indigo-800/40">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">Cada persona paga</p>
+                    <p className="text-3xl font-black tracking-tight text-emerald-400 mt-0.5">
+                      Q{perPerson.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[11px] font-bold text-indigo-200 bg-white/10 px-2.5 py-1 rounded-lg">
+                      {peopleCount} Comensales
+                    </span>
+                    <p className="text-xs text-white/70 mt-1.5 font-medium">
+                      Total Mesa: Q{grandTotal.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Badges de las personas */}
+                <div className="grid grid-cols-2 gap-1.5 mt-3 pt-3 border-t border-white/15">
+                  {Array.from({ length: peopleCount }, (_, i) => (
+                    <div key={i} className="flex items-center justify-between bg-white/10 px-2.5 py-1.5 rounded-xl text-xs font-semibold">
+                      <span className="text-indigo-200 text-[11px]">Persona {i + 1}</span>
+                      <span className="font-extrabold text-white">Q{perPerson.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Desglose de Productos Vertical */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider px-1">
+                  Desglose de Productos ({previewItems.length})
+                </p>
+                {previewItems.map(item => (
+                  <div key={item.id} className="bg-white border border-gray-200/90 rounded-2xl p-3 shadow-2xs space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                        <ProductIconBadge productName={item.product_name} size="sm" className="mt-0.5 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-gray-900 truncate">{item.product_name}</p>
+                          <p className="text-[11px] text-gray-400">
+                            Total: Q{item.originalTotal.toFixed(2)} ({item.originalQty}x)
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-extrabold px-2 py-0.5 rounded-lg inline-block">
+                          {item.fractionText}
+                        </span>
+                        <p className="text-xs font-black text-gray-900 mt-1">
+                          Q{item.fractionalTotal.toFixed(2)} <span className="text-[10px] text-gray-400 font-normal">/ pers.</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* VISTA DESKTOP (>= sm): MATRIZ TABULAR */}
+        <div className="hidden sm:block flex-1 overflow-x-auto overflow-y-auto p-5">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <p className="text-sm text-gray-400">Cargando productos...</p>
@@ -1064,29 +1396,29 @@ function SharedAccountModal({ accountId, account, totals, onClose, onRefresh }) 
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
-          <div>
+        <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
+          <div className="hidden sm:block">
             <p className="text-xs text-gray-400">Total cuenta</p>
             <p className="text-lg font-bold text-gray-900">Q{grandTotal.toFixed(2)}</p>
           </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-400">Cada persona paga</p>
-            <p className="text-xl font-black text-indigo-600">Q{perPerson.toFixed(2)}</p>
+          <div className="text-left sm:text-center">
+            <p className="text-[11px] sm:text-xs text-gray-400">Cada persona paga</p>
+            <p className="text-lg sm:text-xl font-black text-indigo-600">Q{perPerson.toFixed(2)}</p>
           </div>
           <button
             onClick={handleCreate}
             disabled={creating || loading || peopleCount < 2}
-            className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50 hover:bg-indigo-700 transition-colors flex items-center gap-2"
+            className="px-5 sm:px-6 py-3 sm:py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-colors flex items-center gap-2 cursor-pointer min-h-[44px]"
           >
             {creating ? (
               <>
                 <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                Creando...
+                <span>Creando...</span>
               </>
             ) : (
               <>
-                <Check className="w-3.5 h-3.5" />
-                Crear {peopleCount} Cuentas
+                <Check className="w-4 h-4" />
+                <span>Crear {peopleCount} Cuentas</span>
               </>
             )}
           </button>
@@ -1100,6 +1432,7 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
   // staged: map of itemId -> newSeatNo (null if same/not moved)
   const [staged, setStaged] = useState({});
   const [saving, setSaving] = useState(false);
+  const [activeMobileSeat, setActiveMobileSeat] = useState(1);
   const toast = useToast();
 
   const seats = [...new Set(initialItems.map(i => i.seat_no || 1))].sort((a, b) => a - b);
@@ -1121,15 +1454,11 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
     setStaged(prev => {
       const id = String(itemId);
       const next = { ...prev };
-      // Toggle: if already pending (null), deselect; if already moved, clear; if new, mark pending
       if (next[id] === null) {
-        // Already pending → deselect
         delete next[id];
       } else if (next[id] !== undefined) {
-        // Already moved to a seat → clear
         delete next[id];
       } else {
-        // New → mark as pending (null = waiting for destination)
         next[id] = null;
       }
       return next;
@@ -1145,6 +1474,13 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
       return;
     }
     setStaged({ [selectedId]: destSeat });
+  };
+
+  const moveItemDirect = (itemId, destSeat) => {
+    setStaged(prev => ({
+      ...prev,
+      [String(itemId)]: destSeat
+    }));
   };
 
   // The currently selected item (pending a destination)
@@ -1177,29 +1513,142 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <m.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col"
+        className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl border border-gray-100 overflow-hidden"
       >
-        {/* Header - compacta */}
-        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        {/* Grab handle móvil */}
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto my-2.5 sm:hidden shrink-0" />
+
+        {/* Header */}
+        <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-gray-100 flex items-center justify-between flex-shrink-0 bg-slate-50/50">
           <div>
-            <h3 className="font-semibold text-gray-900">Mover Silla</h3>
-            <p className="text-xs text-gray-400">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold shrink-0">
+                <ArrowRightLeft className="w-4 h-4" />
+              </div>
+              <h3 className="font-extrabold text-base text-gray-900">Mover Silla</h3>
+            </div>
+            <p className="text-[11px] sm:text-xs text-gray-400 mt-0.5">
               {pendingItem
                 ? `"${pendingItem.product_name}" (Silla ${pendingItem.effectiveSeat}) — toca la silla destino`
-                : '1. Toca un producto → 2. Toca la silla destino'}
+                : 'Transfiere productos entre comensales de la mesa'}
             </p>
           </div>
-          <button onClick={() => { setStaged({}); onClose(); }} className="p-2 hover:bg-gray-100 rounded-xl">
-            <X className="w-4 h-4 text-gray-500" />
+          <button 
+            onClick={() => { setStaged({}); onClose(); }} 
+            className="p-2 hover:bg-gray-100 rounded-xl min-w-[36px] min-h-[36px] flex items-center justify-center text-gray-400 hover:text-gray-600"
+          >
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Seat columns - maximizado */}
-        <div className="flex-1 overflow-y-auto p-4">
+        {/* VISTA MÓVIL (< sm): TABS DE SILLAS CON ASIGNACIÓN DIRECTA */}
+        <div className="sm:hidden flex-1 flex flex-col overflow-hidden bg-slate-50/70">
+          {/* Tabs horizontales de Sillas */}
+          <div className="flex items-center gap-1.5 overflow-x-auto p-2.5 bg-slate-100/90 border-b border-slate-200 shrink-0 scrollbar-none">
+            {Array.from({ length: maxSeat }, (_, i) => i + 1).map(seat => {
+              const seatItems = getItemsForSeat(seat);
+              const isSelected = activeMobileSeat === seat;
+              return (
+                <button
+                  key={seat}
+                  type="button"
+                  onClick={() => setActiveMobileSeat(seat)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all shrink-0 cursor-pointer min-h-[38px] ${
+                    isSelected
+                      ? 'bg-purple-700 text-white shadow-sm ring-2 ring-purple-400/40'
+                      : 'bg-white text-slate-700 border border-slate-200/90 active:bg-slate-100'
+                  }`}
+                >
+                  <span>Silla {seat}</span>
+                  <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
+                    isSelected ? 'bg-purple-900 text-purple-200' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {seatItems.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Lista de productos en la silla activa móvil */}
+          <div className="flex-1 overflow-y-auto p-3.5 space-y-2.5">
+            {(() => {
+              const seatItems = getItemsForSeat(activeMobileSeat);
+              if (seatItems.length === 0) {
+                return (
+                  <div className="h-full flex flex-col items-center justify-center text-center py-10 text-gray-400 px-4">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center mb-2.5">
+                      <Users className="w-5 h-5 text-gray-400" />
+                    </div>
+                    <p className="text-sm font-bold text-gray-700">Silla {activeMobileSeat} sin productos</p>
+                    <p className="text-xs text-gray-400 mt-1 max-w-xs">
+                      Selecciona otra silla arriba y asigna productos hacia aquí.
+                    </p>
+                  </div>
+                );
+              }
+
+              return seatItems.map(item => {
+                const isMoved = staged[String(item.id)] !== undefined && staged[String(item.id)] !== null;
+                return (
+                  <div
+                    key={item.id}
+                    className="bg-white border border-gray-200/90 rounded-2xl p-3 shadow-2xs space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <ProductIconBadge productName={item.product_name} size="sm" className="mt-0.5 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-gray-900 truncate">{item.product_name}</p>
+                          <p className="text-[11px] text-gray-400">
+                            {item.qty || 1}x · Q{Number(item.line_total || item.unit_price || 0).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                      {isMoved && (
+                        <span className="text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md shrink-0">
+                          → Silla {staged[item.id]}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Chips de destino 1-tap para móvil */}
+                    <div className="pt-2 border-t border-gray-100 flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-gray-400 shrink-0">Mover a:</span>
+                      <div className="flex-1 flex gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+                        {Array.from({ length: maxSeat }, (_, i) => i + 1).map(destSeat => {
+                          if (destSeat === activeMobileSeat) return null;
+                          const isDestStaged = staged[String(item.id)] === destSeat;
+                          return (
+                            <button
+                              key={destSeat}
+                              type="button"
+                              onClick={() => moveItemDirect(item.id, destSeat)}
+                              className={`flex-1 min-w-[55px] py-1 px-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-0.5 cursor-pointer min-h-[34px] ${
+                                isDestStaged
+                                  ? 'bg-purple-600 text-white shadow-xs'
+                                  : 'bg-slate-50 hover:bg-slate-100 active:bg-slate-200 border border-slate-200 text-slate-700'
+                              }`}
+                            >
+                              S{destSeat}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+
+        {/* VISTA DESKTOP (>= sm): MATRIZ DE COLUMNAS DE SILLAS */}
+        <div className="hidden sm:block flex-1 overflow-y-auto p-4">
           <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(maxSeat, 6)}, minmax(0, 1fr))` }}>
             {Array.from({ length: maxSeat }, (_, i) => i + 1).map(seat => {
               const seatItems = getItemsForSeat(seat);
@@ -1289,24 +1738,24 @@ function MoveSeatModal({ accountId, items: initialItems, onClose, onRefresh }) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-gray-100 flex-shrink-0">
+        <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-t border-gray-100 flex-shrink-0 bg-gray-50">
           {saving ? (
             <div className="flex items-center justify-center gap-2 text-purple-600 text-xs font-medium">
               Guardando...
             </div>
           ) : (
-            <div className="flex gap-3">
+            <div className="flex gap-2.5">
               <button
                 onClick={() => { setStaged({}); onClose(); }}
-                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-medium text-gray-600"
+                className="flex-1 py-3 sm:py-2.5 border border-gray-200 hover:bg-gray-100 active:bg-gray-200 rounded-xl text-xs font-bold text-gray-700 transition-colors min-h-[44px]"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSave}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-medium flex items-center justify-center gap-2 ${
+                className={`flex-1 py-3 sm:py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all min-h-[44px] ${
                   getMovedCount() > 0
-                    ? 'bg-purple-600 text-white hover:bg-purple-700'
+                    ? 'bg-purple-600 text-white hover:bg-purple-700 active:bg-purple-800 shadow-sm cursor-pointer'
                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 }`}
               >
@@ -1356,17 +1805,29 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <m.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-md p-5"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-md p-5 shadow-2xl border border-gray-100 flex flex-col"
       >
-        <h3 className="font-semibold text-gray-900 mb-4">Aplicar Descuento</h3>
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto my-1 sm:hidden shrink-0" />
+
+        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-green-50 text-green-600 flex items-center justify-center font-bold">
+              <Percent className="w-4 h-4" />
+            </div>
+            <h3 className="font-extrabold text-base text-gray-900">Aplicar Descuento</h3>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
         
         {requiresSupervisorPin && (
-          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-            <div className="flex items-center gap-2 text-amber-900 text-xs font-semibold mb-1.5">
+          <div className="mb-3.5 p-3 bg-amber-50 border border-amber-200 rounded-2xl">
+            <div className="flex items-center gap-2 text-amber-900 text-xs font-bold mb-1.5">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               Requiere Autorización de Supervisor
             </div>
@@ -1376,64 +1837,117 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
               maxLength={6}
               value={supervisorPin}
               onChange={(e) => setSupervisorPin(e.target.value.replace(/\D/g, ''))}
-              placeholder="Ingresa PIN de Gerente / Admin"
-              className="w-full p-2.5 bg-white border border-amber-300 rounded-lg text-sm text-center font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-500"
+              placeholder="Ingresa PIN de Supervisor"
+              className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-sm text-center font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
           </div>
         )}
 
-        <div className="mb-4">
-          <label className="text-sm text-gray-600 mb-2 block">Tipo de Descuento</label>
+        <div className="mb-3">
+          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 block">Tipo de Descuento</label>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => setType('percent')}
-              className={`flex-1 py-2 rounded-xl border ${type === 'percent' ? 'bg-primary-500 text-white border-primary-500' : 'border-gray-200'}`}
+              className={`flex-1 py-2.5 rounded-xl border font-bold text-xs transition-all cursor-pointer min-h-[40px] ${
+                type === 'percent'
+                  ? 'bg-green-600 text-white border-green-600 shadow-sm'
+                  : 'bg-slate-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+              }`}
             >
-              Porcentaje
+              Porcentaje (%)
             </button>
             <button
+              type="button"
               onClick={() => setType('fixed')}
-              className={`flex-1 py-2 rounded-xl border ${type === 'fixed' ? 'bg-primary-500 text-white border-primary-500' : 'border-gray-200'}`}
+              className={`flex-1 py-2.5 rounded-xl border font-bold text-xs transition-all cursor-pointer min-h-[40px] ${
+                type === 'fixed'
+                  ? 'bg-green-600 text-white border-green-600 shadow-sm'
+                  : 'bg-slate-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+              }`}
             >
-              Monto Fijo
+              Monto Fijo (Q)
             </button>
           </div>
         </div>
 
-        <div className="mb-4">
-          <label className="text-sm text-gray-600 mb-2 block">
+        {/* Atajos rápidos de valor */}
+        <div className="mb-3">
+          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 block">
+            Atajos Rápidos
+          </label>
+          <div className="flex gap-1.5">
+            {type === 'percent'
+              ? [5, 10, 15, 20].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setValue(String(pct))}
+                    className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer min-h-[36px] ${
+                      value === String(pct)
+                        ? 'bg-green-50 text-green-700 border-green-300 ring-2 ring-green-200'
+                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {pct}%
+                  </button>
+                ))
+              : [10, 25, 50, 100].map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setValue(String(amt))}
+                    className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer min-h-[36px] ${
+                      value === String(amt)
+                        ? 'bg-green-50 text-green-700 border-green-300 ring-2 ring-green-200'
+                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Q{amt}
+                  </button>
+                ))}
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 block">
             Valor ({type === 'percent' ? '%' : 'Q'})
           </label>
           <input
             type="number"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl p-3"
+            className="w-full border border-gray-200 rounded-xl p-3 text-base font-bold text-gray-900 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-500 min-h-[44px]"
             placeholder={type === 'percent' ? '10' : '25.00'}
           />
         </div>
 
         <div className="mb-4">
-          <label className="text-sm text-gray-600 mb-2 block">Razón (opcional)</label>
+          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 block">Razón (opcional)</label>
           <input
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl p-3"
-            placeholder="Promoción, cortesía, etc."
+            className="w-full border border-gray-200 rounded-xl p-3 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-500 min-h-[40px]"
+            placeholder="Promoción, cortesía, queja, etc."
           />
         </div>
 
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-3 border border-gray-200 rounded-xl">
+        <div className="flex gap-2.5">
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="flex-1 py-3 border border-gray-200 hover:bg-gray-100 active:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-colors cursor-pointer min-h-[44px]"
+          >
             Cancelar
           </button>
           <button 
+            type="button"
             onClick={handleApply} 
             disabled={!value || loading || (requiresSupervisorPin && !supervisorPin.trim())}
-            className="flex-1 py-3 bg-green-500 text-white rounded-xl disabled:opacity-50"
+            className="flex-1 py-3 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold text-xs rounded-xl disabled:opacity-50 transition-all cursor-pointer shadow-md shadow-green-600/20 min-h-[44px]"
           >
-            {loading ? 'Aplicando...' : 'Aplicar'}
+            {loading ? 'Aplicando...' : 'Aplicar Descuento'}
           </button>
         </div>
       </m.div>
@@ -1444,7 +1958,9 @@ function DiscountModal({ accountId, onClose, onRefresh }) {
 function PrecheckModal({ accountId, account, totals, onClose }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { businessProfile } = useAuth();
+  const [isPrinting, setIsPrinting] = useState(false);
+  const { businessProfile, selectedTerminal } = useAuth();
+  const toast = useToast();
 
   useEffect(() => {
     const load = async () => {
@@ -1461,72 +1977,117 @@ function PrecheckModal({ accountId, account, totals, onClose }) {
     load();
   }, [accountId]);
 
-  const handlePrint = () => {
-    printPrecheckThermal({
-      account,
-      items,
-      totals,
-      businessProfile
-    });
+  const handlePrint = async () => {
+    setIsPrinting(true);
+    try {
+      await executePrecheckPrint({
+        accountId,
+        selectedTerminal,
+        businessProfile,
+        toast,
+      });
+    } catch (_) {
+      // Notificado por toast dentro de executePrecheckPrint
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <m.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-md p-5 max-h-[85vh] flex flex-col"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-md p-5 max-h-[90vh] sm:max-h-[85vh] flex flex-col shadow-2xl border border-gray-100 overflow-hidden"
       >
-        <h3 className="font-semibold text-gray-900 mb-4">Pre-Cuenta</h3>
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto my-1 sm:hidden shrink-0" />
 
-        {loading ? (
-          <p className="text-sm text-gray-500 text-center py-4">Cargando productos...</p>
-        ) : items.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-4 italic mb-4">Sin productos</p>
-        ) : (
-          <div className="flex-1 overflow-y-auto max-h-[40vh] mb-4 space-y-1.5">
-            {items.map((item, i) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span className="text-gray-700">
-                  {item.qty || 1}x {item.product_name}
-                </span>
-                <span className="text-gray-600 font-medium">
-                  Q {Number(item.line_total || 0).toFixed(2)}
-                </span>
+        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+              <Printer className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-gray-900">Pre-Cuenta</h3>
+              <p className="text-[11px] text-gray-400 font-mono">Mesa {account?.table_code || '-'} • {account?.check_number || ''}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Vista previa tipo ticket térmico */}
+        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex-1 overflow-y-auto font-mono text-xs text-slate-700 shadow-inner space-y-2">
+          <div className="text-center pb-2 border-b border-dashed border-slate-300">
+            <p className="font-black text-slate-900 tracking-wider uppercase text-sm">
+              {businessProfile?.name || 'PRE-CUENTA'}
+            </p>
+            <p className="text-[10px] text-slate-400">Comprobante de consumo no válido como factura</p>
+          </div>
+
+          {loading ? (
+            <div className="py-8 text-center text-slate-400 flex flex-col items-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+              <span>Cargando productos...</span>
+            </div>
+          ) : items.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-6 italic">Sin productos agregados</p>
+          ) : (
+            <div className="space-y-1.5 py-1">
+              {items.map((item, i) => (
+                <div key={i} className="flex justify-between items-baseline gap-2 text-xs">
+                  <span className="truncate flex-1">
+                    <strong className="text-slate-900">{item.qty || 1}x</strong> {item.product_name}
+                  </span>
+                  <span className="font-bold text-slate-900 shrink-0">
+                    Q{Number(item.line_total || 0).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="border-t border-dashed border-slate-300 pt-2.5 space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-500">Subtotal:</span>
+              <span className="font-semibold text-slate-800">Q{totals?.subtotal?.toFixed(2) || '0.00'}</span>
+            </div>
+            {totals?.discountTotal > 0 && (
+              <div className="flex justify-between text-xs text-red-600">
+                <span>Descuento:</span>
+                <span>-Q{totals.discountTotal.toFixed(2)}</span>
               </div>
-            ))}
-          </div>
-        )}
-
-        <div className="border-t pt-3 space-y-1.5 text-sm">
-          <div className="flex justify-between">
-            <span>Subtotal</span>
-            <span>Q {totals?.subtotal?.toFixed(2) || '0.00'}</span>
-          </div>
-          {totals?.discountTotal > 0 && (
-            <div className="flex justify-between text-red-500">
-              <span>Descuento</span>
-              <span>-Q {totals.discountTotal.toFixed(2)}</span>
+            )}
+            {totals?.tipAmount > 0 && (
+              <div className="flex justify-between text-xs text-slate-500">
+                <span>Propina ({totals?.tipPercent || 10}%):</span>
+                <span>Q{totals.tipAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-base font-black text-slate-950 border-t border-dashed border-slate-300 pt-1.5 mt-1.5">
+              <span>TOTAL:</span>
+              <span className="text-amber-700">Q{totals?.total?.toFixed(2) || '0.00'}</span>
             </div>
-          )}
-          {totals?.tipAmount > 0 && (
-            <div className="flex justify-between">
-              <span>Propina</span>
-              <span>Q {totals.tipAmount.toFixed(2)}</span>
-            </div>
-          )}
-          <div className="flex justify-between font-bold text-lg border-t pt-2">
-            <span>Total</span>
-            <span>Q {totals?.total?.toFixed(2) || '0.00'}</span>
           </div>
         </div>
-        <div className="flex gap-3 mt-4">
-          <button onClick={onClose} className="flex-1 py-3 border border-gray-200 rounded-xl">
+
+        <div className="flex gap-2.5 mt-4">
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="flex-1 py-3 border border-gray-200 hover:bg-gray-100 active:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-colors cursor-pointer min-h-[44px]"
+          >
             Cerrar
           </button>
-          <button onClick={handlePrint} className="flex-1 py-3 bg-amber-500 text-white rounded-xl flex items-center justify-center gap-2">
-            <Printer className="w-4 h-4" />
-            Imprimir
+          <button 
+            type="button"
+            onClick={handlePrint} 
+            disabled={isPrinting}
+            className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-amber-500/25 min-h-[44px]"
+          >
+            {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+            <span>{isPrinting ? 'Imprimiendo...' : 'Imprimir Pre-cuenta'}</span>
           </button>
         </div>
       </m.div>
@@ -1554,29 +2115,50 @@ function TipModal({ accountId, totals, onClose, onRefresh }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <m.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-sm p-5"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-gray-100 flex flex-col"
       >
-        <h3 className="font-semibold text-gray-900 mb-2">
-          {totals?.tipIsOverridden ? 'Restaurar Propina' : 'Quitar Propina'}
-        </h3>
-        <p className="text-sm text-gray-500 mb-4">
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto my-1 sm:hidden shrink-0" />
+
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="w-9 h-9 rounded-xl bg-pink-50 text-pink-600 flex items-center justify-center font-bold shrink-0">
+            <RotateCcw className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="font-extrabold text-base text-gray-900">
+              {totals?.tipIsOverridden ? 'Restaurar Propina' : 'Quitar Propina'}
+            </h3>
+            <p className="text-xs text-gray-400">Control de propina sugerida</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 mb-4 text-xs text-slate-600">
           {totals?.tipIsOverridden 
-            ? 'La configuración global de propina se volverá a aplicar.' 
-            : `Esto eliminará la propina (${totals?.tipPercent}%) de la cuenta.`}
-        </p>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-3 border border-gray-200 rounded-xl">
+            ? 'La configuración de propina estándar se volverá a aplicar a esta cuenta.' 
+            : `Esto eliminará la propina (${totals?.tipPercent || 10}%) del total actual de la cuenta.`}
+        </div>
+
+        <div className="flex gap-2.5">
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="flex-1 py-3 border border-gray-200 hover:bg-gray-100 active:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-colors cursor-pointer min-h-[44px]"
+          >
             Cancelar
           </button>
           <button
+            type="button"
             onClick={handleToggleTip}
-            className={`flex-1 py-3 text-white rounded-xl ${totals?.tipIsOverridden ? 'bg-pink-500' : 'bg-gray-900'}`}
+            className={`flex-1 py-3 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer min-h-[44px] ${
+              totals?.tipIsOverridden 
+                ? 'bg-pink-600 hover:bg-pink-700 active:bg-pink-800 shadow-pink-600/25' 
+                : 'bg-slate-900 hover:bg-black active:bg-slate-800 shadow-slate-900/25'
+            }`}
           >
-            {totals?.tipIsOverridden ? 'Restaurar' : 'Quitar'}
+            {totals?.tipIsOverridden ? 'Restaurar Propina' : 'Quitar Propina'}
           </button>
         </div>
       </m.div>
@@ -1610,30 +2192,32 @@ function CloseAccountModal({ accountId, account, onClose, onRefresh, onCloseMenu
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <m.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-sm p-5 text-center"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-gray-100 text-center flex flex-col"
       >
-        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Trash2 className="w-8 h-8 text-red-600" />
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto my-1 sm:hidden shrink-0" />
+
+        <div className="w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-3 text-red-600">
+          <Trash2 className="w-7 h-7" />
         </div>
-        <h3 className="font-semibold text-gray-900 mb-2">
+        <h3 className="font-extrabold text-base text-gray-900 mb-1">
           ¿Cerrar / Anular Cuenta?
         </h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Estás por cerrar la cuenta <strong>{account?.check_number}</strong>.
+        <p className="text-xs text-gray-500 mb-4">
+          Estás por cerrar la cuenta <strong className="text-gray-800">{account?.check_number}</strong>.
           {account?.items?.length > 0
             ? ' Los productos activos serán anulados.'
-            : ' La cuenta está vacía.'}
+            : ' La cuenta se encuentra vacía.'}
         </p>
 
         {requiresSupervisorPin && (
-          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-left">
-            <div className="flex items-center gap-2 text-amber-900 text-xs font-semibold mb-1.5">
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl text-left">
+            <div className="flex items-center gap-2 text-amber-900 text-xs font-bold mb-1.5">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              Requiere Autorización de Supervisor
+              Requiere PIN de Supervisor
             </div>
             <input
               type="password"
@@ -1641,23 +2225,25 @@ function CloseAccountModal({ accountId, account, onClose, onRefresh, onCloseMenu
               maxLength={6}
               value={supervisorPin}
               onChange={(e) => setSupervisorPin(e.target.value.replace(/\D/g, ''))}
-              placeholder="Ingresa PIN de Gerente / Admin"
-              className="w-full p-2.5 bg-white border border-amber-300 rounded-lg text-sm text-center font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-500"
+              placeholder="Ingresa PIN de Supervisor"
+              className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-sm text-center font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
           </div>
         )}
 
-        <div className="flex gap-3">
+        <div className="flex gap-2.5">
           <button
+            type="button"
             onClick={onClose}
-            className="flex-1 py-3 border border-gray-200 rounded-xl font-medium"
+            className="flex-1 py-3 border border-gray-200 hover:bg-gray-100 active:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-colors cursor-pointer min-h-[44px]"
           >
             Cancelar
           </button>
           <button
+            type="button"
             onClick={handleClose}
             disabled={loading || (requiresSupervisorPin && !supervisorPin.trim())}
-            className="flex-1 py-3 bg-red-600 text-white rounded-xl font-medium disabled:opacity-50"
+            className="flex-1 py-3 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold text-xs rounded-xl shadow-md shadow-red-600/25 transition-all disabled:opacity-50 cursor-pointer min-h-[44px]"
           >
             {loading ? 'Cerrando...' : 'Cerrar Cuenta'}
           </button>
@@ -1707,42 +2293,70 @@ function TransferAccountModal({ accountId, account, onClose, onRefresh }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <m.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-md max-h-[88vh] sm:max-h-[80vh] overflow-hidden flex flex-col shadow-2xl border border-gray-100"
       >
-        <div className="px-5 py-4 border-b">
-          <h3 className="font-semibold text-gray-900">Transferir Cuenta</h3>
-          <p className="text-sm text-gray-500">Mover todos los productos a otra cuenta</p>
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto my-1.5 sm:hidden shrink-0" />
+
+        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between shrink-0 bg-slate-50/50">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center font-bold">
+              <ArrowRight className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-gray-900">Transferir Cuenta</h3>
+              <p className="text-xs text-gray-400">Mover todos los productos a otra cuenta</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
         </div>
         
-        <div className="p-5 flex-1 overflow-y-auto">
+        <div className="p-4 flex-1 overflow-y-auto space-y-2">
           {loading ? (
-            <p className="text-sm text-gray-500">Cargando...</p>
+            <div className="py-8 text-center text-slate-400 flex flex-col items-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-cyan-500" />
+              <span>Cargando cuentas abiertas...</span>
+            </div>
           ) : accounts.length === 0 ? (
-            <p className="text-sm text-gray-500">No hay otras cuentas abiertas</p>
+            <div className="py-8 text-center text-slate-400 text-xs">
+              No hay otras cuentas abiertas disponibles
+            </div>
           ) : (
             <div className="space-y-2">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider px-1">
+                Selecciona la cuenta de destino:
+              </p>
               {accounts.map(acc => (
                 <button
                   key={acc.id}
+                  type="button"
                   onClick={() => setSelectedAccount(acc.id)}
-                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
+                  className={`w-full p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer min-h-[56px] ${
                     selectedAccount === acc.id
-                      ? 'border-cyan-500 bg-cyan-50'
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-cyan-500 bg-cyan-50/70 shadow-xs ring-2 ring-cyan-200'
+                      : 'border-slate-200 bg-white hover:border-slate-300 active:bg-slate-50'
                   }`}
                 >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-medium text-gray-900">Mesa {acc.table_code || '-'}</p>
-                      <p className="text-xs text-gray-500">
-                        Cuenta #: {acc.check_number} • Centro: {acc.operation_center_name || '-'}
+                  <div className="flex justify-between items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-sm text-gray-900">Mesa {acc.table_code || '-'}</span>
+                        <span className="text-[10px] bg-slate-100 text-slate-700 font-mono px-1.5 py-0.5 rounded">
+                          {acc.check_number}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                        Centro: {acc.operation_center_name || '-'}
                       </p>
                     </div>
-                    <p className="font-bold text-cyan-600">Q {Number(acc.total || 0).toFixed(2) || '0.00'}</p>
+                    <span className="font-extrabold text-cyan-600 text-sm shrink-0">
+                      Q{Number(acc.total || 0).toFixed(2)}
+                    </span>
                   </div>
                 </button>
               ))}
@@ -1750,16 +2364,21 @@ function TransferAccountModal({ accountId, account, onClose, onRefresh }) {
           )}
         </div>
 
-        <div className="p-5 border-t flex gap-3">
-          <button onClick={onClose} className="flex-1 py-3 border border-gray-200 rounded-xl">
+        <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-2.5 shrink-0">
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="flex-1 py-3 border border-gray-200 hover:bg-gray-100 active:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-colors cursor-pointer min-h-[44px]"
+          >
             Cancelar
           </button>
           <button
+            type="button"
             onClick={handleTransfer}
             disabled={!selectedAccount || transferring}
-            className="flex-1 py-3 bg-cyan-500 text-white rounded-xl disabled:opacity-50"
+            className="flex-1 py-3 bg-cyan-600 hover:bg-cyan-700 active:bg-cyan-800 text-white font-bold text-xs rounded-xl shadow-md shadow-cyan-600/25 transition-all disabled:opacity-50 cursor-pointer min-h-[44px]"
           >
-            {transferring ? 'Transferiendo...' : 'Transferir'}
+            {transferring ? 'Transfiriendo...' : 'Transferir Cuenta'}
           </button>
         </div>
       </m.div>
@@ -1807,42 +2426,70 @@ function JoinAccountsModal({ accountId, account, onClose, onRefresh }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <m.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-md max-h-[88vh] sm:max-h-[80vh] overflow-hidden flex flex-col shadow-2xl border border-gray-100"
       >
-        <div className="px-5 py-4 border-b">
-          <h3 className="font-semibold text-gray-900">Unir Cuentas</h3>
-          <p className="text-sm text-gray-500">Combinar esta cuenta con otra (la otra se cierra)</p>
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto my-1.5 sm:hidden shrink-0" />
+
+        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between shrink-0 bg-slate-50/50">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-bold">
+              <ArrowLeftRight className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-gray-900">Unir Cuentas</h3>
+              <p className="text-xs text-gray-400">Combinar consumos (la otra cuenta se cerrará)</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
         </div>
         
-        <div className="p-5 flex-1 overflow-y-auto">
+        <div className="p-4 flex-1 overflow-y-auto space-y-2">
           {loading ? (
-            <p className="text-sm text-gray-500">Cargando...</p>
+            <div className="py-8 text-center text-slate-400 flex flex-col items-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-teal-500" />
+              <span>Cargando cuentas abiertas...</span>
+            </div>
           ) : accounts.length === 0 ? (
-            <p className="text-sm text-gray-500">No hay otras cuentas abiertas</p>
+            <div className="py-8 text-center text-slate-400 text-xs">
+              No hay otras cuentas abiertas para unir
+            </div>
           ) : (
             <div className="space-y-2">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider px-1">
+                Selecciona la cuenta a incorporar:
+              </p>
               {accounts.map(acc => (
                 <button
                   key={acc.id}
+                  type="button"
                   onClick={() => setSelectedAccount(acc.id)}
-                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
+                  className={`w-full p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer min-h-[56px] ${
                     selectedAccount === acc.id
-                      ? 'border-teal-500 bg-teal-50'
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-teal-500 bg-teal-50/70 shadow-xs ring-2 ring-teal-200'
+                      : 'border-slate-200 bg-white hover:border-slate-300 active:bg-slate-50'
                   }`}
                 >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-medium text-gray-900">Mesa {acc.table_code || '-'}</p>
-                      <p className="text-xs text-gray-500">
-                        Cuenta #: {acc.check_number} • Centro: {acc.operation_center_name || '-'}
+                  <div className="flex justify-between items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-sm text-gray-900">Mesa {acc.table_code || '-'}</span>
+                        <span className="text-[10px] bg-slate-100 text-slate-700 font-mono px-1.5 py-0.5 rounded">
+                          {acc.check_number}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                        Centro: {acc.operation_center_name || '-'}
                       </p>
                     </div>
-                    <p className="font-bold text-teal-600">Q {Number(acc.total || 0).toFixed(2) || '0.00'}</p>
+                    <span className="font-extrabold text-teal-600 text-sm shrink-0">
+                      Q{Number(acc.total || 0).toFixed(2)}
+                    </span>
                   </div>
                 </button>
               ))}
@@ -1850,16 +2497,21 @@ function JoinAccountsModal({ accountId, account, onClose, onRefresh }) {
           )}
         </div>
 
-        <div className="p-5 border-t flex gap-3">
-          <button onClick={onClose} className="flex-1 py-3 border border-gray-200 rounded-xl">
+        <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-2.5 shrink-0">
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="flex-1 py-3 border border-gray-200 hover:bg-gray-100 active:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-colors cursor-pointer min-h-[44px]"
+          >
             Cancelar
           </button>
           <button
+            type="button"
             onClick={handleJoin}
             disabled={!selectedAccount || joining}
-            className="flex-1 py-3 bg-teal-500 text-white rounded-xl disabled:opacity-50"
+            className="flex-1 py-3 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold text-xs rounded-xl shadow-md shadow-teal-600/25 transition-all disabled:opacity-50 cursor-pointer min-h-[44px]"
           >
-            {joining ? 'Uniendo...' : 'Unir'}
+            {joining ? 'Uniendo...' : 'Unir Cuentas'}
           </button>
         </div>
       </m.div>

@@ -482,6 +482,74 @@ const accountsRepository = {
       conn
     );
   },
+  async findTerminalPrinter({ terminalId = null, userId = null, operationCenterId = null }) {
+    if (terminalId) {
+      const [rows] = await query(
+        `SELECT t.id, t.name,
+                COALESCE(p.ip, t.printer_ip) AS printer_ip,
+                COALESCE(p.port, t.printer_port, 9100) AS printer_port,
+                COALESCE(p.name, t.printer_name) AS printer_name
+         FROM terminals t
+         LEFT JOIN printers p ON p.id = t.printer_id
+         WHERE t.id = ? AND t.is_active = 1
+         LIMIT 1`,
+        [Number(terminalId)]
+      );
+      if (rows && rows[0]) return rows[0];
+    }
+
+    if (userId) {
+      const [userRows] = await query(
+        `SELECT operation_center_id FROM staff_users WHERE id = ? LIMIT 1`,
+        [Number(userId)]
+      );
+      const userCenterId = userRows?.[0]?.operation_center_id || operationCenterId;
+      if (userCenterId) {
+        const [rows] = await query(
+          `SELECT t.id, t.name,
+                  COALESCE(p.ip, t.printer_ip) AS printer_ip,
+                  COALESCE(p.port, t.printer_port, 9100) AS printer_port,
+                  COALESCE(p.name, t.printer_name) AS printer_name
+           FROM terminals t
+           LEFT JOIN printers p ON p.id = t.printer_id
+           WHERE t.operation_center_id = ? AND t.is_active = 1
+           ORDER BY (COALESCE(p.ip, t.printer_ip) IS NOT NULL) DESC, t.id ASC
+           LIMIT 1`,
+          [Number(userCenterId)]
+        );
+        if (rows && rows[0]) return rows[0];
+      }
+    }
+
+    if (operationCenterId) {
+      const [rows] = await query(
+        `SELECT t.id, t.name,
+                COALESCE(p.ip, t.printer_ip) AS printer_ip,
+                COALESCE(p.port, t.printer_port, 9100) AS printer_port,
+                COALESCE(p.name, t.printer_name) AS printer_name
+         FROM terminals t
+         LEFT JOIN printers p ON p.id = t.printer_id
+         WHERE t.operation_center_id = ? AND t.is_active = 1
+         ORDER BY (COALESCE(p.ip, t.printer_ip) IS NOT NULL) DESC, t.id ASC
+         LIMIT 1`,
+        [Number(operationCenterId)]
+      );
+      if (rows && rows[0]) return rows[0];
+    }
+
+    const [anyRows] = await query(
+      `SELECT t.id, t.name,
+              COALESCE(p.ip, t.printer_ip) AS printer_ip,
+              COALESCE(p.port, t.printer_port, 9100) AS printer_port,
+              COALESCE(p.name, t.printer_name) AS printer_name
+       FROM terminals t
+       LEFT JOIN printers p ON p.id = t.printer_id
+       WHERE t.is_active = 1
+       ORDER BY (COALESCE(p.ip, t.printer_ip) IS NOT NULL) DESC, t.id ASC
+       LIMIT 1`
+    );
+    return anyRows?.[0] || null;
+  },
 };
 
 module.exports = accountsRepository;

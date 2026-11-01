@@ -237,7 +237,8 @@ export const api = {
   },
   getAccountByCheck: (checkNumber) => request(`/accounts/by-check/${checkNumber}`),
   getOpenAccounts: (centerId) => request(`/accounts/open${centerId ? `?centerId=${centerId}` : ''}`),
-  printPrecheck: (accountId) => request(`/accounts/${accountId}/precheck`, { method: 'POST' }),
+  printPrecheck: (accountId, terminalId) => request(`/accounts/${accountId}/precheck`, { method: 'POST', body: { terminalId } }),
+  reprintReceipt: (accountId, terminalId) => request(`/accounts/${accountId}/reprint`, { method: 'POST', body: { terminalId } }),
 
   // Products catalog
   getProducts: async (categoryId, centerId) => {

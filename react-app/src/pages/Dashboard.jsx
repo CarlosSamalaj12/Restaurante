@@ -241,7 +241,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
       });
     }
 
-    // 3. Mesas con tiempo muy prolongado en salón (> 120 min)
+    // 3. Mesas con tiempo muy prolongado en área (> 120 min)
     const longAccounts = openAccounts.filter((a) => {
       const min = getElapsedMinutes(a.opened_at || a.created_at);
       return min >= 120;
@@ -252,7 +252,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
         type: 'info',
         icon: Clock,
         title: `${longAccounts.length} mesa${longAccounts.length > 1 ? 's' : ''} con más de 2h`,
-        desc: 'Mesas con servicio prolongado activas en salón.',
+        desc: 'Mesas con servicio prolongado activas en área.',
         color: 'text-blue-500',
         bg: 'bg-blue-50',
         actionView: 'tables',
@@ -346,7 +346,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
   const moduleCards = [
     {
       id: 'tables',
-      title: 'Mesas & Salón',
+      title: 'Mesas & Áreas',
       subtitle: 'Visualizar mapa, cambiar comensales y unir mesas',
       badge: `${totalTablesCount} Mesas`,
       badgeColor: 'bg-blue-50 text-blue-700 border-blue-100',
@@ -389,7 +389,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
     {
       id: 'reports',
       title: 'Reportes',
-      subtitle: 'Ventas por salón, productos top y métricas',
+      subtitle: 'Ventas por área, productos top y métricas',
       badge: 'Día & Mes',
       badgeColor: 'bg-orange-50 text-orange-700 border-orange-100',
       icon: BarChart3,
@@ -459,7 +459,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
     {
       id: 'executive-dashboard',
       title: 'Dashboard Ejecutivo',
-      subtitle: 'Métricas financieras, curvas de venta, salones y rendimiento',
+      subtitle: 'Métricas financieras, curvas de venta, áreas y rendimiento',
       badge: 'Métricas',
       badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-100',
       icon: TrendingUp,
@@ -692,14 +692,14 @@ export function Dashboard({ onNavigate, onSelectTable }) {
         </div>
 
         {/* ========================================================================= */}
-        {/* TIER 2: Selector de Salones / Centros de Operación (Ribbon Amplio)        */}
+        {/* TIER 2: Selector de Áreas / Centros de Operación (Ribbon Amplio)          */}
         {/* ========================================================================= */}
         {centers.length > 0 && (
           <div className="border-t border-slate-100/90 bg-slate-50/80 px-4 lg:px-6 py-2 shadow-inner">
             <div className="flex items-center gap-3 max-w-[1700px] mx-auto">
               <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-slate-500 shrink-0">
                 <Store className="w-3.5 h-3.5 text-indigo-600" />
-                <span className="uppercase tracking-wider text-[11px] text-slate-600 font-extrabold">Salones:</span>
+                <span className="uppercase tracking-wider text-[11px] text-slate-600 font-extrabold">Áreas:</span>
               </div>
               <div className="flex-1 min-w-0">
                 <CenterSelectorBar
@@ -744,7 +744,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
                 <span className="text-xs font-extrabold uppercase tracking-wide text-[#15803D]">Mesas Libres</span>
               </div>
               <p className="text-xs text-slate-500 mt-1 font-medium">
-                {availableRate}% de capacidad en salón disponible
+                {availableRate}% de capacidad en área disponible
               </p>
             </div>
             {/* Barra de progreso */}
@@ -852,7 +852,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
                 <span className="text-xs font-extrabold uppercase tracking-wide text-[#7E22CE]">Ventas Día</span>
               </div>
               <p className="text-xs text-slate-500 mt-1 font-medium truncate">
-                Pendiente de facturar en salón: <strong className="text-slate-700">Q {pendingFloorTotal.toFixed(2)}</strong>
+                Pendiente de facturar en área: <strong className="text-slate-700">Q {pendingFloorTotal.toFixed(2)}</strong>
               </p>
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium mt-3 pt-2 border-t border-purple-100">
@@ -977,10 +977,10 @@ export function Dashboard({ onNavigate, onSelectTable }) {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xs font-black text-slate-400 tracking-wider uppercase">
-                  Actividad en Vivo de Salón
+                  Actividad en Vivo de Áreas
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                  {centers.find(c => c.id === selectedCenter)?.name || 'Salón Principal'}
+                  {centers.find(c => c.id === selectedCenter)?.name || 'Área Principal'}
                 </p>
               </div>
 
@@ -1006,7 +1006,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
                       </div>
                       <div>
                         <h4 className="font-bold text-slate-900 text-sm">
-                          Mesa {currentActiveAccount.table_code} ({currentActiveAccount.area_name || currentActiveAccount.center_name || 'Salón'})
+                          Mesa {currentActiveAccount.table_code} ({currentActiveAccount.area_name || currentActiveAccount.center_name || 'Área'})
                         </h4>
                         <p className="text-[11px] text-slate-500">
                           Mesero: {currentActiveAccount.waiter_name || user?.full_name?.split(' ')[0] || 'Roberto M.'} • {currentActiveAccount.guest_count || 2} Comensales
@@ -1088,7 +1088,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
                   <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-2">
                     <UtensilsCrossed className="w-5 h-5" />
                   </div>
-                  <h4 className="font-bold text-slate-800 text-xs">Sin mesas ocupadas en este salón</h4>
+                  <h4 className="font-bold text-slate-800 text-xs">Sin mesas ocupadas en esta área</h4>
                   <p className="text-[11px] text-slate-400 mt-0.5">
                     Utiliza el botón de &quot;Abrir Mesa Rápida&quot; para iniciar un nuevo servicio.
                   </p>
@@ -1116,11 +1116,11 @@ export function Dashboard({ onNavigate, onSelectTable }) {
               </span>
             </div>
 
-            {/* 3. Tarjeta Oscura: Capacidad Total de Salón */}
+            {/* 3. Tarjeta Oscura: Capacidad Total de Áreas */}
             <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-md space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-xs text-white">Capacidad Total de Salón</h4>
+                  <h4 className="font-bold text-xs text-white">Capacidad Total de Áreas</h4>
                   <p className="text-[11px] text-slate-400">{occupancyRate}% ocupado</p>
                 </div>
                 <span className="px-2.5 py-1 rounded-xl bg-slate-800 text-xs font-mono font-bold text-emerald-400 border border-slate-700">
@@ -1227,7 +1227,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
                   </div>
                 ) : (
                   <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs text-center font-medium">
-                    No hay mesas libres en este salón. Revisa el salón o libera una mesa.
+                    No hay mesas libres en esta área. Revisa el área o libera una mesa.
                   </div>
                 )}
               </div>

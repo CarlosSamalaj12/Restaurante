@@ -27,7 +27,7 @@ import {
 
 const MODULE_CONFIG = {
   views: { label: 'Vistas y Pantallas Permitidas', icon: Eye, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
-  restaurant: { label: 'Restaurante y Salón (Órdenes y Cobros)', icon: UtensilsCrossed, color: 'text-amber-600 bg-amber-50 border-amber-200' },
+  restaurant: { label: 'Restaurante y Áreas (Órdenes y Cobros)', icon: UtensilsCrossed, color: 'text-amber-600 bg-amber-50 border-amber-200' },
   erp: { label: 'Inventario y Recetas (ERP)', icon: Boxes, color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
   crm: { label: 'Clientes y Cuentas por Cobrar', icon: Users, color: 'text-blue-600 bg-blue-50 border-blue-200' },
   pms: { label: 'Módulo Hotel / PMS', icon: Building2, color: 'text-purple-600 bg-purple-50 border-purple-200' },
@@ -37,7 +37,7 @@ const MODULE_CONFIG = {
 const LANDING_VIEWS = [
   {
     id: 'tables',
-    title: 'Mesas y Salón',
+    title: 'Mesas y Áreas',
     desc: 'Entra directo a tomar pedidos (Ideal Meseros)',
     icon: LayoutGrid,
     color: 'from-emerald-500 to-teal-600',
@@ -609,7 +609,7 @@ function CreateRoleModal({ onClose, onCreated }) {
             onChange={(e) => setDefaultView(e.target.value)}
             className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:border-primary-500 focus:outline-none bg-white font-medium"
           >
-            <option value="tables">Mesas y Salón (Recomendado Meseros)</option>
+            <option value="tables">Mesas y Áreas (Recomendado Meseros)</option>
             <option value="dashboard">Inicio / Dashboard (Admin / Gerente)</option>
             <option value="kds">Cocina / KDS (Cocineros y Barra)</option>
             <option value="shifts">Turnos y Cajas (Cajeros)</option>

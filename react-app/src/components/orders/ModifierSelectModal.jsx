@@ -13,7 +13,8 @@ import {
   Pencil,
   Sparkles,
   Layers,
-  ChefHat
+  ChefHat,
+  Users
 } from 'lucide-react';
 import { ProductIconBadge } from '../../utils/productIcons';
 
@@ -37,6 +38,7 @@ export function ModifierSelectModal({
   addingItem = false,
   currencySymbol = 'Q',
   quickNotes = [],
+  currentSeat = 1,
   onClose
 }) {
   const [currentStep, setCurrentStep] = useState(0);
@@ -150,23 +152,20 @@ export function ModifierSelectModal({
 
     handleModifierToggle(groupId, optionId);
 
-    // Si es selección única (radio button), avanzar automáticamente con microtransición suave
-    if (maxSelect === 1 && currentStep < groups.length) {
+    // Si es de opción única y no es el último paso, avanzar automáticamente tras 280ms
+    if (maxSelect === 1 && currentStep < groups.length - 1) {
       autoAdvanceTimerRef.current = setTimeout(() => {
-        setDirection(1);
-        setCurrentStep(prev => Math.min(prev + 1, groups.length));
-      }, 190);
+        handleNext();
+      }, 280);
     }
   };
 
-  // Agregar nota rápida
+  // Atajos rápidos de notas
   const handleAddQuickNote = (note) => {
-    if (!setItemNotes) return;
     const current = itemNotes.trim();
     if (!current) {
       setItemNotes(note);
     } else if (current.includes(note)) {
-      // Toggle off si ya está
       const regex = new RegExp(`(^|,\\s*)${note}(,\\s*|$)`, 'gi');
       const updated = current.replace(regex, ', ').replace(/^,\s*|,\s*$/g, '').trim();
       setItemNotes(updated);
@@ -177,26 +176,25 @@ export function ModifierSelectModal({
 
   if (!isOpen || !selectedProduct) return null;
 
-  // Variantes de animación de pasos (slide horizontal según dirección)
+  const progressPercentage = ((currentStep + 1) / totalSteps) * 100;
+
+  // Animaciones de deslizamiento horizontal entre pasos
   const slideVariants = {
     enter: (dir) => ({
-      x: dir > 0 ? 35 : -35,
+      x: dir > 0 ? 30 : -30,
       opacity: 0
     }),
     center: {
       x: 0,
       opacity: 1,
-      transition: { duration: 0.22, ease: 'easeOut' }
+      transition: { duration: 0.2, ease: 'easeOut' }
     },
     exit: (dir) => ({
-      x: dir > 0 ? -35 : 35,
+      x: dir > 0 ? -30 : 30,
       opacity: 0,
-      transition: { duration: 0.18, ease: 'easeIn' }
+      transition: { duration: 0.15, ease: 'easeIn' }
     })
   };
-
-  // Progreso porcentual
-  const progressPercentage = Math.round(((currentStep + 1) / totalSteps) * 100);
 
   return (
     <AnimatePresence>
@@ -216,7 +214,7 @@ export function ModifierSelectModal({
           className="bg-white w-full sm:max-w-xl md:max-w-2xl rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-gray-100"
         >
           {/* Barra de progreso superior continua */}
-          <div className="w-full h-1.5 bg-gray-100 relative overflow-hidden">
+          <div className="w-full h-1.5 bg-gray-100 relative overflow-hidden shrink-0">
             <m.div
               className="h-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 transition-all duration-300 ease-out"
               style={{ width: `${progressPercentage}%` }}
@@ -224,21 +222,22 @@ export function ModifierSelectModal({
           </div>
 
           {/* Encabezado del Modal */}
-          <div className="px-5 pt-4 pb-3 border-b border-gray-100 bg-white">
+          <div className="px-4 sm:px-5 pt-3.5 pb-2.5 border-b border-gray-100 bg-white shrink-0">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <ProductIconBadge
                   productName={selectedProduct.name}
                   categoryName={selectedProduct.category_name}
                   size="md"
+                  className="shrink-0"
                 />
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="font-extrabold text-gray-900 text-base sm:text-lg leading-tight truncate">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h2 className="font-extrabold text-gray-900 text-sm sm:text-base leading-tight truncate">
                       {selectedProduct.name}
                     </h2>
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Paso {currentStep + 1} de {totalSteps}
+                    <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                      Silla {currentSeat}
                     </span>
                   </div>
                   <p className="text-xs text-gray-500 truncate mt-0.5">
@@ -248,15 +247,15 @@ export function ModifierSelectModal({
               </div>
 
               {/* Precio en vivo + Botón cerrar */}
-              <div className="flex items-center gap-3 shrink-0">
+              <div className="flex items-center gap-2.5 shrink-0">
                 <div className="text-right">
-                  <span className="text-xs text-gray-400 block font-medium leading-none">Total</span>
+                  <span className="text-[10px] text-gray-400 block font-medium leading-none">Total</span>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-base sm:text-lg font-black text-emerald-600">
+                    <span className="text-sm sm:text-lg font-black text-emerald-600">
                       {currencySymbol}{totalPrice.toFixed(2)}
                     </span>
                     {extraPrice > 0 && (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded">
+                      <span className="text-[9px] sm:text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-1 py-0.2 rounded">
                         +{currencySymbol}{extraPrice.toFixed(2)}
                       </span>
                     )}
@@ -275,11 +274,10 @@ export function ModifierSelectModal({
             </div>
 
             {/* Stepper de navegación interactivo con chips */}
-            <div className="flex gap-2 overflow-x-auto pt-3 pb-1 scrollbar-hide">
+            <div className="flex gap-1.5 overflow-x-auto pt-2.5 pb-0.5 scrollbar-none no-scrollbar flex-nowrap">
               {groups.map((grp, idx) => {
                 const isDone = idx < currentStep && isGroupSatisfied(grp);
                 const isActive = idx === currentStep;
-                const isSatisfied = isGroupSatisfied(grp);
                 const isClickable = idx < currentStep || (idx > currentStep && groups.slice(0, idx).every(isGroupSatisfied));
 
                 return (
@@ -289,9 +287,9 @@ export function ModifierSelectModal({
                     disabled={!isClickable && !isActive}
                     onClick={() => isClickable && goToStep(idx)}
                     className={`
-                      px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0
+                      px-2.5 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1 shrink-0
                       ${isActive
-                        ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-500/20'
+                        ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/20'
                         : isDone
                         ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 cursor-pointer'
                         : isClickable
@@ -300,12 +298,12 @@ export function ModifierSelectModal({
                       }
                     `}
                   >
-                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-bold ${
                       isActive ? 'bg-white text-emerald-700' : isDone ? 'bg-emerald-600 text-white' : 'bg-gray-300 text-gray-700'
                     }`}>
-                      {isDone ? <Check className="w-2.5 h-2.5" /> : idx + 1}
+                      {isDone ? <Check className="w-2 h-2" /> : idx + 1}
                     </span>
-                    <span>{grp.name}</span>
+                    <span className="truncate max-w-[100px]">{grp.name}</span>
                   </button>
                 );
               })}
@@ -316,27 +314,27 @@ export function ModifierSelectModal({
                 disabled={!canSubmit && currentStep !== groups.length}
                 onClick={() => canSubmit && goToStep(groups.length)}
                 className={`
-                  px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0
+                  px-2.5 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1 shrink-0
                   ${isLastStep
-                    ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-500/20'
+                    ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/20'
                     : canSubmit
                     ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
                     : 'bg-gray-100 text-gray-400 opacity-60 cursor-not-allowed'
                   }
                 `}
               >
-                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-bold ${
                   isLastStep ? 'bg-white text-emerald-700' : 'bg-gray-300 text-gray-700'
                 }`}>
-                  <FileText className="w-2.5 h-2.5" />
+                  <FileText className="w-2 h-2" />
                 </span>
                 <span>Resumen</span>
               </button>
             </div>
           </div>
 
-          {/* Cuerpo del Wizard con animación fluida entre pasos */}
-          <div className="p-4 sm:p-5 overflow-y-auto flex-1 min-h-[300px] bg-slate-50/50">
+          {/* Cuerpo del Wizard */}
+          <div className="p-3.5 sm:p-5 overflow-y-auto flex-1 min-h-[260px] bg-slate-50/50">
             <AnimatePresence mode="wait" custom={direction}>
               {!isLastStep && currentGroup ? (
                 /* ================= PANTALLA DE GRUPO DE MODIFICADORES ================= */
@@ -347,29 +345,29 @@ export function ModifierSelectModal({
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  className="space-y-4"
+                  className="space-y-3 sm:space-y-4"
                 >
                   {/* Encabezado del grupo */}
-                  <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="bg-white p-3 sm:p-4 rounded-2xl border border-gray-100 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-gray-900 text-base">{currentGroup.name}</h3>
+                        <h3 className="font-bold text-gray-900 text-sm sm:text-base">{currentGroup.name}</h3>
                         {currentGroupIsSingle ? (
-                          <span className="text-[11px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                          <span className="text-[10px] sm:text-[11px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
                             Opción única
                           </span>
                         ) : currentGroupMax > 0 ? (
-                          <span className="text-[11px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                          <span className="text-[10px] sm:text-[11px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
                             Hasta {currentGroupMax} opciones
                           </span>
                         ) : null}
                       </div>
                       <p className="text-xs text-gray-500 mt-0.5">
                         {currentGroupIsSingle
-                          ? 'Toca una opción para seleccionarla y avanzar de inmediato'
+                          ? 'Toca una opción para seleccionarla'
                           : currentGroupMin > 0
                           ? `Selecciona al menos ${currentGroupMin} opción${currentGroupMin > 1 ? 'es' : ''}`
-                          : 'Opcional: puedes seleccionar o continuar sin elegir'}
+                          : 'Opcional: puedes elegir o continuar'}
                       </p>
                     </div>
 
@@ -377,26 +375,26 @@ export function ModifierSelectModal({
                     <div className="shrink-0 flex items-center gap-2">
                       {currentGroupMin > 0 ? (
                         currentGroupIsSatisfied ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-100/90 px-3 py-1 rounded-full border border-emerald-200">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 px-2.5 py-0.5 rounded-full border border-emerald-200">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            Completado ({currentGroupSelectedIds.length}/{currentGroupMin})
+                            Listo
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 bg-amber-100/90 px-3 py-1 rounded-full border border-amber-200 animate-pulse">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100/90 px-2.5 py-0.5 rounded-full border border-amber-200 animate-pulse">
                             <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
                             Requerido ({currentGroupSelectedIds.length}/{currentGroupMin})
                           </span>
                         )
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-full">
-                          Opcional ({currentGroupSelectedIds.length} seleccionada{currentGroupSelectedIds.length === 1 ? '' : 's'})
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-600 bg-gray-100 px-2.5 py-0.5 rounded-full">
+                          Opcional
                         </span>
                       )}
                     </div>
                   </div>
 
                   {/* Cuadrícula de opciones del grupo */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
                     {currentGroup.options?.map((option) => {
                       const isSelected = currentGroupSelectedIds.includes(option.id);
                       const delta = Number(option.price_delta || 0);
@@ -408,15 +406,14 @@ export function ModifierSelectModal({
                           whileTap={{ scale: 0.98 }}
                           onClick={() => handleOptionClick(currentGroup.groupId, option.id, currentGroupMax)}
                           className={`
-                            p-3.5 rounded-2xl border-2 text-left transition-all relative flex items-center justify-between gap-3 cursor-pointer group
+                            p-3 rounded-2xl border-2 text-left transition-all relative flex items-center justify-between gap-3 cursor-pointer group min-h-[48px]
                             ${isSelected
-                              ? 'border-emerald-600 bg-emerald-50/70 shadow-sm text-emerald-950 ring-2 ring-emerald-500/20'
+                              ? 'border-emerald-600 bg-emerald-50/70 shadow-2xs text-emerald-950 ring-2 ring-emerald-500/20'
                               : 'border-gray-200 bg-white hover:border-emerald-300 hover:bg-gray-50/60 text-gray-800'
                             }
                           `}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
-                            {/* Indicador Radio o Checkbox */}
+                          <div className="flex items-center gap-2.5 min-w-0">
                             <span
                               className={`w-5 h-5 rounded-${currentGroupIsSingle ? 'full' : 'lg'} border-2 flex items-center justify-center shrink-0 transition-colors ${
                                 isSelected
@@ -434,16 +431,15 @@ export function ModifierSelectModal({
                             </span>
 
                             <div className="min-w-0">
-                              <span className={`text-sm font-bold block truncate leading-snug ${isSelected ? 'text-emerald-950' : 'text-gray-900'}`}>
+                              <span className={`text-xs sm:text-sm font-bold block truncate leading-snug ${isSelected ? 'text-emerald-950' : 'text-gray-900'}`}>
                                 {option.name}
                               </span>
                               {delta === 0 ? (
-                                <span className="text-[11px] font-medium text-gray-400">Incluido</span>
+                                <span className="text-[10px] font-medium text-gray-400">Incluido</span>
                               ) : null}
                             </div>
                           </div>
 
-                          {/* Delta de precio */}
                           {delta !== 0 && (
                             <span
                               className={`text-xs font-black shrink-0 px-2 py-0.5 rounded-md ${
@@ -471,22 +467,22 @@ export function ModifierSelectModal({
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  className="space-y-4"
+                  className="space-y-3 sm:space-y-4"
                 >
                   {/* Desglose de selecciones */}
-                  <div className="bg-white rounded-2xl p-4 border border-gray-200/90 shadow-2xs space-y-3">
-                    <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
-                      <div className="flex items-center gap-2">
+                  <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-2xs space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <div className="flex items-center gap-1.5">
                         <Sparkles className="w-4 h-4 text-emerald-600" />
-                        <h3 className="font-bold text-gray-900 text-sm">Resumen de tu personalización</h3>
+                        <h3 className="font-bold text-gray-900 text-xs sm:text-sm">Personalización confirmada</h3>
                       </div>
                       <span className="text-xs font-bold text-gray-500">
                         Base: {currencySymbol}{basePrice.toFixed(2)}
                       </span>
                     </div>
 
-                    <div className="space-y-2">
-                      {groups.map((grp, idx) => {
+                    <div className="space-y-1.5">
+                      {groups.map((grp) => {
                         const selectedIds = selectedModifiers[grp.groupId] || [];
                         const selectedOptions = grp.options?.filter(o => selectedIds.includes(o.id)) || [];
                         const isSatisfied = isGroupSatisfied(grp);
@@ -494,70 +490,36 @@ export function ModifierSelectModal({
                         return (
                           <div
                             key={grp.groupId}
-                            className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+                            className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs ${
                               !isSatisfied
-                                ? 'bg-amber-50/70 border-amber-200'
+                                ? 'bg-amber-50/70 border-amber-200 text-amber-900'
                                 : selectedOptions.length > 0
-                                ? 'bg-slate-50 border-gray-200/80'
-                                : 'bg-gray-50/40 border-dashed border-gray-200'
+                                ? 'bg-slate-50 border-slate-200 text-slate-800'
+                                : 'bg-gray-50/50 border-gray-200 text-gray-400'
                             }`}
                           >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-bold text-gray-700">{grp.name}:</span>
-                                {!isSatisfied && (
-                                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">
-                                    Requerido
-                                  </span>
-                                )}
-                              </div>
-                              <div className="mt-0.5">
-                                {selectedOptions.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {selectedOptions.map(opt => (
-                                      <span
-                                        key={opt.id}
-                                        className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-900 bg-emerald-100/80 px-2 py-0.5 rounded-md"
-                                      >
-                                        {opt.name}
-                                        {Number(opt.price_delta) !== 0 && (
-                                          <span className="text-[10px] text-emerald-700 font-bold">
-                                            ({opt.price_delta > 0 ? '+' : ''}{currencySymbol}{Number(opt.price_delta).toFixed(2)})
-                                          </span>
-                                        )}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-gray-400 italic">
-                                    {Number(grp.minSelect || 0) > 0 ? 'Falta seleccionar' : 'Sin extras seleccionados'}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => goToStep(idx)}
-                              className="px-2.5 py-1.5 text-xs font-bold text-gray-600 hover:text-emerald-700 bg-white hover:bg-emerald-50 border border-gray-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                            >
-                              <Pencil className="w-3 h-3" />
-                              <span>Cambiar</span>
-                            </button>
+                            <span className="font-semibold">{grp.name}:</span>
+                            <span className="font-bold truncate text-right">
+                              {selectedOptions.length > 0
+                                ? selectedOptions.map(o => o.name).join(', ')
+                                : grp.minSelect > 0
+                                ? '⚠️ Pendiente'
+                                : 'Ninguno'}
+                            </span>
                           </div>
                         );
                       })}
                     </div>
                   </div>
 
-                  {/* Observaciones especiales */}
-                  <div className="bg-white rounded-2xl p-4 border border-gray-200/90 shadow-2xs space-y-2.5">
+                  {/* Observaciones especiales para cocina */}
+                  <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-2xs space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
                         <ChefHat className="w-4 h-4 text-emerald-600" />
-                        Observaciones para cocina (opcional)
+                        Observaciones para cocina
                       </label>
-                      <span className="text-[11px] text-gray-400">Atajos rápidos abajo</span>
+                      <span className="text-[10px] text-gray-400">Toca para agregar</span>
                     </div>
 
                     {/* Chips de atajos rápidos */}
@@ -570,10 +532,10 @@ export function ModifierSelectModal({
                             type="button"
                             onClick={() => handleAddQuickNote(note)}
                             className={`
-                              px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer border
+                              px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer border
                               ${isIncluded
                                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
                               }
                             `}
                           >
@@ -589,21 +551,8 @@ export function ModifierSelectModal({
                       onChange={(e) => setItemNotes?.(e.target.value)}
                       placeholder="Ej: Salsa aparte, bien caliente, sin cebolla, etc."
                       rows={2}
-                      className="w-full p-3 border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 bg-gray-50/50"
+                      className="w-full p-2.5 border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 bg-gray-50/50"
                     />
-                  </div>
-
-                  {/* Resumen final de costo */}
-                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50/60 p-3.5 rounded-2xl border border-emerald-100/80 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-bold text-emerald-950 block">Total a comandar</span>
-                      <span className="text-[11px] text-emerald-700">1x {selectedProduct.name}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-lg font-black text-emerald-700">
-                        {currencySymbol}{totalPrice.toFixed(2)}
-                      </span>
-                    </div>
                   </div>
                 </m.div>
               )}
@@ -611,40 +560,45 @@ export function ModifierSelectModal({
           </div>
 
           {/* Barra de navegación inferior */}
-          <div className="px-5 py-3.5 border-t border-gray-100 bg-white flex items-center justify-between gap-3">
+          <div className="px-4 sm:px-5 py-3 border-t border-gray-100 bg-white flex items-center justify-between gap-2.5 shrink-0">
             {/* Botón Atrás / Cancelar */}
             <button
               type="button"
               onClick={handleBack}
-              className="px-4 py-3 rounded-xl font-bold text-xs sm:text-sm text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+              className="px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer shrink-0"
             >
               <ChevronLeft className="w-4 h-4" />
               <span>{currentStep === 0 ? 'Cancelar' : 'Atrás'}</span>
             </button>
 
-            {/* Botón Siguiente u Omitir o Confirmar */}
-            {!isLastStep ? (
-              <div className="flex items-center gap-2">
-                {/* Botón de omitir si es opcional y no tiene seleccionadas */}
-                {currentGroupMin === 0 && currentGroupSelectedIds.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    className="px-3.5 py-3 rounded-xl font-semibold text-xs sm:text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors cursor-pointer"
-                  >
-                    Omitir
-                  </button>
-                )}
+            {/* Acciones principales: permitir agregar directamente si los requeridos ya están cumplidos */}
+            <div className="flex items-center gap-2">
+              {/* Si ya se cumplieron los obligatorios y aún no estamos en el último paso, ofrecer botón directo de Confirmar */}
+              {canSubmit && !isLastStep && (
+                <m.button
+                  type="button"
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleConfirmModifiers}
+                  disabled={addingItem}
+                  className="px-3.5 sm:px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
+                >
+                  {addingItem ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  <span>Agregar · {currencySymbol}{totalPrice.toFixed(2)}</span>
+                </m.button>
+              )}
 
+              {!isLastStep ? (
                 <m.button
                   type="button"
                   whileTap={{ scale: currentGroupIsSatisfied ? 0.98 : 1 }}
                   onClick={handleNext}
                   disabled={!currentGroupIsSatisfied}
                   className={`
-                    px-5 py-3 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md cursor-pointer
+                    px-4 sm:px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all shadow-md cursor-pointer
                     ${currentGroupIsSatisfied
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
+                      ? canSubmit
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 shadow-none'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
                       : 'bg-gray-100 text-gray-400 border border-gray-200 shadow-none cursor-not-allowed'
                     }
                   `}
@@ -652,39 +606,39 @@ export function ModifierSelectModal({
                   <span>Siguiente</span>
                   <ChevronRight className="w-4 h-4" />
                 </m.button>
-              </div>
-            ) : (
-              <m.button
-                type="button"
-                whileTap={{ scale: canSubmit ? 0.98 : 1 }}
-                onClick={handleConfirmModifiers}
-                disabled={addingItem || !canSubmit}
-                className={`
-                  flex-1 sm:flex-initial px-6 py-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md
-                  ${canSubmit
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/25 cursor-pointer'
-                    : 'bg-gray-100 text-gray-400 border border-gray-200 shadow-none cursor-not-allowed'
-                  }
-                `}
-              >
-                {addingItem ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Agregando...</span>
-                  </>
-                ) : canSubmit ? (
-                  <>
-                    <Plus className="w-4 h-4" />
-                    <span>Agregar a la orden · {currencySymbol}{totalPrice.toFixed(2)}</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="w-4 h-4 text-amber-500" />
-                    <span>Faltan opciones requeridas</span>
-                  </>
-                )}
-              </m.button>
-            )}
+              ) : (
+                <m.button
+                  type="button"
+                  whileTap={{ scale: canSubmit ? 0.98 : 1 }}
+                  onClick={handleConfirmModifiers}
+                  disabled={addingItem || !canSubmit}
+                  className={`
+                    px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all shadow-md
+                    ${canSubmit
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/25 cursor-pointer'
+                      : 'bg-gray-100 text-gray-400 border border-gray-200 shadow-none cursor-not-allowed'
+                    }
+                  `}
+                >
+                  {addingItem ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Agregando...</span>
+                    </>
+                  ) : canSubmit ? (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      <span>Agregar a Silla {currentSeat} · {currencySymbol}{totalPrice.toFixed(2)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-amber-500" />
+                      <span>Faltan requeridos</span>
+                    </>
+                  )}
+                </m.button>
+              )}
+            </div>
           </div>
         </m.div>
       </m.div>

@@ -45,7 +45,7 @@ export function TablesSection({ tables, centers, onReload }) {
             {tables.length} {tables.length === 1 ? 'mesa configurada' : 'mesas configuradas'}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Distribución de mesas y capacidad de asientos por salón
+            Distribución de mesas y capacidad de asientos por área
           </p>
         </div>
         <button

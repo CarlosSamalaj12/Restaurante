@@ -690,7 +690,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-purple-600" />
                     <span className="text-xs font-bold text-slate-700">
-                      Opciones Avanzadas (Enrutamiento por Matriz Salón/Barra)
+                      Opciones Avanzadas (Enrutamiento por Matriz de Áreas/Barra)
                     </span>
                   </div>
                   {showAdvancedRouting ? (
@@ -708,7 +708,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                         Categoría de Impresión (Matriz Dinámica)
                       </label>
                       <p className="text-[11px] text-slate-500">
-                        Permite que el producto cambie de impresora según el área o salón donde se ordene (ej. Bar Piscina vs Bar Principal).
+                        Permite que el producto cambie de impresora según el área donde se ordene (ej. Bar Piscina vs Bar Principal).
                       </p>
                       <select
                         value={form.categoriaImpresionId}
@@ -728,7 +728,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                         Forzar Estación Exclusiva (Override)
                       </label>
                       <p className="text-[11px] text-purple-700/80">
-                        Garantiza que siempre saldrá en esta estación fija sin importar el salón de la orden.
+                        Garantiza que siempre saldrá en esta estación fija sin importar el área de la orden.
                       </p>
                       <select
                         value={form.centroProduccionExclusivoId}

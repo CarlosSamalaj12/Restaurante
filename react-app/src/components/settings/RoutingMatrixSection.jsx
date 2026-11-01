@@ -455,7 +455,7 @@ export function RoutingMatrixSection({
           </div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
             <Store className="w-3.5 h-3.5 text-emerald-600" />
-            <span>{areas.length} Áreas de Salón</span>
+            <span>{areas.length} Áreas</span>
           </div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
             <Utensils className="w-3.5 h-3.5 text-amber-600" />

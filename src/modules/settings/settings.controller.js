@@ -1,117 +1,27 @@
 // src/modules/settings/settings.controller.js
-// Controlador HTTP para configuración global, perfiles, centros, roles y terminales
+// Controlador HTTP Facade para configuración global, delegando a subdominios especializados
 
 const asyncHandler = require("../../common/asyncHandler");
 const settingsService = require("./settings.service");
-const { clientIp } = require("../../common/utils");
+const generalController = require("./general/general.controller");
+const staffController = require("./staff/staff.controller");
+const printersController = require("./printers/printers.controller");
+const operationsController = require("./operations/operations.controller");
 
 const settingsController = {
-  getBootstrap: asyncHandler(async (req, res) => {
-    const ip = clientIp(req);
-    const data = await settingsService.getBootstrap(ip);
-    res.json(data);
-  }),
-
-  getFullSettings: asyncHandler(async (req, res) => {
-    const ip = clientIp(req);
-    const data = await settingsService.getFullSettings(ip);
-    res.json(data);
-  }),
-
-  getConfigData: asyncHandler(async (_req, res) => {
-    const data = await settingsService.getConfigData();
-    res.json(data);
-  }),
-
-  updateBranding: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateBranding(req.body?.restaurantName);
-    res.json(result);
-  }),
-
-  uploadLogo: asyncHandler(async (req, res) => {
-    const result = await settingsService.saveLogo(req.body?.logoData, process.cwd());
-    res.json(result);
-  }),
-
-  uploadLoginBg: asyncHandler(async (req, res) => {
-    const result = await settingsService.saveLoginBg(req.body?.bgData, process.cwd());
-    res.json(result);
-  }),
-
-  uploadReceiptLogo: asyncHandler(async (req, res) => {
-    const result = await settingsService.saveReceiptLogo(req.body?.logoData || req.body?.logo, process.cwd());
-    res.json(result);
-  }),
-
-  updateTipConfig: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateTipConfig(req.body?.tipPercent);
-    res.json(result);
-  }),
-
-  getBusinessProfile: asyncHandler(async (_req, res) => {
-    const data = await settingsService.getBusinessProfile();
-    res.json(data);
-  }),
-
-  updateBusinessProfile: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateBusinessProfile(req.body || {});
-    res.json(result);
-  }),
-
-  getTipExcludedMethods: asyncHandler(async (_req, res) => {
-    const data = await settingsService.getTipExcludedMethods();
-    res.json(data);
-  }),
-
-  updateTipExcludedMethods: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateTipExcludedMethods(req.body?.excludedMethods);
-    res.json(result);
-  }),
-
-  updateUserModules: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateUserModules(req.body?.userId, req.body?.moduleCodes);
-    res.json(result);
-  }),
-
-  updateDeviceModules: asyncHandler(async (req, res) => {
-    const ip = String(req.body?.ipAddress || clientIp(req) || "").trim();
-    const result = await settingsService.updateDeviceModules(ip, req.body?.moduleCodes);
-    res.json(result);
-  }),
-
-  getRoles: asyncHandler(async (_req, res) => {
-    const data = await settingsService.getRoles();
-    res.json(data);
-  }),
-
-  createRole: asyncHandler(async (req, res) => {
-    const result = await settingsService.createRole(req.body || {});
-    res.status(201).json(result);
-  }),
-
-  updateRole: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateRole(req.params.roleId, req.body || {});
-    res.json(result);
-  }),
-
-  deleteRole: asyncHandler(async (req, res) => {
-    const result = await settingsService.deleteRole(req.params.roleId);
-    res.json(result);
-  }),
-
-  setRolePermissions: asyncHandler(async (req, res) => {
-    const result = await settingsService.setRolePermissions(
-      req.params.roleId,
-      req.body?.permissionIds,
-      req.body?.defaultView
-    );
-    res.json(result);
-  }),
-
-  setUserRoles: asyncHandler(async (req, res) => {
-    const result = await settingsService.setUserRoles(req.params.userId, req.body?.roleIds);
-    res.json(result);
-  }),
+  // ───────── General, Perfil, Branding & Bootstrap (Subdominio general) ─────────
+  getBootstrap: generalController.getBootstrap,
+  getFullSettings: generalController.getFullSettings,
+  getConfigData: generalController.getConfigData,
+  updateBranding: generalController.updateBranding,
+  uploadLogo: generalController.uploadLogo,
+  uploadLoginBg: generalController.uploadLoginBg,
+  uploadReceiptLogo: generalController.uploadReceiptLogo,
+  updateTipConfig: generalController.updateTipConfig,
+  getBusinessProfile: generalController.getBusinessProfile,
+  updateBusinessProfile: generalController.updateBusinessProfile,
+  getTipExcludedMethods: generalController.getTipExcludedMethods,
+  updateTipExcludedMethods: generalController.updateTipExcludedMethods,
 
   refreshSession: asyncHandler(async (req, res) => {
     const userId = req.user?.id || req.auth?.userId || req.body?.userId;
@@ -124,240 +34,63 @@ const settingsController = {
     res.json({ ok: true, permissions });
   }),
 
-  getOperationCenterUsage: asyncHandler(async (req, res) => {
-    const result = await settingsService.getOperationCenterUsage(req.params.centerId);
-    res.json(result);
-  }),
+  // ───────── Personal, Roles y Permisos (Subdominio staff) ─────────
+  updateUserModules: staffController.updateUserModules,
+  updateDeviceModules: staffController.updateDeviceModules,
+  getRoles: staffController.getRoles,
+  createRole: staffController.createRole,
+  updateRole: staffController.updateRole,
+  deleteRole: staffController.deleteRole,
+  setRolePermissions: staffController.setRolePermissions,
+  setUserRoles: staffController.setUserRoles,
+  createStaffUser: staffController.createStaffUser,
+  updateStaffUser: staffController.updateStaffUser,
+  deleteStaffUser: staffController.deleteStaffUser,
+  setStaffUserCenter: staffController.setStaffUserCenter,
 
-  createOperationCenter: asyncHandler(async (req, res) => {
-    const result = await settingsService.createOperationCenter(req.body || {});
-    res.status(201).json(result);
-  }),
+  // ───────── Operaciones, Pagos, Descuentos y Terminales (Subdominio operations) ─────────
+  getOperationCenterUsage: operationsController.getOperationCenterUsage,
+  createOperationCenter: operationsController.createOperationCenter,
+  updateOperationCenter: operationsController.updateOperationCenter,
+  deleteOperationCenter: operationsController.deleteOperationCenter,
+  setOperationCenterProducts: operationsController.setOperationCenterProducts,
+  setTerminalBinding: operationsController.setTerminalBinding,
+  getPaymentMethods: operationsController.getPaymentMethods,
+  savePaymentMethod: operationsController.savePaymentMethod,
+  deletePaymentMethod: operationsController.deletePaymentMethod,
+  createDiscountPreset: operationsController.createDiscountPreset,
+  updateDiscountPreset: operationsController.updateDiscountPreset,
+  createTerminal: operationsController.createTerminal,
+  updateTerminal: operationsController.updateTerminal,
+  deleteTerminal: operationsController.deleteTerminal,
+  getKitchenNotes: operationsController.getKitchenNotes,
+  createKitchenNote: operationsController.createKitchenNote,
+  updateKitchenNote: operationsController.updateKitchenNote,
+  deleteKitchenNote: operationsController.deleteKitchenNote,
 
-  updateOperationCenter: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateOperationCenter(req.params.centerId, req.body || {});
-    res.json(result);
-  }),
-
-  deleteOperationCenter: asyncHandler(async (req, res) => {
-    const result = await settingsService.deleteOperationCenter(req.params.centerId);
-    res.json(result);
-  }),
-
-  setOperationCenterProducts: asyncHandler(async (req, res) => {
-    const result = await settingsService.setOperationCenterProducts(
-      req.params.centerId,
-      req.body?.productId,
-      req.body?.isEnabled
-    );
-    res.json(result);
-  }),
-
-  setTerminalBinding: asyncHandler(async (req, res) => {
-    const ip = String(req.body?.ipAddress || clientIp(req) || "").replace("::ffff:", "").trim();
-    const result = await settingsService.setTerminalBinding(ip, req.body?.centerId, req.body?.label);
-    res.status(201).json(result);
-  }),
-
-  getPaymentMethods: asyncHandler(async (_req, res) => {
-    const list = await settingsService.getPaymentMethods();
-    res.json({ paymentMethods: list });
-  }),
-
-  savePaymentMethod: asyncHandler(async (req, res) => {
-    const result = await settingsService.savePaymentMethod(req.body || {});
-    res.status(200).json(result);
-  }),
-
-  deletePaymentMethod: asyncHandler(async (req, res) => {
-    const result = await settingsService.deletePaymentMethod(req.params.code);
-    res.json(result);
-  }),
-
-  createDiscountPreset: asyncHandler(async (req, res) => {
-    const result = await settingsService.createDiscountPreset(req.body || {});
-    res.status(201).json(result);
-  }),
-
-  updateDiscountPreset: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateDiscountPreset(req.params.presetId, req.body || {});
-    res.json(result);
-  }),
-
-  getProductionCenters: asyncHandler(async (_req, res) => {
-    const result = await settingsService.getProductionCenters();
-    res.json(result);
-  }),
-
-  createProductionCenter: asyncHandler(async (req, res) => {
-    const result = await settingsService.createProductionCenter(req.body || {});
-    res.status(201).json(result);
-  }),
-
-  updateProductionCenter: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateProductionCenter(req.params.centerId, req.body || {});
-    res.json(result);
-  }),
-
-  deleteProductionCenter: asyncHandler(async (req, res) => {
-    const result = await settingsService.deleteProductionCenter(req.params.centerId);
-    res.json(result);
-  }),
-
-  testPrinter: asyncHandler(async (req, res) => {
-    const result = await settingsService.testPrinter(req.body || {});
-    res.json(result);
-  }),
-
-  getPrintersStatus: asyncHandler(async (_req, res) => {
-    res.json(settingsService.getPrintersStatus());
-  }),
-
-  getPrinterRoutingMode: asyncHandler(async (_req, res) => {
-    const result = await settingsService.getPrinterRoutingMode();
-    res.json(result);
-  }),
-
-  setPrinterRoutingMode: asyncHandler(async (req, res) => {
-    let body = req.body;
-    if (typeof body === "string") {
-      try {
-        body = JSON.parse(body);
-      } catch (_) {}
-    }
-    const mode = body?.mode || req.query?.mode;
-    const result = await settingsService.setPrinterRoutingMode(mode);
-    res.json(result);
-  }),
-
-  getRecentPrintJobs: asyncHandler(async (req, res) => {
-    const result = await settingsService.getRecentPrintJobs(req.query?.limit);
-    res.json(result);
-  }),
-
-  getPrinters: asyncHandler(async (_req, res) => {
-    const result = await settingsService.getPrinters();
-    res.json(result);
-  }),
-
-  createPrinter: asyncHandler(async (req, res) => {
-    const result = await settingsService.createPrinter(req.body || {});
-    res.status(201).json(result);
-  }),
-
-  updatePrinter: asyncHandler(async (req, res) => {
-    const result = await settingsService.updatePrinter(req.params.printerId, req.body || {});
-    res.json(result);
-  }),
-
-  deletePrinter: asyncHandler(async (req, res) => {
-    const result = await settingsService.deletePrinter(req.params.printerId);
-    res.json(result);
-  }),
-
-  testPrinterDirect: asyncHandler(async (req, res) => {
-    const result = await settingsService.testPrinterDirect(req.params.printerId);
-    res.json(result);
-  }),
-
-  auditPrinters: asyncHandler(async (_req, res) => {
-    const result = await settingsService.auditPrinters();
-    res.json(result);
-  }),
-
-  createStaffUser: asyncHandler(async (req, res) => {
-    const result = await settingsService.createStaffUser(req.body || {});
-    res.status(201).json(result);
-  }),
-
-  updateStaffUser: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateStaffUser(req.params.userId, req.body || {});
-    res.json(result);
-  }),
-
-  deleteStaffUser: asyncHandler(async (req, res) => {
-    const result = await settingsService.deleteStaffUser(req.params.userId);
-    res.json(result);
-  }),
-
-  setStaffUserCenter: asyncHandler(async (req, res) => {
-    const result = await settingsService.setStaffUserCenter(req.params.userId, req.body?.operationCenterId);
-    res.json(result);
-  }),
-
-  createTerminal: asyncHandler(async (req, res) => {
-    const result = await settingsService.createTerminal(req.body || {});
-    res.status(201).json(result);
-  }),
-
-  updateTerminal: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateTerminal(req.params.terminalId, req.body || {});
-    res.json(result);
-  }),
-
-  deleteTerminal: asyncHandler(async (req, res) => {
-    const result = await settingsService.deleteTerminal(req.params.terminalId);
-    res.json(result);
-  }),
-
-  // ───────── Matriz de Enrutamiento & Categorías de Impresión ─────────
-  getRoutingMatrix: asyncHandler(async (_req, res) => {
-    const matrix = await settingsService.getRoutingMatrix();
-    res.json({ matrix });
-  }),
-
-  saveRoutingRule: asyncHandler(async (req, res) => {
-    const result = await settingsService.saveRoutingRule(req.body || {});
-    res.json(result);
-  }),
-
-  deleteRoutingRule: asyncHandler(async (req, res) => {
-    const { areaTrabajoId, categoriaImpresionId } = req.body || req.query || {};
-    const result = await settingsService.deleteRoutingRule(areaTrabajoId, categoriaImpresionId);
-    res.json(result);
-  }),
-
-  getPrintCategories: asyncHandler(async (_req, res) => {
-    const categories = await settingsService.getPrintCategories();
-    res.json({ categories });
-  }),
-
-  createPrintCategory: asyncHandler(async (req, res) => {
-    const result = await settingsService.createPrintCategory(req.body || {});
-    res.status(201).json(result);
-  }),
-
-  updatePrintCategory: asyncHandler(async (req, res) => {
-    const result = await settingsService.updatePrintCategory(req.params.id, req.body || {});
-    res.json(result);
-  }),
-
-  deletePrintCategory: asyncHandler(async (req, res) => {
-    const result = await settingsService.deletePrintCategory(req.params.id);
-    res.json(result);
-  }),
-
-  // ───────── Observaciones y Atajos Rápidos de Cocina ─────────
-  getKitchenNotes: asyncHandler(async (req, res) => {
-    const activeOnly = req.query?.activeOnly === "true" || req.query?.activeOnly === "1";
-    const notes = await settingsService.getKitchenNotes({ activeOnly });
-    res.json({ notes });
-  }),
-
-  createKitchenNote: asyncHandler(async (req, res) => {
-    const result = await settingsService.createKitchenNote(req.body || {});
-    res.status(201).json(result);
-  }),
-
-  updateKitchenNote: asyncHandler(async (req, res) => {
-    const result = await settingsService.updateKitchenNote(req.params.id, req.body || {});
-    res.json(result);
-  }),
-
-  deleteKitchenNote: asyncHandler(async (req, res) => {
-    const result = await settingsService.deleteKitchenNote(req.params.id);
-    res.json(result);
-  }),
+  // ───────── Impresoras y Centros de Producción (Subdominio printers) ─────────
+  getProductionCenters: printersController.getProductionCenters,
+  createProductionCenter: printersController.createProductionCenter,
+  updateProductionCenter: printersController.updateProductionCenter,
+  deleteProductionCenter: printersController.deleteProductionCenter,
+  testPrinter: printersController.testPrinter,
+  getPrintersStatus: printersController.getPrintersStatus,
+  getPrinterRoutingMode: printersController.getPrinterRoutingMode,
+  setPrinterRoutingMode: printersController.setPrinterRoutingMode,
+  getRecentPrintJobs: printersController.getRecentPrintJobs,
+  getPrinters: printersController.getPrinters,
+  createPrinter: printersController.createPrinter,
+  updatePrinter: printersController.updatePrinter,
+  deletePrinter: printersController.deletePrinter,
+  testPrinterDirect: printersController.testPrinterDirect,
+  auditPrinters: printersController.auditPrinters,
+  getRoutingMatrix: printersController.getRoutingMatrix,
+  saveRoutingRule: printersController.saveRoutingRule,
+  deleteRoutingRule: printersController.deleteRoutingRule,
+  getPrintCategories: printersController.getPrintCategories,
+  createPrintCategory: printersController.createPrintCategory,
+  updatePrintCategory: printersController.updatePrintCategory,
+  deletePrintCategory: printersController.deletePrintCategory,
 };
 
 module.exports = settingsController;

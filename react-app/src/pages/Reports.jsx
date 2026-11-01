@@ -392,7 +392,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
       tagColor: 'bg-cyan-50 text-cyan-800 border-cyan-200',
       category: 'operations',
       categoryLabel: 'Operaciones & Auditoría',
-      desc: 'Comparación de ventas y ticket promedio entre salones, terrazas y barras',
+      desc: 'Comparación de ventas y ticket promedio entre áreas, terrazas y barras',
       icon: Building2,
       iconBg: 'bg-cyan-50 text-cyan-600 border border-cyan-100',
       metrics: [
@@ -400,9 +400,9 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
         { label: 'Terraza / Barra', value: 'Q 3,450.00' },
         { label: 'Ocupación', value: '78% mesas', highlight: 'text-cyan-700 font-bold' },
       ],
-      footerNote: 'Auditoría multi-salón en tiempo real',
+      footerNote: 'Auditoría multi-área en tiempo real',
       noteColor: 'text-slate-500',
-      actionText: 'Comparar Salones >',
+      actionText: 'Comparar Áreas >',
     },
     {
       id: 'user',
@@ -536,7 +536,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
                       {c.name}
                     </option>
                   ))}
-                  {centers.length === 0 && <option value="1">Restaurante Principal — Salón A & Terraza</option>}
+                  {centers.length === 0 && <option value="1">Restaurante Principal — Área A & Terraza</option>}
                 </select>
               </div>
             </div>

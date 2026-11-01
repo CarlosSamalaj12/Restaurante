@@ -1,920 +1,279 @@
 // src/modules/settings/settings.service.js
-// Lógica de negocio para configuración global, perfiles, centros de operación, roles, usuarios y terminales
+// Servicio Facade para configuración global, delegando a subdominios especializados
 
-const fs = require("fs");
-const path = require("path");
-const settingsRepository = require("./settings.repository");
-const { BadRequestError, NotFoundError, ConflictError, ForbiddenError } = require("../../common/errors");
-const { query } = require("../../common/db");
-const { normalizePaymentMethodCode } = require("../../common/utils");
-
-// Importar servicio de impresión para diagnósticos
-let printService = null;
-try {
-  printService = require("../../../server/print-service");
-} catch (_) {
-  try {
-    printService = require("../../print-service");
-  } catch (_) {}
-}
+const generalService = require("./general/general.service");
+const staffService = require("./staff/staff.service");
+const printersService = require("./printers/printers.service");
+const operationsService = require("./operations/operations.service");
 
 const settingsService = {
-  // Bootstrap & Full Settings
+  // ───────── Bootstrap & Full Settings (Subdominio general) ─────────
   async getBootstrap(ip) {
-    return settingsRepository.getBootstrapData(ip);
+    return generalService.getBootstrap(ip);
   },
 
   async getFullSettings(currentIp) {
-    return settingsRepository.getFullSettingsData(currentIp);
+    return generalService.getFullSettings(currentIp);
   },
 
   async getConfigData() {
-    return settingsRepository.getConfigData();
+    return generalService.getConfigData();
   },
 
-  // Branding & Assets
+  // ───────── Branding & Assets (Subdominio general) ─────────
   async updateBranding(restaurantName) {
-    const name = String(restaurantName || "").trim();
-    if (!name) throw new BadRequestError("restaurantName es requerido");
-    const trimmed = name.slice(0, 150);
-
-    await settingsRepository.updateBusinessProfile({ restaurant_name: trimmed });
-    await settingsRepository.setAppSetting("restaurant_name", trimmed);
-    return { ok: true, restaurantName: trimmed };
+    return generalService.updateBranding(restaurantName);
   },
 
   async saveLogo(logoData, baseDir) {
-    const raw = String(logoData || "").trim();
-    if (!raw) throw new BadRequestError("logoData es requerido");
-
-    const base64Match = raw.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/);
-    if (!base64Match) {
-      throw new BadRequestError("Formato de imagen inválido. Usa PNG, JPG, GIF o WebP.");
-    }
-
-    const ext = base64Match[1].replace("jpeg", "jpg");
-    const fileName = `logo_${Date.now()}.${ext}`;
-    const uploadsDir = path.join(baseDir || process.cwd(), "public", "uploads");
-
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-
-    const filePath = path.join(uploadsDir, fileName);
-    const buffer = Buffer.from(base64Match[2], "base64");
-    fs.writeFileSync(filePath, buffer);
-
-    const logoUrl = `/uploads/${fileName}`;
-    await settingsRepository.updateBusinessProfile({ logo_url: logoUrl });
-    await settingsRepository.setAppSetting("logo_url", logoUrl);
-
-    return { ok: true, logoUrl };
+    return generalService.saveLogo(logoData, baseDir);
   },
 
   async saveLoginBg(bgData, baseDir) {
-    const raw = String(bgData || "").trim();
-    if (!raw) throw new BadRequestError("bgData es requerido");
-
-    const base64Match = raw.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/);
-    if (!base64Match) {
-      throw new BadRequestError("Formato de imagen inválido. Usa PNG, JPG, GIF o WebP.");
-    }
-
-    const ext = base64Match[1].replace("jpeg", "jpg");
-    const fileName = `login_bg_${Date.now()}.${ext}`;
-    const uploadsDir = path.join(baseDir || process.cwd(), "public", "uploads");
-
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-
-    const filePath = path.join(uploadsDir, fileName);
-    const buffer = Buffer.from(base64Match[2], "base64");
-    fs.writeFileSync(filePath, buffer);
-
-    const loginBgUrl = `/uploads/${fileName}`;
-    await settingsRepository.updateBusinessProfile({ login_bg_url: loginBgUrl });
-    await settingsRepository.setAppSetting("login_bg_url", loginBgUrl);
-
-    return { ok: true, loginBgUrl };
+    return generalService.saveLoginBg(bgData, baseDir);
   },
 
   async saveReceiptLogo(logoData, baseDir) {
-    const raw = String(logoData || "").trim();
-    if (!raw) {
-      await settingsRepository.updateBusinessProfile({ receipt_logo_url: null });
-      return { ok: true, receiptLogoUrl: null };
-    }
-
-    const base64Match = raw.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/);
-    if (!base64Match) {
-      throw new BadRequestError("Formato de imagen inválido. Usa PNG, JPG, GIF o WebP.");
-    }
-
-    const ext = base64Match[1].replace("jpeg", "jpg");
-    const fileName = `receipt_logo_${Date.now()}.${ext}`;
-    const uploadsDir = path.join(baseDir || process.cwd(), "public", "uploads");
-
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-
-    const filePath = path.join(uploadsDir, fileName);
-    const buffer = Buffer.from(base64Match[2], "base64");
-    fs.writeFileSync(filePath, buffer);
-
-    const receiptLogoUrl = `/uploads/${fileName}`;
-    await settingsRepository.updateBusinessProfile({ receipt_logo_url: receiptLogoUrl });
-
-    return { ok: true, receiptLogoUrl };
+    return generalService.saveReceiptLogo(logoData, baseDir);
   },
 
   async updateTipConfig(tipPercent) {
-    const pct = Number(tipPercent);
-    if (Number.isNaN(pct) || pct < 0 || pct > 100) {
-      throw new BadRequestError("tipPercent debe estar entre 0 y 100");
-    }
-    const rounded = Number(pct.toFixed(2));
-    await settingsRepository.updateBusinessProfile({ tip_percent: rounded });
-    await settingsRepository.setAppSetting("tip_percent", String(rounded));
-    return { ok: true, tipPercent: rounded };
+    return generalService.updateTipConfig(tipPercent);
   },
 
   async getTipPercent() {
-    return settingsRepository.getTipPercent();
+    return generalService.getTipPercent();
   },
 
   async getBusinessProfile() {
-    const profile = await settingsRepository.getBusinessProfile();
-    return profile || {};
+    return generalService.getBusinessProfile();
   },
 
   async updateBusinessProfile(data) {
-    const {
-      restaurant_name,
-      business_subtitle,
-      phone,
-      address,
-      tax_id,
-      currency_symbol,
-      receipt_footer,
-      shift_receipt_footer,
-      receipt_logo_url,
-      tip_percent,
-    } = data || {};
-
-    await settingsRepository.updateBusinessProfile({
-      restaurant_name,
-      business_subtitle,
-      phone,
-      address,
-      tax_id,
-      currency_symbol,
-      receipt_footer,
-      shift_receipt_footer,
-      receipt_logo_url,
-      tip_percent,
-    });
-
-    if (restaurant_name) {
-      await settingsRepository.setAppSetting("restaurant_name", String(restaurant_name).trim().slice(0, 150));
-    }
-    const updated = await settingsRepository.getBusinessProfile();
-    return { ok: true, profile: updated };
+    return generalService.updateBusinessProfile(data);
   },
 
   async getTipExcludedMethods() {
-    const excludedMethods = await settingsRepository.getTipExcludedMethods();
-    return { excludedMethods };
+    return generalService.getTipExcludedMethods();
   },
 
-  async updateTipExcludedMethods(excludedMethods = "cxc") {
-    const list = Array.isArray(excludedMethods)
-      ? excludedMethods.map(String)
-      : String(excludedMethods).split(",").map((s) => s.trim()).filter(Boolean);
-
-    await settingsRepository.setTipExcludedMethods(list);
-    return { ok: true, excludedMethods: list };
+  async updateTipExcludedMethods(excludedMethods) {
+    return generalService.updateTipExcludedMethods(excludedMethods);
   },
 
-  // Modules
+  // ───────── Modules & Roles & Personal (Subdominio staff) ─────────
   async updateUserModules(userId, moduleCodes = []) {
-    const uid = Number(userId || 0);
-    if (!uid) throw new BadRequestError("userId es requerido");
-
-    const modules = await settingsRepository.getActiveModules();
-    const validCodes = modules.map((m) => String(m.code || "").trim());
-    const selectedSet = new Set(
-      (Array.isArray(moduleCodes) ? moduleCodes : [])
-        .map((c) => String(c || "").trim())
-        .filter((c) => validCodes.includes(c))
-    );
-
-    await settingsRepository.setUserModulePermissions(uid, validCodes, selectedSet);
-    return { ok: true, userId: uid, enabledCount: selectedSet.size };
+    return staffService.updateUserModules(userId, moduleCodes);
   },
 
   async updateDeviceModules(targetIp, moduleCodes = []) {
-    const ip = String(targetIp || "").trim();
-    if (!ip) throw new BadRequestError("ipAddress es requerido");
-
-    const modules = await settingsRepository.getActiveModules();
-    const validCodes = modules.map((m) => String(m.code || "").trim());
-    const selectedSet = new Set(
-      (Array.isArray(moduleCodes) ? moduleCodes : [])
-        .map((c) => String(c || "").trim())
-        .filter((c) => validCodes.includes(c))
-    );
-
-    await settingsRepository.setDeviceModuleBindings(ip, validCodes, selectedSet);
-    return { ok: true, ipAddress: ip, enabledCount: selectedSet.size };
+    return staffService.updateDeviceModules(targetIp, moduleCodes);
   },
 
-  // Roles & Permissions
   async getRoles() {
-    return settingsRepository.getRolesData();
+    return staffService.getRoles();
   },
 
-  async createRole({ name, slug, description }) {
-    if (!name || !slug) throw new BadRequestError("name y slug son requeridos");
-    const cleanSlug = String(slug).trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
-    if (!cleanSlug) throw new BadRequestError("slug invalido");
-
-    try {
-      const id = await settingsRepository.createRole({
-        name: String(name).trim(),
-        slug: cleanSlug,
-        description: String(description || "").trim(),
-      });
-      return { id, name: String(name).trim(), slug: cleanSlug };
-    } catch (e) {
-      if (String(e.message || "").includes("Duplicate")) {
-        throw new ConflictError("Ya existe un rol con ese slug");
-      }
-      throw e;
-    }
+  async createRole(data) {
+    return staffService.createRole(data);
   },
 
-  async updateRole(roleId, { name, description }) {
-    const rid = Number(roleId);
-    if (!rid || !name) throw new BadRequestError("roleId y name son requeridos");
-    const existing = await settingsRepository.getRoleById(rid);
-    if (!existing) throw new NotFoundError("Rol no encontrado");
-
-    await settingsRepository.updateRole(rid, {
-      name: String(name).trim(),
-      description: String(description || "").trim(),
-    });
-    return { ok: true };
+  async updateRole(roleId, data) {
+    return staffService.updateRole(roleId, data);
   },
 
   async deleteRole(roleId) {
-    const rid = Number(roleId);
-    if (!rid) throw new BadRequestError("roleId es requerido");
-    const existing = await settingsRepository.getRoleById(rid);
-    if (!existing) throw new NotFoundError("Rol no encontrado");
-    if (Number(existing.is_system)) {
-      throw new BadRequestError("No se puede eliminar un rol del sistema");
-    }
-    await settingsRepository.deleteRole(rid);
-    return { ok: true };
+    return staffService.deleteRole(roleId);
   },
 
   async setRolePermissions(roleId, permissionIds, defaultView = null) {
-    const rid = Number(roleId);
-    if (!rid || !Array.isArray(permissionIds)) {
-      throw new BadRequestError("roleId y permissionIds son requeridos");
-    }
-    const existing = await settingsRepository.getRoleById(rid);
-    if (!existing) throw new NotFoundError("Rol no encontrado");
-
-    await settingsRepository.setRolePermissions(rid, permissionIds);
-    if (defaultView) {
-      await settingsRepository.updateRoleDefaultView(rid, defaultView);
-    }
-    return { ok: true };
+    return staffService.setRolePermissions(roleId, permissionIds, defaultView);
   },
 
   async setUserRoles(userId, roleIds) {
-    const uid = Number(userId);
-    if (!uid || !Array.isArray(roleIds)) {
-      throw new BadRequestError("userId y roleIds son requeridos");
-    }
-
-    const [userRows] = await query("SELECT role FROM staff_users WHERE id = ?", [uid]);
-    const isCurrentSuper = userRows?.[0] && String(userRows[0].role).toLowerCase() === "superadmin";
-
-    let newRolesIncludeSuper = false;
-    if (roleIds.length > 0) {
-      const [superRoleRows] = await query(
-        `SELECT id FROM roles WHERE slug = 'superadmin' AND id IN (${roleIds.map(() => '?').join(',')})`,
-        roleIds.map(r => Number(r))
-      );
-      if (superRoleRows && superRoleRows.length > 0) {
-        newRolesIncludeSuper = true;
-      }
-    }
-
-    if (isCurrentSuper && !newRolesIncludeSuper) {
-      const [superCount] = await query(
-        "SELECT COUNT(*) as count FROM staff_users WHERE role = 'superadmin' AND id != ?",
-        [uid]
-      );
-      if (Number(superCount?.[0]?.count || 0) === 0) {
-        throw new ForbiddenError("No puedes degradar al único Superadministrador del sistema");
-      }
-    }
-
-    await settingsRepository.setUserRoles(uid, roleIds);
-
-    if (roleIds.length > 0) {
-      const [roleRows] = await query(
-        `SELECT slug FROM roles WHERE id IN (${roleIds.map(() => '?').join(',')})`,
-        roleIds.map(r => Number(r))
-      );
-      const slugs = (roleRows || []).map(r => String(r.slug).toLowerCase());
-      let primaryRole = "waiter";
-      if (slugs.includes("superadmin")) primaryRole = "superadmin";
-      else if (slugs.includes("admin") || slugs.includes("administrador")) primaryRole = "admin";
-      else if (slugs.includes("manager") || slugs.includes("gerente")) primaryRole = "manager";
-      else if (slugs.includes("cashier") || slugs.includes("cajero")) primaryRole = "cashier";
-      else if (slugs[0]) primaryRole = slugs[0];
-
-      await query("UPDATE staff_users SET role = ? WHERE id = ?", [primaryRole, uid]);
-    }
-
-    return { ok: true };
+    return staffService.setUserRoles(userId, roleIds);
   },
 
   async getUserPermissions(userId) {
-    return settingsRepository.getUserPermissions(Number(userId));
+    return staffService.getUserPermissions(userId);
   },
 
-  // Operation Centers
-  async createOperationCenter({ name }) {
-    if (!name || !String(name).trim()) throw new BadRequestError("name es requerido");
-    const centerId = await settingsRepository.createOperationCenter(String(name).trim());
-    return { centerId };
-  },
-
-  async updateOperationCenter(centerId, { name, isActive }) {
-    const cid = Number(centerId);
-    if (!cid || !name || !String(name).trim()) {
-      throw new BadRequestError("centerId y name son requeridos");
-    }
-
-    // Si se desea desactivar el centro, validar que no tenga operaciones activas en vivo (turnos o cuentas abiertas)
-    const wantsDeactivate = isActive !== undefined && (isActive === false || isActive === 0 || isActive === "0");
-    if (wantsDeactivate) {
-      const usage = await settingsRepository.getCenterUsageDetails(cid);
-      if (usage.hasActiveOperations) {
-        const parts = [];
-        if (usage.openAccountsCount > 0) parts.push(`${usage.openAccountsCount} cuenta(s) abierta(s)`);
-        if (usage.openShiftsCount > 0) parts.push(`${usage.openShiftsCount} turno(s) de caja abierto(s)`);
-        throw new BadRequestError(
-          `No se puede desactivar el centro porque tiene ${parts.join(" y ")} actualmente en curso. Cierra las operaciones activas primero.`
-        );
-      }
-    }
-
-    await settingsRepository.updateOperationCenter(cid, {
-      name: String(name).trim(),
-      isActive,
-    });
-    return { ok: true };
-  },
-
-  async getOperationCenterUsage(centerId) {
-    const cid = Number(centerId);
-    if (!cid) throw new BadRequestError("centerId es requerido");
-    return settingsRepository.getCenterUsageDetails(cid);
-  },
-
-  async deleteOperationCenter(centerId) {
-    const cid = Number(centerId);
-    if (!cid) throw new BadRequestError("centerId es requerido");
-
-    const usage = await settingsRepository.getCenterUsageDetails(cid);
-    if (usage.hasLinkedData) {
-      const reasons = [];
-      if (usage.accountsCount > 0) reasons.push(`${usage.accountsCount} cuenta(s)`);
-      if (usage.shiftsCount > 0) reasons.push(`${usage.shiftsCount} turno(s)`);
-      if (usage.tablesCount > 0) reasons.push(`${usage.tablesCount} mesa(s)`);
-      if (usage.usersCount > 0) reasons.push(`${usage.usersCount} usuario(s)`);
-      if (usage.terminalsCount > 0) reasons.push(`${usage.terminalsCount} terminal(es)`);
-      if (usage.categoriesCount > 0) reasons.push(`${usage.categoriesCount} categoría(s)`);
-      if (usage.prodCentersCount > 0) reasons.push(`${usage.prodCentersCount} centro(s) de producción`);
-
-      const err = new BadRequestError(
-        `No se puede eliminar el centro porque tiene registros asociados (${reasons.join(", ")}). Desactívalo en su lugar para proteger la integridad histórica.`
-      );
-      err.canDeactivate = true;
-      err.code = "CENTER_HAS_DEPENDENCIES";
-      throw err;
-    }
-
-    await settingsRepository.deleteOperationCenter(cid);
-    return { ok: true };
-  },
-
-  async setOperationCenterProducts(centerId, productId, isEnabled = 1) {
-    const cid = Number(centerId);
-    const pid = Number(productId);
-    if (!cid || !pid) throw new BadRequestError("centerId y productId son requeridos");
-    await settingsRepository.setOperationCenterProducts(cid, pid, isEnabled);
-    return { ok: true };
-  },
-
-  async setTerminalBinding(ipAddress, centerId, label = "") {
-    const cid = Number(centerId);
-    const ip = String(ipAddress || "").trim();
-    if (!cid || !ip) throw new BadRequestError("centerId e ip son requeridos");
-    await settingsRepository.setTerminalCenterBinding(ip, cid, label);
-    return { ok: true, ip, centerId: cid };
-  },
-
-  // Payment Methods & Presets
-  async getPaymentMethods() {
-    return settingsRepository.getPaymentMethods(true);
-  },
-
-  async savePaymentMethod({ code, label, isActive = 1, sortOrder = 0, appliesTip = 1, applies_tip }) {
-    const normalizedCode = normalizePaymentMethodCode(code);
-    const normalizedLabel = String(label || "").trim();
-    if (!normalizedCode || !normalizedLabel) {
-      throw new BadRequestError("code y label son requeridos");
-    }
-    if (normalizedCode.length > 30) {
-      throw new BadRequestError("code maximo 30 caracteres");
-    }
-    const tipFlag = applies_tip !== undefined ? applies_tip : appliesTip;
-    await settingsRepository.savePaymentMethod({
-      code: normalizedCode,
-      label: normalizedLabel,
-      isActive,
-      sortOrder,
-      appliesTip: tipFlag !== undefined ? Number(tipFlag) : 1,
-    });
-    return { ok: true, code: normalizedCode };
-  },
-
-  async deletePaymentMethod(code) {
-    const cleanCode = normalizePaymentMethodCode(code);
-    if (!cleanCode) throw new BadRequestError("code es requerido");
-
-    const protectedCodes = ["cash", "card", "cxc"];
-    if (protectedCodes.includes(cleanCode)) {
-      throw new BadRequestError(`No se puede eliminar la forma de pago principal '${cleanCode}'. Puedes desactivarla si no deseas ofrecerla.`);
-    }
-
-    const hasPayments = await settingsRepository.hasPaymentsWithMethod(cleanCode);
-    if (hasPayments) {
-      throw new BadRequestError(`No se puede eliminar la forma de pago '${cleanCode}' porque tiene pagos registrados en el sistema. Puedes desactivarla.`);
-    }
-
-    await settingsRepository.deletePaymentMethod(cleanCode);
-    return { ok: true, deleted: cleanCode };
-  },
-
-  async createDiscountPreset({ name, type, value = 0, isActive = 1, sortOrder = 0 }) {
-    if (!name || !["percent", "fixed"].includes(type)) {
-      throw new BadRequestError("name y type (percent|fixed) son requeridos");
-    }
-    await settingsRepository.createDiscountPreset({
-      name: String(name).trim(),
-      type,
-      value,
-      isActive,
-      sortOrder,
-    });
-    return { ok: true };
-  },
-
-  async updateDiscountPreset(presetId, { name, type, value = 0, isActive = 1, sortOrder = 0 }) {
-    const id = Number(presetId);
-    if (!id || !name || !["percent", "fixed"].includes(type)) {
-      throw new BadRequestError("presetId, name y type (percent|fixed) son requeridos");
-    }
-    await settingsRepository.updateDiscountPreset(id, {
-      name: String(name).trim(),
-      type,
-      value,
-      isActive,
-      sortOrder,
-    });
-    return { ok: true };
-  },
-
-  // Production Centers & Printers
-  async getProductionCenters() {
-    const centers = await settingsRepository.getProductionCenters();
-    return { centers };
-  },
-
-  async createProductionCenter(data) {
-    const { name, printerName = "", printerIp = "", printerPort = 9100, isActive = 1, operationCenterId = null } = data || {};
-    if (!name || !String(name).trim()) throw new BadRequestError("name es requerido");
-    const centerId = await settingsRepository.createProductionCenter({
-      name: String(name).trim(),
-      printerName: String(printerName).trim(),
-      printerIp: printerIp ? String(printerIp).trim() : null,
-      printerPort,
-      isActive,
-      operationCenterId: operationCenterId ? Number(operationCenterId) : null,
-    });
-    return { centerId };
-  },
-
-  async updateProductionCenter(centerId, data) {
-    const cid = Number(centerId);
-    const { name, printerName = "", printerIp = "", printerPort = 9100, isActive = 1, operationCenterId = null } = data || {};
-    if (!cid || !name || !String(name).trim()) throw new BadRequestError("centerId y name son requeridos");
-    await settingsRepository.updateProductionCenter(cid, {
-      name: String(name).trim(),
-      printerName: String(printerName).trim(),
-      printerIp: printerIp ? String(printerIp).trim() : null,
-      printerPort,
-      isActive,
-      operationCenterId: operationCenterId ? Number(operationCenterId) : null,
-    });
-    return { ok: true };
-  },
-
-  async deleteProductionCenter(centerId) {
-    const cid = Number(centerId);
-    if (!cid) throw new BadRequestError("centerId es requerido");
-    const count = await settingsRepository.countProductsInProductionCenter(cid);
-    if (count > 0) {
-      throw new BadRequestError("No se puede eliminar el centro porque hay productos asignados. Desasigna los productos primero.");
-    }
-    await settingsRepository.deleteProductionCenter(cid);
-    return { ok: true };
-  },
-
-  async testPrinter({ type, id }) {
-    if (!type || !id) {
-      throw new BadRequestError("type y id son requeridos (type: 'production_center' | 'terminal')");
-    }
-    let target = null;
-    if (type === "production_center") {
-      target = await settingsRepository.getProductionCenterById(Number(id));
-    } else if (type === "terminal") {
-      target = await settingsRepository.getTerminalById(Number(id));
-    } else {
-      throw new BadRequestError("type invalido");
-    }
-
-    if (!target) throw new NotFoundError("Destino no encontrado");
-    if (!target.printer_ip) {
-      throw new BadRequestError("Esta impresora no tiene IP configurada. Configurala primero.");
-    }
-
-    if (!printService) {
-      throw new BadRequestError("Servicio de impresión no disponible en este entorno");
-    }
-
-    const result = await printService.printTestPage(target);
-    if (result.ok) {
-      return { ok: true, message: "Pagina de prueba enviada", attempts: result.attempts };
-    }
-    throw new BadRequestError(result.error || "No se pudo imprimir");
-  },
-
-  getPrintersStatus() {
-    if (printService && typeof printService.getStatus === "function") {
-      return printService.getStatus();
-    }
-    return { status: "offline", printers: [] };
-  },
-
-  async getPrinterRoutingMode() {
-    const mode = await settingsRepository.getAppSetting("print_routing_mode");
-    return { mode: mode || "auto" };
-  },
-
-  async setPrinterRoutingMode(mode) {
-    const validModes = ["auto", "direct", "agent"];
-    const normalized = String(mode || "").toLowerCase().trim();
-    if (!validModes.includes(normalized)) {
-      throw new BadRequestError("Modo de impresión inválido. Debe ser: auto, direct o agent");
-    }
-    await settingsRepository.setAppSetting("print_routing_mode", normalized);
-    if (printService && typeof printService.setRoutingMode === "function") {
-      printService.setRoutingMode(normalized);
-    }
-    return { ok: true, mode: normalized };
-  },
-
-  async getRecentPrintJobs(limit = 50) {
-    const lim = Math.min(Number(limit || 50), 200);
-    const jobs = await settingsRepository.getRecentPrintJobs(lim);
-    return { jobs };
-  },
-
-  // ───────── Gestión Centralizada de Impresoras ─────────
-  async getPrinters() {
-    const printers = await settingsRepository.getPrinters();
-    return { printers };
-  },
-
-  async createPrinter(data) {
-    const { name, ip, port = 9100, type = "production", paperWidth = "80mm", isActive = 1, description = "" } = data || {};
-    if (!name || !String(name).trim()) throw new BadRequestError("El nombre de la impresora es requerido");
-    if (!ip || !String(ip).trim()) throw new BadRequestError("La dirección IP es requerida");
-
-    const printerId = await settingsRepository.createPrinter({
-      name: String(name).trim(),
-      ip: String(ip).trim(),
-      port: Number(port) || 9100,
-      type,
-      paperWidth,
-      isActive: Number(isActive) ? 1 : 0,
-      description: description ? String(description).trim() : null,
-    });
-    return { printerId, ok: true };
-  },
-
-  async updatePrinter(printerId, data) {
-    const pid = Number(printerId);
-    if (!pid) throw new BadRequestError("ID de impresora inválido");
-    const { name, ip, port = 9100, type = "production", paperWidth = "80mm", isActive = 1, description = "" } = data || {};
-    if (!name || !String(name).trim()) throw new BadRequestError("El nombre de la impresora es requerido");
-    if (!ip || !String(ip).trim()) throw new BadRequestError("La dirección IP es requerida");
-
-    await settingsRepository.updatePrinter(pid, {
-      name: String(name).trim(),
-      ip: String(ip).trim(),
-      port: Number(port) || 9100,
-      type,
-      paperWidth,
-      isActive: Number(isActive) ? 1 : 0,
-      description: description ? String(description).trim() : null,
-    });
-    return { ok: true };
-  },
-
-  async deletePrinter(printerId) {
-    const pid = Number(printerId);
-    if (!pid) throw new BadRequestError("ID de impresora inválido");
-    await settingsRepository.deletePrinter(pid);
-    return { ok: true };
-  },
-
-  async testPrinterDirect(printerId) {
-    const pid = Number(printerId);
-    if (!pid) throw new BadRequestError("ID de impresora inválido");
-
-    const printer = await settingsRepository.getPrinterById(pid);
-    if (!printer) throw new NotFoundError("Impresora no encontrada");
-    if (!printer.ip) throw new BadRequestError("La impresora no tiene IP configurada");
-
-    if (!printService) {
-      throw new BadRequestError("Servicio de impresión no disponible en este entorno");
-    }
-
-    const target = {
-      name: printer.name,
-      printer_name: printer.name,
-      printer_ip: printer.ip,
-      printer_port: printer.port || 9100,
-    };
-
-    const result = await printService.printTestPage(target);
-    if (result.ok) {
-      return { ok: true, message: "Página de prueba enviada con éxito", attempts: result.attempts };
-    }
-    throw new BadRequestError(result.error || "No se pudo comunicar con la impresora");
-  },
-
-  async auditPrinters() {
-    const auditData = await settingsRepository.auditPrintersConfiguration();
-    const serviceStatus = this.getPrintersStatus();
-    return {
-      ...auditData,
-      serviceStatus,
-    };
-  },
-
-  // Staff Users
-  async createStaffUser({ fullName, pinCode, role = "waiter", operationCenterId = null }) {
-    if (!fullName || !pinCode) throw new BadRequestError("fullName y pinCode son requeridos");
-    const cleanPin = String(pinCode).trim();
-    if (!/^\d{6}$/.test(cleanPin)) {
-      throw new BadRequestError("El PIN debe tener exactamente 6 dígitos numéricos");
-    }
-    const { hashPin } = require("../../common/pinHash");
-    const hashedPin = hashPin(cleanPin);
-    if (await settingsRepository.checkDuplicatePin(hashedPin)) {
-      throw new ConflictError("Ya existe un usuario con ese PIN");
-    }
-    const userId = await settingsRepository.createStaffUser({
-      fullName: String(fullName).trim(),
-      pinCode: hashedPin,
-      role,
-      operationCenterId: operationCenterId ? Number(operationCenterId) : null,
-    });
-    return { userId };
+  async createStaffUser(data) {
+    return staffService.createStaffUser(data);
   },
 
   async updateStaffUser(userId, data) {
-    const uid = Number(userId);
-    if (!uid) throw new BadRequestError("userId es requerido");
-    const { fullName, pinCode, role, operationCenterId } = data || {};
-    if (!fullName) throw new BadRequestError("fullName es requerido");
-
-    let hashedPin = null;
-    if (pinCode && String(pinCode).trim() && !String(pinCode).includes('•')) {
-      const cleanPin = String(pinCode).trim();
-      if (!/^\d{6}$/.test(cleanPin)) {
-        throw new BadRequestError("El PIN debe tener exactamente 6 dígitos numéricos");
-      }
-      const { hashPin } = require("../../common/pinHash");
-      hashedPin = hashPin(cleanPin);
-      if (await settingsRepository.checkDuplicatePin(hashedPin, uid)) {
-        throw new ConflictError("Ya existe otro usuario con ese PIN");
-      }
-    }
-
-    const fields = [];
-    const params = [];
-    if (fullName) {
-      fields.push("full_name = ?");
-      params.push(String(fullName).trim());
-    }
-    if (hashedPin) {
-      fields.push("pin_code = ?");
-      params.push(hashedPin);
-    }
-    if (role) {
-      if (role !== "superadmin") {
-        const [u] = await query("SELECT role FROM staff_users WHERE id = ?", [uid]);
-        if (u?.[0] && String(u[0].role).toLowerCase() === "superadmin") {
-          const [superCount] = await query("SELECT COUNT(*) as count FROM staff_users WHERE role = 'superadmin' AND id != ?", [uid]);
-          if (Number(superCount?.[0]?.count || 0) === 0) {
-            throw new ForbiddenError("No puedes degradar al único Superadministrador del sistema");
-          }
-        }
-      }
-      fields.push("role = ?");
-      params.push(role);
-    }
-    if (operationCenterId !== undefined) {
-      fields.push("operation_center_id = ?");
-      params.push(operationCenterId ? Number(operationCenterId) : null);
-    }
-    if (!fields.length) throw new BadRequestError("Sin datos para actualizar");
-
-    params.push(uid);
-    await settingsRepository.updateStaffUser(uid, fields, params);
-    return { ok: true };
+    return staffService.updateStaffUser(userId, data);
   },
 
   async deleteStaffUser(userId) {
-    const uid = Number(userId);
-    if (!uid) throw new BadRequestError("userId es requerido");
-    const [userRows] = await query("SELECT id, role FROM staff_users WHERE id = ?", [uid]);
-    if (userRows?.[0] && String(userRows[0].role).toLowerCase() === "superadmin") {
-      throw new ForbiddenError("No se puede eliminar un usuario con rol Superadministrador");
-    }
-    await settingsRepository.deleteStaffUser(uid);
-    return { ok: true };
+    return staffService.deleteStaffUser(userId);
   },
 
   async setStaffUserCenter(userId, operationCenterId) {
-    const uid = Number(userId);
-    if (!uid) throw new BadRequestError("userId es requerido");
-    await settingsRepository.setStaffUserCenter(uid, operationCenterId);
-    return { ok: true };
+    return staffService.setStaffUserCenter(userId, operationCenterId);
   },
 
-  // Terminals
+  // ───────── Centros de Operación, Pagos, Descuentos & Terminales (Subdominio operations) ─────────
+  async createOperationCenter(data) {
+    return operationsService.createOperationCenter(data);
+  },
+
+  async updateOperationCenter(centerId, data) {
+    return operationsService.updateOperationCenter(centerId, data);
+  },
+
+  async getOperationCenterUsage(centerId) {
+    return operationsService.getOperationCenterUsage(centerId);
+  },
+
+  async deleteOperationCenter(centerId) {
+    return operationsService.deleteOperationCenter(centerId);
+  },
+
+  async setOperationCenterProducts(centerId, productId, isEnabled = 1) {
+    return operationsService.setOperationCenterProducts(centerId, productId, isEnabled);
+  },
+
+  async setTerminalBinding(ipAddress, centerId, label = "") {
+    return operationsService.setTerminalBinding(ipAddress, centerId, label);
+  },
+
+  async getPaymentMethods() {
+    return operationsService.getPaymentMethods();
+  },
+
+  async savePaymentMethod(data) {
+    return operationsService.savePaymentMethod(data);
+  },
+
+  async deletePaymentMethod(code) {
+    return operationsService.deletePaymentMethod(code);
+  },
+
+  async createDiscountPreset(data) {
+    return operationsService.createDiscountPreset(data);
+  },
+
+  async updateDiscountPreset(presetId, data) {
+    return operationsService.updateDiscountPreset(presetId, data);
+  },
+
   async createTerminal(data) {
-    const { operationCenterId, name, printerName = null, printerIp = null, printerPort = 9100, areaTrabajoId = null } = data || {};
-    if (!operationCenterId || !name) throw new BadRequestError("operationCenterId y name son requeridos");
-    const terminalId = await settingsRepository.createTerminal({
-      operationCenterId,
-      name: String(name).trim(),
-      printerName,
-      printerIp,
-      printerPort,
-      areaTrabajoId: areaTrabajoId ? Number(areaTrabajoId) : null,
-    });
-    return { terminalId };
+    return operationsService.createTerminal(data);
   },
 
   async updateTerminal(terminalId, data) {
-    const tid = Number(terminalId);
-    const { operationCenterId, name, printerName, printerIp, printerPort = 9100, isActive = 1, areaTrabajoId = null } = data || {};
-    if (!tid || !operationCenterId || !name) {
-      throw new BadRequestError("terminalId, operationCenterId y name son requeridos");
-    }
-    await settingsRepository.updateTerminal(tid, {
-      operationCenterId,
-      name: String(name).trim(),
-      printerName,
-      printerIp,
-      printerPort,
-      isActive,
-      areaTrabajoId: areaTrabajoId ? Number(areaTrabajoId) : null,
-    });
-    return { ok: true };
+    return operationsService.updateTerminal(terminalId, data);
   },
 
   async deleteTerminal(terminalId) {
-    const tid = Number(terminalId);
-    if (!tid) throw new BadRequestError("terminalId es requerido");
-    await settingsRepository.deleteTerminal(tid);
-    return { ok: true };
+    return operationsService.deleteTerminal(terminalId);
   },
 
-  // ───────── Matriz de Enrutamiento & Categorías de Impresión ─────────
-  async getRoutingMatrix() {
-    return settingsRepository.getRoutingMatrix();
-  },
-
-  async saveRoutingRule({ areaTrabajoId, categoriaImpresionId, centroProduccionId }) {
-    if (!areaTrabajoId || !categoriaImpresionId || !centroProduccionId) {
-      throw new BadRequestError("areaTrabajoId, categoriaImpresionId y centroProduccionId son requeridos");
-    }
-    await settingsRepository.saveRoutingRule(areaTrabajoId, categoriaImpresionId, centroProduccionId);
-    return { ok: true };
-  },
-
-  async deleteRoutingRule(areaTrabajoId, categoriaImpresionId) {
-    if (!areaTrabajoId || !categoriaImpresionId) {
-      throw new BadRequestError("areaTrabajoId y categoriaImpresionId son requeridos");
-    }
-    await settingsRepository.deleteRoutingRule(areaTrabajoId, categoriaImpresionId);
-    return { ok: true };
-  },
-
-  async getPrintCategories() {
-    return settingsRepository.getPrintCategories();
-  },
-
-  async createPrintCategory({ nombre, descripcion }) {
-    if (!nombre || !String(nombre).trim()) {
-      throw new BadRequestError("nombre es requerido");
-    }
-    const id = await settingsRepository.createPrintCategory(nombre, descripcion);
-    return { id, nombre };
-  },
-
-  async updatePrintCategory(id, { nombre, descripcion }) {
-    const cid = Number(id);
-    if (!cid || !nombre || !String(nombre).trim()) {
-      throw new BadRequestError("id y nombre son requeridos");
-    }
-    await settingsRepository.updatePrintCategory(cid, nombre, descripcion);
-    return { ok: true };
-  },
-
-  async deletePrintCategory(id) {
-    const cid = Number(id);
-    if (!cid) throw new BadRequestError("id es requerido");
-    await settingsRepository.deletePrintCategory(cid);
-    return { ok: true };
-  },
-
-  // ───────── Observaciones y Atajos Rápidos de Cocina ─────────
-  async getKitchenNotes({ activeOnly = false } = {}) {
-    return settingsRepository.getKitchenNotes({ activeOnly });
+  async getKitchenNotes(opts) {
+    return operationsService.getKitchenNotes(opts);
   },
 
   async createKitchenNote(data) {
-    const { label, category = "General", sortOrder = 0, isActive = 1 } = data || {};
-    if (!label || !String(label).trim()) {
-      throw new BadRequestError("label es requerido");
-    }
-    return settingsRepository.createKitchenNote({
-      label: String(label).trim(),
-      category: category ? String(category).trim() : "General",
-      sortOrder: Number(sortOrder) || 0,
-      isActive: isActive ? 1 : 0,
-    });
+    return operationsService.createKitchenNote(data);
   },
 
   async updateKitchenNote(id, data) {
-    const nid = Number(id);
-    if (!nid) throw new BadRequestError("id es requerido");
-    const { label, category, sortOrder, isActive } = data || {};
-    if (label !== undefined && !String(label).trim()) {
-      throw new BadRequestError("label no puede estar vacío");
-    }
-    await settingsRepository.updateKitchenNote(nid, {
-      label: label !== undefined ? String(label).trim() : undefined,
-      category: category !== undefined ? String(category).trim() : undefined,
-      sortOrder: sortOrder !== undefined ? Number(sortOrder) : undefined,
-      isActive: isActive !== undefined ? (isActive ? 1 : 0) : undefined,
-    });
-    return { ok: true };
+    return operationsService.updateKitchenNote(id, data);
   },
 
   async deleteKitchenNote(id) {
-    const nid = Number(id);
-    if (!nid) throw new BadRequestError("id es requerido");
-    await settingsRepository.deleteKitchenNote(nid);
-    return { ok: true };
+    return operationsService.deleteKitchenNote(id);
+  },
+
+  // ───────── Producción, Impresoras & Enrutamiento (Subdominio printers) ─────────
+  async getProductionCenters() {
+    return printersService.getProductionCenters();
+  },
+
+  async createProductionCenter(data) {
+    return printersService.createProductionCenter(data);
+  },
+
+  async updateProductionCenter(centerId, data) {
+    return printersService.updateProductionCenter(centerId, data);
+  },
+
+  async deleteProductionCenter(centerId) {
+    return printersService.deleteProductionCenter(centerId);
+  },
+
+  async testPrinter(data) {
+    return printersService.testPrinter(data);
+  },
+
+  getPrintersStatus() {
+    return printersService.getPrintersStatus();
+  },
+
+  async getPrinterRoutingMode() {
+    return printersService.getPrinterRoutingMode();
+  },
+
+  async setPrinterRoutingMode(mode) {
+    return printersService.setPrinterRoutingMode(mode);
+  },
+
+  async getRecentPrintJobs(limit = 50) {
+    return printersService.getRecentPrintJobs(limit);
+  },
+
+  async getPrinters() {
+    return printersService.getPrinters();
+  },
+
+  async createPrinter(data) {
+    return printersService.createPrinter(data);
+  },
+
+  async updatePrinter(printerId, data) {
+    return printersService.updatePrinter(printerId, data);
+  },
+
+  async deletePrinter(printerId) {
+    return printersService.deletePrinter(printerId);
+  },
+
+  async testPrinterDirect(printerId) {
+    return printersService.testPrinterDirect(printerId);
+  },
+
+  async auditPrinters() {
+    return printersService.auditPrinters();
+  },
+
+  async getRoutingMatrix() {
+    return printersService.getRoutingMatrix();
+  },
+
+  async saveRoutingRule(data) {
+    return printersService.saveRoutingRule(data);
+  },
+
+  async deleteRoutingRule(areaTrabajoId, categoriaImpresionId) {
+    return printersService.deleteRoutingRule(areaTrabajoId, categoriaImpresionId);
+  },
+
+  async getPrintCategories() {
+    return printersService.getPrintCategories();
+  },
+
+  async createPrintCategory(data) {
+    return printersService.createPrintCategory(data);
+  },
+
+  async updatePrintCategory(id, data) {
+    return printersService.updatePrintCategory(id, data);
+  },
+
+  async deletePrintCategory(id) {
+    return printersService.deletePrintCategory(id);
   },
 };
 

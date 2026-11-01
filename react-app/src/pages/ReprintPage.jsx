@@ -6,8 +6,10 @@ import {
   Clock, ChevronDown, ChevronUp, Loader2, Coins, CreditCard,
   Building2, Users, Hash, Calendar, CheckCircle, X, AlertTriangle,
   RotateCcw, Lock, LogOut, UtensilsCrossed, Share2, Store, Check,
-  RefreshCw, Eye, ShieldCheck, User, ChevronLeft, ChevronRight, SlidersHorizontal, MessageSquare
+  RefreshCw, Eye, ShieldCheck, User, ChevronLeft, ChevronRight, SlidersHorizontal, MessageSquare,
+  QrCode, ExternalLink
 } from 'lucide-react';
+import { m, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { ShiftTicketModal, printShiftTicket } from '../components/ShiftTicketModal';
 
@@ -61,7 +63,7 @@ function timeAgo(dateString) {
 
 export function ReprintPage({ onBack, onSelectAccount }) {
   const toast = useToast();
-  const { user, logout } = useAuth();
+  const { user, logout, selectedTerminal } = useAuth();
   
   // Navigation tabs: 'account' | 'kitchen' | 'shift'
   const [tab, setTab] = useState('account');
@@ -79,6 +81,9 @@ export function ReprintPage({ onBack, onSelectAccount }) {
   const [endDate, setEndDate] = useState('');
   const [selectedArea, setSelectedArea] = useState('all');
   const [quickFilter, setQuickFilter] = useState('active_shift'); // 'active_shift' | 'today' | 'last_hour' | 'pending' | 'paid' | 'all'
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showMobilePreview, setShowMobilePreview] = useState(false);
+  const [quickPrintingId, setQuickPrintingId] = useState(null);
   
   // Results & Selected Account
   const [searchResults, setSearchResults] = useState([]);
@@ -241,6 +246,35 @@ export function ReprintPage({ onBack, onSelectAccount }) {
     }
   };
 
+  // Quick 1-tap direct reprint from card
+  const handleQuickReprintAccount = async (e, acc) => {
+    e.stopPropagation();
+    setQuickPrintingId(acc.id);
+    try {
+      const res = await api.reprintReceipt(acc.id, selectedTerminal?.id);
+      if (res?.printedDirectly) {
+        setReprintCount(prev => prev + 1);
+        toast.success(`Ticket #${acc.check_number || acc.id} reimpreso exitosamente`);
+        return;
+      }
+      await loadReceipt(acc.id);
+      setShowMobilePreview(true);
+      if (res?.printError) {
+        toast.warning(`${res.printError}: se abrió vista previa.`);
+      }
+    } catch (_) {
+      await loadReceipt(acc.id);
+      setShowMobilePreview(true);
+    } finally {
+      setQuickPrintingId(null);
+    }
+  };
+
+  const handleCardClick = async (accId) => {
+    await loadReceipt(accId);
+    setShowMobilePreview(true);
+  };
+
   // Quick Filter handlers
   const handleQuickFilterClick = (filterKey) => {
     setQuickFilter(filterKey);
@@ -296,12 +330,28 @@ export function ReprintPage({ onBack, onSelectAccount }) {
   };
 
   // Thermal Print Receipt (Pre-cuenta o Comprobante Final)
-  const handlePrintReceipt = () => {
+  const handlePrintReceipt = async () => {
     if (!receiptData) {
       toast.error('Selecciona una cuenta para reimprimir');
       return;
     }
     const { account, items, payments, totals } = receiptData;
+
+    // Intentar impresión directa inmediata a la impresora asignada a la terminal
+    try {
+      const res = await api.reprintReceipt(account.id, selectedTerminal?.id);
+      if (res?.printedDirectly) {
+        setReprintCount(prev => prev + 1);
+        toast.success(`Ticket reimpreso en ${res.terminalName || selectedTerminal?.name || 'terminal'}`);
+        return;
+      }
+      if (res?.printError) {
+        toast.warning(`${res.printError}: abriendo vista previa.`);
+      }
+    } catch (_) {
+      // Continuar al respaldo de ventana de impresión
+    }
+
     const centerObj = centers.find(c => c.id === Number(selectedCenter));
     const restaurantName = businessProfile?.restaurant_name || centerObj?.name || 'RESTAURANTE PRINCIPAL';
     const subtitle = businessProfile?.business_subtitle || 'POS RESTAURANTE & BAR';
@@ -648,58 +698,61 @@ export function ReprintPage({ onBack, onSelectAccount }) {
       
       {/* 1. TOP HEADER */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200/90 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2 flex items-center justify-between gap-2 sm:gap-3">
           
           {/* Left: Volver al POS + Title + Pill Badge */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={onBack}
-              className="inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer shrink-0"
               title="Regresar al POS [ESC]"
             >
               <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
-              <span>Volver al POS</span>
+              <span className="hidden sm:inline">Volver al POS</span>
+              <span className="sm:hidden font-bold">POS</span>
             </button>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-slate-900 text-base sm:text-lg tracking-tight">
-                  Reimpresión de Comandas & Cuentas
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h1 className="font-extrabold text-slate-900 text-sm sm:text-lg tracking-tight truncate">
+                  Reimpresión
+                  <span className="hidden sm:inline"> de Comandas & Cuentas</span>
                 </h1>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">
-                  <ShieldCheck className="w-3.5 h-3.5 stroke-[2.2]" />
-                  Módulo Auditoría
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                  <ShieldCheck className="w-3 h-3 stroke-[2.2]" />
+                  Auditoría
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-medium">
+              <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden sm:block truncate">
                 Historial de tickets, comandas activas y comprobantes emitidos
               </p>
             </div>
           </div>
 
           {/* Right: Center Selector + User Card + Exit PIN */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             
             {/* Center Selector Dropdown */}
             <div className="relative">
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer">
-                <Store className="w-4 h-4 text-slate-500 shrink-0" />
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer">
+                <Store className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                 <select
                   value={selectedCenter}
                   onChange={(e) => {
                     setSelectedCenter(e.target.value);
                     setSelectedAccount(null);
                     setReceiptData(null);
+                    setShowMobilePreview(false);
                   }}
-                  className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer pr-1"
+                  className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer pr-1 max-w-[100px] sm:max-w-[160px] truncate"
                 >
                   {centers.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.name} {areasList.length > 0 ? `— Salón ${areasList[0]}` : ''}
+                      {c.name}
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <ChevronDown className="w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
             </div>
 
@@ -713,7 +766,7 @@ export function ReprintPage({ onBack, onSelectAccount }) {
                   {user?.full_name || 'Carlos Samalaj'}
                 </div>
                 <div className="text-[10px] text-slate-500 font-medium">
-                  {user?.role ? user.role.toUpperCase() : 'Caja Principal 01'} • {activeShift ? 'Turno Activo' : 'Turno General'}
+                  {user?.role ? user.role.toUpperCase() : 'Caja Principal'} • {activeShift ? 'Turno Activo' : 'General'}
                 </div>
               </div>
             </div>
@@ -721,11 +774,11 @@ export function ReprintPage({ onBack, onSelectAccount }) {
             {/* Logout / Salir PIN */}
             <button
               onClick={logout}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
               title="Cerrar sesión / Salir (PIN)"
             >
               <LogOut className="w-3.5 h-3.5 text-rose-600 stroke-[2.5]" />
-              <span className="hidden sm:inline">Salir (PIN)</span>
+              <span className="hidden sm:inline">Salir</span>
             </button>
           </div>
 
@@ -733,252 +786,212 @@ export function ReprintPage({ onBack, onSelectAccount }) {
       </header>
 
       {/* 2. BODY CONTAINER */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex-1 w-full space-y-4">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-4 flex-1 w-full space-y-3 sm:space-y-4">
         
-        {/* TOP NAVIGATION TABS */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-200/70 border border-slate-200/90 rounded-2xl shadow-2xs">
+        {/* TOP NAVIGATION TABS (Segmented Mobile & Desktop) */}
+        <div className="grid grid-cols-3 sm:flex sm:flex-wrap items-center gap-1 sm:gap-1.5 p-1 bg-slate-200/70 border border-slate-200/90 rounded-2xl shadow-2xs">
           
           {/* Tab 1: Reimprimir Cuenta / Pre-cuenta */}
           <button
             type="button"
-            onClick={() => setTab('account')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            onClick={() => { setTab('account'); setShowMobilePreview(false); }}
+            className={`flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               tab === 'account'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <NotebookMinimalIcon className="w-4 h-4" />
-            <span>Reimprimir Cuenta / Pre-cuenta</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+            <NotebookMinimalIcon className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline">Reimprimir Cuenta / Pre-cuenta</span>
+            <span className="sm:hidden">Cuentas</span>
+            <span className={`px-1.5 sm:px-2 py-0.2 sm:py-0.5 rounded-full text-[10px] font-extrabold ${
               tab === 'account' ? 'bg-blue-500/80 text-white' : 'bg-slate-300 text-slate-700'
             }`}>
-              {openAccountsCount > 0 ? `${openAccountsCount} activas` : `${searchResults.length} cuentas`}
+              {openAccountsCount > 0 ? `${openAccountsCount}` : `${searchResults.length}`}
             </span>
           </button>
 
           {/* Tab 2: Reimprimir Comanda Cocina / Barra */}
           <button
             type="button"
-            onClick={() => setTab('kitchen')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            onClick={() => { setTab('kitchen'); setShowMobilePreview(false); }}
+            className={`flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               tab === 'kitchen'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <UtensilsCrossed className="w-4 h-4 stroke-[2.2]" />
-            <span>Reimprimir Comanda Cocina / Barra</span>
+            <UtensilsCrossed className="w-4 h-4 stroke-[2.2] shrink-0" />
+            <span className="hidden sm:inline">Reimprimir Comanda Cocina</span>
+            <span className="sm:hidden">Cocina</span>
           </button>
 
           {/* Tab 3: Reimprimir Cierre de Turno (Corte Z/X) */}
           <button
             type="button"
-            onClick={() => setTab('shift')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            onClick={() => { setTab('shift'); setShowMobilePreview(false); }}
+            className={`flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               tab === 'shift'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <Printer className="w-4 h-4 stroke-[2.2]" />
-            <span>Reimprimir Cierre de Turno (Corte Z/X)</span>
+            <Printer className="w-4 h-4 stroke-[2.2] shrink-0" />
+            <span className="hidden sm:inline">Cierre de Turno (Corte Z/X)</span>
+            <span className="sm:hidden">Cierres</span>
           </button>
         </div>
 
         {/* ======================================================== */}
-        {/* TAB 1: REIMPRIMIR CUENTAS & PRE-CUENTAS (DISEÑO SOLICITADO) */}
+        {/* TAB 1: REIMPRIMIR CUENTAS & PRE-CUENTAS */}
         {/* ======================================================== */}
         {tab === 'account' && (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             
             {/* SEARCH & FILTERS CARD */}
-            <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-3">
+            <div className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-xs space-y-2.5 sm:space-y-3">
               
-              {/* Inputs Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-                
-                {/* 1. Buscar por número o mesa */}
-                <div className="lg:col-span-2">
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Hash className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Buscar por número o mesa</span>
-                  </label>
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && doSearch()}
-                      placeholder="CHK-0001 o Mesa 01"
-                      className="w-full pl-9 pr-8 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none transition-all"
-                    />
-                    {searchQuery && (
-                      <button
-                        onClick={() => { setSearchQuery(''); doSearch(); }}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. Desde */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Desde</span>
-                  </label>
+              {/* Primary Search Input Row */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl text-xs font-medium text-slate-800 outline-none transition-all"
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && doSearch()}
+                    placeholder="Buscar por # comanda, mesa o mesero..."
+                    className="w-full pl-9 pr-8 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl text-xs font-bold text-slate-800 outline-none transition-all"
                   />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => { setSearchQuery(''); doSearch(); }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
 
-                {/* 3. Hasta */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Hasta</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl text-xs font-medium text-slate-800 outline-none transition-all"
-                  />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                    showAdvancedFilters
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'
+                  }`}
+                  title="Filtros de fecha y área"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Filtros</span>
+                </button>
 
-                {/* 4. Área de Despacho */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Área de Despacho</span>
-                  </label>
-                  <select
-                    value={selectedArea}
-                    onChange={(e) => setSelectedArea(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl text-xs font-semibold text-slate-800 outline-none transition-all cursor-pointer"
-                  >
-                    <option value="all">Todas las áreas</option>
-                    {areasList.map(a => (
-                      <option key={a} value={a}>{a}</option>
-                    ))}
-                  </select>
-                </div>
-
-              </div>
-
-              {/* Action Button & Quick Filters Row */}
-              <div className="pt-2 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                
-                {/* Quick Filters */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-bold text-slate-500 mr-1">Filtros rápidos:</span>
-                  
-                  <button
-                    type="button"
-                    onClick={() => handleQuickFilterClick('active_shift')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      quickFilter === 'active_shift'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-300 shadow-2xs font-extrabold'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-transparent'
-                    }`}
-                  >
-                    Turno Activo (Actual)
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickFilterClick('today')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      quickFilter === 'today'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-300 shadow-2xs font-extrabold'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-transparent'
-                    }`}
-                  >
-                    Hoy
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickFilterClick('last_hour')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      quickFilter === 'last_hour'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-300 shadow-2xs font-extrabold'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-transparent'
-                    }`}
-                  >
-                    Última Hora
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickFilterClick('pending')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      quickFilter === 'pending'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-300 shadow-2xs font-extrabold'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-transparent'
-                    }`}
-                  >
-                    Pendientes de Pago
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickFilterClick('paid')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      quickFilter === 'paid'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-300 shadow-2xs font-extrabold'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-transparent'
-                    }`}
-                  >
-                    Cobradas Recientes
-                  </button>
-                </div>
-
-                {/* Primary Search Button */}
                 <button
                   type="button"
                   onClick={doSearch}
                   disabled={searching}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
+                  className="px-3.5 sm:px-5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
                 >
                   {searching ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <Search className="w-4 h-4 stroke-[2.5]" />
+                    <Search className="w-3.5 h-3.5 stroke-[2.5]" />
                   )}
-                  <span>Buscar Cuentas</span>
+                  <span className="hidden sm:inline">Buscar</span>
                 </button>
+              </div>
 
+              {/* Filtros Avanzados Colapsables (Fecha Desde, Hasta, Área) */}
+              {showAdvancedFilters && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-slate-100 animate-in fade-in duration-150">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Desde
+                    </label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Hasta
+                    </label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Área
+                    </label>
+                    <select
+                      value={selectedArea}
+                      onChange={(e) => setSelectedArea(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none cursor-pointer"
+                    >
+                      <option value="all">Todas las áreas</option>
+                      {areasList.map(a => (
+                        <option key={a} value={a}>{a}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Swipeable Horizontal Quick Filters */}
+              <div className="overflow-x-auto custom-scrollbar flex items-center gap-1.5 pt-0.5">
+                {[
+                  { key: 'active_shift', label: 'Turno Activo' },
+                  { key: 'today', label: 'Hoy' },
+                  { key: 'last_hour', label: 'Última Hora' },
+                  { key: 'pending', label: 'Pendientes' },
+                  { key: 'paid', label: 'Cobradas' },
+                  { key: 'all', label: 'Todas' }
+                ].map(f => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => handleQuickFilterClick(f.key)}
+                    className={`shrink-0 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                      quickFilter === f.key
+                        ? 'bg-blue-600 text-white shadow-xs font-extrabold'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
               </div>
             </div>
 
             {/* MAIN TWO-COLUMN WORKSPACE */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
               
               {/* LEFT COLUMN: RESULTADOS (Lg:col-span-7) */}
-              <div className="lg:col-span-7 space-y-3">
+              <div className="lg:col-span-7 space-y-2.5 sm:space-y-3">
                 
                 {/* Results Header Bar */}
                 <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-slate-900 text-sm tracking-wide">
+                    <span className="font-extrabold text-slate-900 text-xs sm:text-sm tracking-wide">
                       RESULTADOS ({searchResults.length})
                     </span>
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Sincronizado al momento
+                      Sincronizado
                     </span>
                   </div>
 
-                  <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
-                    ↓ Más recientes primero
+                  <span className="text-[11px] sm:text-xs text-slate-400 font-medium">
+                    ↓ Recientes primero
                   </span>
                 </div>
 
@@ -989,15 +1002,15 @@ export function ReprintPage({ onBack, onSelectAccount }) {
                     <p className="text-xs font-semibold text-slate-500">Buscando cuentas y comprobantes...</p>
                   </div>
                 ) : searchResults.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-xs space-y-2">
+                  <div className="bg-white rounded-2xl border border-slate-200/80 p-10 sm:p-12 text-center shadow-xs space-y-2">
                     <NotebookMinimalIcon className="w-10 h-10 text-slate-300 mx-auto" />
                     <h3 className="font-bold text-slate-800 text-sm">No se encontraron cuentas</h3>
                     <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      Prueba cambiando los términos de búsqueda, el rango de fechas o los filtros rápidos arriba.
+                      Prueba cambiando los términos de búsqueda o selecciona otro filtro rápido.
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-2.5">
+                  <div className="space-y-2 sm:space-y-2.5">
                     {searchResults.map(acc => {
                       const isSelected = selectedAccount === acc.id;
                       const isOpen = acc.status === 'open';
@@ -1006,98 +1019,81 @@ export function ReprintPage({ onBack, onSelectAccount }) {
                       return (
                         <div
                           key={acc.id}
-                          onClick={() => loadReceipt(acc.id)}
-                          className={`rounded-2xl border p-3.5 transition-all cursor-pointer flex items-center justify-between gap-3 shadow-2xs ${
+                          onClick={() => handleCardClick(acc.id)}
+                          className={`rounded-2xl border p-3 sm:p-3.5 transition-all cursor-pointer flex items-center justify-between gap-3 shadow-2xs ${
                             isSelected
                               ? 'border-blue-500 bg-blue-50/50 shadow-xs ring-1 ring-blue-500/20'
                               : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/70'
                           }`}
                         >
                           {/* Left icon + Details */}
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                             <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
                               isSelected ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
                             }`}>
                               <NotebookMinimalIcon className="w-5 h-5" />
                             </div>
 
-                            <div className="min-w-0 space-y-1">
+                            <div className="min-w-0 space-y-0.5 sm:space-y-1">
                               {/* Line 1: Check number + Table badge + Status badge */}
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono font-extrabold text-slate-900 text-sm flex items-center gap-1.5">
-                                  <NotebookMinimalIcon className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                <span className="font-mono font-extrabold text-slate-900 text-xs sm:text-sm">
                                   #{acc.check_number || `CHK-${acc.id}`}
                                 </span>
                                 
-                                <span className="text-[11px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200/60">
+                                <span className="text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-700 px-1.5 sm:px-2 py-0.5 rounded-md border border-slate-200/60">
                                   {acc.table_code ? `Mesa ${acc.table_code}` : 'Mostrador'}
                                 </span>
 
                                 {isOpen ? (
-                                  <span className="text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-full">
-                                    Pendiente de cobro
+                                  <span className="text-[9px] sm:text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 px-1.5 py-0.2 rounded-full">
+                                    Pendiente
                                   </span>
                                 ) : isClosedShift ? (
-                                  <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+                                  <span className="text-[9px] sm:text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 rounded-full">
                                     Turno cerrado
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
-                                    Turno activo
+                                  <span className="text-[9px] sm:text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded-full">
+                                    Cobrado
                                   </span>
                                 )}
                               </div>
 
-                              {/* Line 2: Waiter + Date & Time ago */}
-                              <div className="text-xs text-slate-500 flex items-center gap-1.5 truncate">
-                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                <span className="font-semibold text-slate-700">{acc.waiter_name || 'Mesero'}</span>
+                              {/* Line 2: Waiter + Time */}
+                              <div className="text-[11px] sm:text-xs text-slate-500 flex items-center gap-1.5 truncate">
+                                <span className="font-semibold text-slate-700">{acc.waiter_name || 'Personal'}</span>
                                 <span>•</span>
-                                <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                <span>{formatDate(acc.closed_at || acc.opened_at)}</span>
-                                <span className="text-blue-600 font-semibold hidden sm:inline">
-                                  ({timeAgo(acc.closed_at || acc.opened_at)})
-                                </span>
+                                <span>{timeAgo(acc.closed_at || acc.opened_at)}</span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Right: Total + Action Button */}
-                          <div className="flex items-center gap-3 shrink-0">
+                          {/* Right: Total + Direct 1-Tap Quick Action */}
+                          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
                             <div className="text-right">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                                 Total
                               </span>
-                              <span className="font-mono font-extrabold text-slate-900 text-sm sm:text-base">
+                              <span className="font-mono font-black text-slate-900 text-xs sm:text-base">
                                 Q {Number(acc.total || 0).toFixed(2)}
                               </span>
                             </div>
 
-                            {isSelected ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handlePrintReceipt();
-                                }}
-                                className="w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-xs transition-transform active:scale-90"
-                                title="Reimprimir directamente este ticket [F10]"
-                              >
-                                <Printer className="w-4 h-4 stroke-[2.5]" />
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  loadReceipt(acc.id);
-                                }}
-                                className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
-                                title="Ver vista previa"
-                              >
-                                <Eye className="w-4 h-4 stroke-[2]" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => handleQuickReprintAccount(e, acc)}
+                              disabled={quickPrintingId === acc.id}
+                              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                              title="Reimprimir directamente"
+                            >
+                              {quickPrintingId === acc.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Printer className="w-3.5 h-3.5 stroke-[2.2]" />
+                              )}
+                              <span className="hidden sm:inline">Reimprimir</span>
+                            </button>
                           </div>
                         </div>
                       );
@@ -1108,7 +1104,7 @@ export function ReprintPage({ onBack, onSelectAccount }) {
                 {/* Results Footer Pagination */}
                 <div className="pt-2 flex items-center justify-between text-xs text-slate-500 font-medium">
                   <span>
-                    Mostrando {searchResults.length} cuentas de {searchResults.length} registradas
+                    Mostrando {searchResults.length} cuentas
                   </span>
 
                   <div className="flex items-center gap-1">
@@ -1132,8 +1128,8 @@ export function ReprintPage({ onBack, onSelectAccount }) {
 
               </div>
 
-              {/* RIGHT COLUMN: VISTA PREVIA TÉRMICA & CONFIGURACIÓN (Lg:col-span-5 Sticky) */}
-              <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-20">
+              {/* RIGHT COLUMN: VISTA PREVIA TÉRMICA & CONFIGURACIÓN (Desktop lg:block, en móvil oculto porque usa Bottom Sheet) */}
+              <div className="hidden lg:block lg:col-span-5 space-y-4 lg:sticky lg:top-20">
                 
                 {/* CARD 1: VISTA PREVIA TÉRMICA */}
                 <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
@@ -1276,7 +1272,7 @@ export function ReprintPage({ onBack, onSelectAccount }) {
                       <div className="py-20 text-center space-y-2">
                         <FileText className="w-10 h-10 text-slate-300 mx-auto" />
                         <p className="text-xs font-semibold text-slate-500">
-                          Selecciona una cuenta a la izquierda para ver su comprobante térmico
+                          Selecciona una cuenta para ver su comprobante térmico
                         </p>
                       </div>
                     )}
@@ -1423,7 +1419,7 @@ export function ReprintPage({ onBack, onSelectAccount }) {
         {/* TAB 2: REIMPRIMIR COMANDA COCINA / BARRA */}
         {/* ======================================================== */}
         {tab === 'kitchen' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
             {/* Left Column: Comandas List */}
             <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
               <div className="p-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -1450,12 +1446,12 @@ export function ReprintPage({ onBack, onSelectAccount }) {
                     return (
                       <div
                         key={acc.id}
-                        onClick={() => loadReceipt(acc.id)}
-                        className={`p-3.5 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                        onClick={() => handleCardClick(acc.id)}
+                        className={`p-3 sm:p-3.5 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
                           isSelected ? 'bg-amber-50/60 font-bold border-l-4 border-amber-500' : 'hover:bg-slate-50'
                         }`}
                       >
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                           <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                             isSelected ? 'bg-amber-500 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
                           }`}>
@@ -1463,7 +1459,7 @@ export function ReprintPage({ onBack, onSelectAccount }) {
                           </div>
                           <div className="min-w-0 space-y-0.5">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono font-extrabold text-slate-900 text-sm">
+                              <span className="font-mono font-extrabold text-slate-900 text-xs sm:text-sm">
                                 #{acc.check_number || `CHK-${acc.id}`}
                               </span>
                               <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200">
@@ -1471,7 +1467,7 @@ export function ReprintPage({ onBack, onSelectAccount }) {
                               </span>
                             </div>
                             <div className="text-[11px] text-slate-500 flex items-center gap-1.5 truncate">
-                              <span>{acc.waiter_name || 'Mesero'}</span>
+                              <span>{acc.waiter_name || 'Personal'}</span>
                               <span>•</span>
                               <span>{timeAgo(acc.closed_at || acc.opened_at)}</span>
                             </div>
@@ -1497,8 +1493,8 @@ export function ReprintPage({ onBack, onSelectAccount }) {
               )}
             </div>
 
-            {/* Right Column: Kitchen Comanda Preview & Actions */}
-            <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden p-6 space-y-4">
+            {/* Right Column: Kitchen Comanda Preview & Actions (Desktop lg:block, en móvil usa Bottom Sheet) */}
+            <div className="hidden lg:block lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden p-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
@@ -1615,7 +1611,10 @@ export function ReprintPage({ onBack, onSelectAccount }) {
                     <button
                       key={s.id}
                       type="button"
-                      onClick={() => loadShiftReport(s.id)}
+                      onClick={() => {
+                        loadShiftReport(s.id);
+                        setShowMobilePreview(true);
+                      }}
                       className={`w-full flex items-center justify-between p-3.5 text-left transition-colors cursor-pointer ${
                         selectedShiftId === s.id ? 'bg-blue-50/60 font-bold' : 'hover:bg-slate-50'
                       }`}
@@ -1640,8 +1639,8 @@ export function ReprintPage({ onBack, onSelectAccount }) {
               )}
             </div>
 
-            {/* Right Column: Shift Preview & Print */}
-            <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+            {/* Right Column: Shift Preview & Print (Desktop lg:block, en móvil usa Bottom Sheet) */}
+            <div className="hidden lg:block lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
               {shiftReport ? (() => {
                 const { shift, summary: s } = shiftReport;
                 const totalChecks = (s.paidAccounts || []).length + (s.openAccounts || []).length;
@@ -1727,8 +1726,316 @@ export function ReprintPage({ onBack, onSelectAccount }) {
 
       </main>
 
-      {/* 3. BOTTOM FIXED STATUS BAR */}
-      <footer className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 px-4 py-2 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-500 font-medium">
+      {/* ======================================================== */}
+      {/* MOBILE BOTTOM SHEET MODAL (DRAWER) - SOLO MÓVIL (< lg) */}
+      {/* ======================================================== */}
+      <AnimatePresence>
+        {showMobilePreview && (
+          <div className="fixed inset-0 z-50 flex flex-col justify-end lg:hidden bg-slate-950/70 backdrop-blur-xs">
+            {/* Backdrop click to dismiss */}
+            <div className="flex-1 w-full" onClick={() => setShowMobilePreview(false)} />
+
+            <m.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 26, stiffness: 260 }}
+              className="w-full bg-slate-100 rounded-t-3xl shadow-2xl border-t border-slate-300 max-h-[88vh] flex flex-col overflow-hidden"
+            >
+              {/* Drag Handle */}
+              <div className="pt-3 pb-1 flex justify-center items-center bg-white cursor-pointer" onClick={() => setShowMobilePreview(false)}>
+                <div className="w-12 h-1.5 rounded-full bg-slate-300" />
+              </div>
+
+              {/* Sheet Header */}
+              <div className="px-4 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <h2 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                    {tab === 'account' && (
+                      <>
+                        <NotebookMinimalIcon className="w-4 h-4 text-blue-600" />
+                        <span>Ticket #{receiptData?.account?.check_number || receiptData?.account?.id}</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          {receiptData?.account?.table_code ? `Mesa ${receiptData.account.table_code}` : 'Mostrador'}
+                        </span>
+                      </>
+                    )}
+                    {tab === 'kitchen' && (
+                      <>
+                        <UtensilsCrossed className="w-4 h-4 text-amber-600" />
+                        <span>Comanda Cocina #{receiptData?.account?.check_number}</span>
+                      </>
+                    )}
+                    {tab === 'shift' && (
+                      <>
+                        <Clock className="w-4 h-4 text-blue-600" />
+                        <span>Cierre de Turno #{shiftReport?.shift?.id}</span>
+                      </>
+                    )}
+                  </h2>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {tab === 'account' && `Atiende: ${receiptData?.account?.waiter_name || 'Personal'} · ${receiptData?.account?.status === 'paid' ? 'Cobrado' : 'Pendiente'}`}
+                    {tab === 'kitchen' && `Atiende: ${receiptData?.account?.waiter_name || 'Personal'} · ${receiptData?.items?.length || 0} platillos`}
+                    {tab === 'shift' && `Cajero: ${shiftReport?.shift?.cashier_name || 'Personal'}`}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowMobilePreview(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 active:scale-95 transition-all cursor-pointer"
+                >
+                  <X className="w-4 h-4 stroke-[2.5]" />
+                </button>
+              </div>
+
+              {/* Sheet Body Content */}
+              <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 custom-scrollbar">
+                {/* 1. Account / Ticket Mobile Drawer */}
+                {tab === 'account' && receiptData && (
+                  <div className="space-y-3">
+                    {/* Thermal Paper Simulation */}
+                    <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 font-mono text-xs text-slate-800 space-y-2">
+                      <div className="text-center space-y-0.5 border-b border-dashed border-slate-300 pb-2">
+                        <div className="font-extrabold text-sm text-slate-900 uppercase">
+                          {businessProfile?.restaurant_name || centers.find(c => c.id === Number(selectedCenter))?.name || 'RESTAURANTE'}
+                        </div>
+                        <div className="text-[11px] text-slate-600">
+                          NIT: {businessProfile?.tax_id || businessProfile?.nit || '8392019-2'} • PBX: {businessProfile?.phone || '2333-8800'}
+                        </div>
+                        <div className="font-black text-xs text-slate-900 pt-0.5">
+                          {receiptData.account.status === 'paid' ? '*** CUENTA FINAL / PAGADA ***' : '*** PRE-CUENTA / ESTADO ***'}
+                        </div>
+                      </div>
+
+                      {/* Items */}
+                      <div className="space-y-1 text-[11px] py-1 border-b border-dashed border-slate-300">
+                        {(receiptData.items || []).map((it, idx) => (
+                          <div key={idx} className="flex justify-between items-start py-0.5">
+                            <span><strong>{it.qty}x</strong> {it.product_name}</span>
+                            <span className="font-bold">Q {Number(it.line_total).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Totals */}
+                      <div className="space-y-1 text-[11px]">
+                        <div className="flex justify-between text-slate-600">
+                          <span>Subtotal</span>
+                          <span>Q {Number(receiptData.totals?.subtotal || 0).toFixed(2)}</span>
+                        </div>
+                        {Number(receiptData.totals?.discountTotal || 0) > 0 && (
+                          <div className="flex justify-between text-rose-600 font-bold">
+                            <span>Descuento</span>
+                            <span>-Q {Number(receiptData.totals.discountTotal).toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-slate-600">
+                          <span>Propina ({receiptData.totals?.tipPercent || 0}%)</span>
+                          <span>Q {Number(receiptData.totals?.tipAmount || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between font-black text-sm text-slate-900 pt-1 border-t border-slate-300">
+                          <span>TOTAL:</span>
+                          <span className="text-emerald-700">Q {Number(receiptData.totals?.total || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      {watermarkAudit && (
+                        <div className="mt-2 py-1 border border-dashed border-slate-400 text-center font-black text-[10px] text-slate-600 tracking-wider">
+                          *** COPIA AUDITADA ***
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Printer and Reason */}
+                    <div className="bg-white rounded-xl p-3 border border-slate-200 space-y-2.5">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                          Impresora Destino
+                        </label>
+                        <select
+                          value={selectedPrinter}
+                          onChange={(e) => setSelectedPrinter(e.target.value)}
+                          className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none"
+                        >
+                          {printers.length > 0 ? (
+                            printers.map(p => (
+                              <option key={p.id || p.name} value={p.id || p.name}>
+                                {p.name} {p.interface_type ? `(${p.interface_type})` : ''}
+                              </option>
+                            ))
+                          ) : (
+                            <option value="default">Impresora Principal (Térmica 80mm)</option>
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                          Motivo de Auditoría
+                        </label>
+                        <input
+                          type="text"
+                          value={reprintReason}
+                          onChange={(e) => setReprintReason(e.target.value)}
+                          placeholder="Motivo de reimpresión"
+                          className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="space-y-2 pt-1 pb-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handlePrintReceipt();
+                          setShowMobilePreview(false);
+                        }}
+                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all"
+                      >
+                        <Printer className="w-4 h-4 stroke-[2.5]" />
+                        <span>REIMPRIMIR TICKET AHORA</span>
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleDigitalShare}
+                          className="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                        >
+                          <Share2 className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
+                          <span>Compartir WhatsApp</span>
+                        </button>
+
+                        {receiptData?.account?.status === 'paid' && receiptData?.account?.shift_status !== 'closed' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowMobilePreview(false);
+                              handleReopen();
+                            }}
+                            className="px-3.5 py-2.5 bg-amber-50 border border-amber-300 text-amber-800 font-bold text-xs rounded-xl flex items-center gap-1 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Reabrir</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Kitchen Mobile Drawer */}
+                {tab === 'kitchen' && receiptData && (
+                  <div className="space-y-3 pb-4">
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+                      <div>
+                        <div className="font-extrabold text-slate-900 text-xs">Comanda #{receiptData.account.check_number}</div>
+                        <div className="text-[11px] text-slate-600">Mesa {receiptData.account.table_code || '---'} · {receiptData.items?.length || 0} ítems</div>
+                      </div>
+                      <span className="text-xs font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">Cocina</span>
+                    </div>
+
+                    <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+                      {(receiptData.items || []).map((it, idx) => (
+                        <div key={idx} className="p-3 flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-black text-amber-700 text-xs bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                {it.qty}x
+                              </span>
+                              <span className="font-bold text-slate-900 text-xs">{it.product_name}</span>
+                            </div>
+                            {it.notes && (
+                              <div className="text-[11px] text-amber-800 font-medium mt-1">Nota: {it.notes}</div>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {it.seat_no ? `Silla ${it.seat_no}` : 'General'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handlePrintKitchenComanda();
+                        setShowMobilePreview(false);
+                      }}
+                      className="w-full py-3.5 bg-amber-600 hover:bg-amber-700 active:scale-98 text-white rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    >
+                      <Printer className="w-4 h-4 stroke-[2.5]" />
+                      <span>REIMPRIMIR COMANDA A COCINA</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* 3. Shift Report Mobile Drawer */}
+                {tab === 'shift' && shiftReport && (
+                  <div className="space-y-3 pb-4">
+                    {(() => {
+                      const { shift, summary: s } = shiftReport;
+                      return (
+                        <>
+                          <div className="bg-white rounded-xl p-3 border border-slate-200 grid grid-cols-2 gap-2 text-xs">
+                            <div className="bg-slate-50 p-2 rounded-lg">
+                              <span className="text-[10px] text-slate-400 block font-bold">Fondo Inicial</span>
+                              <span className="font-mono font-bold text-slate-800">Q {Number(s.openingCash || 0).toFixed(2)}</span>
+                            </div>
+                            <div className="bg-emerald-50 p-2 rounded-lg">
+                              <span className="text-[10px] text-emerald-600 block font-bold">Ventas Efectivo</span>
+                              <span className="font-mono font-bold text-emerald-800">Q {Number(s.cashTotal || s.cash_total || 0).toFixed(2)}</span>
+                            </div>
+                            <div className="bg-blue-50 p-2 rounded-lg">
+                              <span className="text-[10px] text-blue-600 block font-bold">Efectivo Esperado</span>
+                              <span className="font-mono font-bold text-blue-800">Q {Number(s.expectedCash || 0).toFixed(2)}</span>
+                            </div>
+                            <div className="bg-slate-900 text-white p-2 rounded-lg">
+                              <span className="text-[10px] text-slate-300 block font-bold">Total Bruto</span>
+                              <span className="font-mono font-bold text-white">Q {Number(s.grand_total || 0).toFixed(2)}</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handlePrintShiftClosure();
+                                setShowMobilePreview(false);
+                              }}
+                              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all"
+                            >
+                              <Printer className="w-4 h-4 stroke-[2.5]" />
+                              <span>REIMPRIMIR TICKET DE CIERRE (Z)</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowMobilePreview(false);
+                                setShowShiftTicketModal(true);
+                              }}
+                              className="w-full py-2.5 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Ver Ticket Completo en Pantalla</span>
+                            </button>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            </m.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 3. BOTTOM FIXED STATUS BAR (Oculto en móvil para no tapar la pantalla) */}
+      <footer className="hidden sm:flex fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-slate-200 px-4 py-2 items-center justify-between gap-2 text-[11px] text-slate-500 font-medium">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           <span>Sistema POS Online v4.8</span>

@@ -37,15 +37,18 @@ import {
   ExternalLink,
   Trash2,
   LogOut,
-  Lock
+  Lock,
+  ArrowUpRight,
+  ArrowDownLeft,
+  DollarSign
 } from 'lucide-react';
 
 const METHOD_CONFIG = {
-  cash:     { label: 'Efectivo',         icon: Coins,       bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200' },
-  card:     { label: 'Tarjeta POS',      icon: CreditCard,  bg: 'bg-purple-50',   text: 'text-purple-700',   border: 'border-purple-200' },
-  transfer: { label: 'Transferencia/QR', icon: Landmark,    bg: 'bg-blue-50',     text: 'text-blue-700',     border: 'border-blue-200' },
-  cxc:      { label: 'Cuentas x Cobrar', icon: Receipt,     bg: 'bg-amber-50',    text: 'text-amber-700',    border: 'border-amber-200' },
-  other:    { label: 'Otro',             icon: PiggyBank,   bg: 'bg-gray-50',     text: 'text-gray-700',     border: 'border-gray-200' },
+  cash:     { label: 'Efectivo',         icon: Coins,       bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200', barBg: 'bg-emerald-500' },
+  card:     { label: 'Tarjeta POS',      icon: CreditCard,  bg: 'bg-purple-50',   text: 'text-purple-700',   border: 'border-purple-200',  barBg: 'bg-purple-500' },
+  transfer: { label: 'Transferencia/QR', icon: Landmark,    bg: 'bg-blue-50',     text: 'text-blue-700',     border: 'border-blue-200',    barBg: 'bg-blue-500' },
+  cxc:      { label: 'Cuentas x Cobrar', icon: Receipt,     bg: 'bg-amber-50',    text: 'text-amber-700',    border: 'border-amber-200',   barBg: 'bg-amber-500' },
+  other:    { label: 'Otro',             icon: PiggyBank,   bg: 'bg-gray-50',     text: 'text-gray-700',     border: 'border-gray-200',    barBg: 'bg-gray-400' },
 };
 
 export function ShiftsPage({ onBack }) {
@@ -439,101 +442,140 @@ export function ShiftsPage({ onBack }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/70 pb-24 text-slate-800 antialiased">
-      {/* 1. TOP HEADER */}
+    <div className="min-h-screen bg-slate-50/70 pb-24 text-slate-800 antialiased w-full max-w-full overflow-x-hidden">
+      {/* 1. TOP HEADER - MOBILE RESPONSIVE */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200/80 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
-          {/* Left Title & Status */}
-          <div className="flex items-center gap-3">
-            <BackButton
-              onClick={onBack}
-              label="Volver"
-              title="Regresar"
-            />
-            <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-xl font-bold tracking-tight text-slate-900">Gestión de Turnos</h1>
-                {currentShift ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    Turno Activo • Caja #{String(currentShift.id || '1').padStart(2, '0')}
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                    Caja Cerrada
-                  </span>
-                )}
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3.5">
+          {/* Main Top Row */}
+          <div className="flex items-center justify-between gap-2 sm:gap-4">
+            {/* Left: BackButton + Title */}
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <BackButton
+                onClick={onBack}
+                label="Volver"
+                title="Regresar"
+              />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-base sm:text-xl font-bold tracking-tight text-slate-900 truncate">
+                    Gestión de Turnos
+                  </h1>
+                  {/* Desktop status badge */}
+                  <div className="hidden sm:inline-flex items-center">
+                    {currentShift ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        Turno Activo • Caja #{String(currentShift.id || '1').padStart(2, '0')}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+                        Caja Cerrada
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[11px] sm:text-xs text-slate-500 hidden sm:block">Control de arqueo, pre-cierre y balance en tiempo real</p>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">Control de arqueo, pre-cierre y balance en tiempo real</p>
+            </div>
+
+            {/* Right: Center Selector, Profile & Actions */}
+            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+              {/* Desktop Center Selector */}
+              <div className="relative hidden md:block">
+                <div className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 transition-colors">
+                  <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
+                  <div className="text-left">
+                    <div className="text-[10px] uppercase font-semibold text-slate-400 leading-none">Centro de Operación</div>
+                    <select
+                      value={selectedCenter || ''}
+                      onChange={(e) => setSelectedCenter(Number(e.target.value))}
+                      className="bg-transparent text-sm font-semibold text-slate-800 pr-5 focus:outline-none cursor-pointer"
+                    >
+                      {centers.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Refresh Button */}
+              {currentShift && (
+                <button
+                  onClick={() => loadShiftData(selectedCenter, true)}
+                  disabled={refreshing}
+                  className="p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 transition-colors shrink-0"
+                  title="Actualizar balance en tiempo real"
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-blue-600' : ''}`} />
+                </button>
+              )}
+
+              {/* Desktop User Profile Pill */}
+              <div 
+                onClick={logout}
+                title="Clic para Cerrar Sesión / Salir (PIN)"
+                className="hidden sm:flex items-center gap-2.5 bg-slate-50 hover:bg-red-50/70 hover:border-red-200 border border-slate-200 rounded-xl pl-2 pr-3 py-1.5 transition-all cursor-pointer group"
+              >
+                <div className="w-8 h-8 rounded-full bg-blue-600 group-hover:bg-red-600 text-white font-bold text-xs flex items-center justify-center shadow-xs transition-colors">
+                  {user?.full_name ? user.full_name.split(' ').map(n => n[0]).slice(0, 2).join('') : 'CS'}
+                </div>
+                <div className="text-left">
+                  <div className="text-xs font-semibold text-slate-900 group-hover:text-red-700 leading-tight transition-colors">{user?.full_name || 'Carlos Samalaj'}</div>
+                  <div className="text-[11px] text-slate-500">
+                    {user?.role === 'superadmin' ? 'Superadministrador' : user?.role === 'admin' ? 'Administrador' : user?.role === 'manager' ? 'Gerente' : 'Cajero'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Botón Salir (PIN) */}
+              <button
+                onClick={logout}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition-all shadow-2xs shrink-0 cursor-pointer"
+                title="Cerrar sesión / Salir (PIN)"
+              >
+                <LogOut className="w-4 h-4 text-red-600" />
+                <span className="hidden md:inline">Salir (PIN)</span>
+              </button>
             </div>
           </div>
 
-          {/* Right Center Selector & Cashier Profile */}
-          <div className="flex items-center gap-3">
-            {/* Center Selector */}
-            <div className="relative">
-              <div className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 transition-colors">
-                <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
-                <div className="text-left">
-                  <div className="text-[10px] uppercase font-semibold text-slate-400 leading-none">Centro de Operación</div>
-                  <select
-                    value={selectedCenter || ''}
-                    onChange={(e) => setSelectedCenter(Number(e.target.value))}
-                    className="bg-transparent text-sm font-semibold text-slate-800 pr-5 focus:outline-none cursor-pointer"
-                  >
-                    {centers.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Refresh Button */}
-            {currentShift && (
-              <button
-                onClick={() => loadShiftData(selectedCenter, true)}
-                disabled={refreshing}
-                className="p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 transition-colors"
-                title="Actualizar balance en tiempo real"
+          {/* Mobile Sub-Header Bar: Center Selector + Shift Status */}
+          <div className="flex md:hidden items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100 text-xs">
+            {/* Center Selector Mobile */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 max-w-[55%]">
+              <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <select
+                value={selectedCenter || ''}
+                onChange={(e) => setSelectedCenter(Number(e.target.value))}
+                className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none w-full truncate cursor-pointer"
               >
-                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-blue-600' : ''}`} />
-              </button>
-            )}
-
-            {/* User Profile Pill */}
-            <div 
-              onClick={logout}
-              title="Clic para Cerrar Sesión / Salir (PIN)"
-              className="flex items-center gap-2.5 bg-slate-50 hover:bg-red-50/70 hover:border-red-200 border border-slate-200 rounded-xl pl-2 pr-3 py-1.5 transition-all cursor-pointer group"
-            >
-              <div className="w-8 h-8 rounded-full bg-blue-600 group-hover:bg-red-600 text-white font-bold text-xs flex items-center justify-center shadow-xs transition-colors">
-                {user?.full_name ? user.full_name.split(' ').map(n => n[0]).slice(0, 2).join('') : 'CS'}
-              </div>
-              <div className="text-left">
-                <div className="text-xs font-semibold text-slate-900 group-hover:text-red-700 leading-tight transition-colors">{user?.full_name || 'Carlos Samalaj'}</div>
-                <div className="text-[11px] text-slate-500">
-                  {user?.role === 'superadmin' ? 'Superadministrador' : user?.role === 'admin' ? 'Administrador' : user?.role === 'manager' ? 'Gerente' : 'Cajero'} • {new Date().toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' })}
-                </div>
-              </div>
+                {centers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
             </div>
 
-            {/* Botón Salir (PIN) */}
-            <button
-              onClick={logout}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition-all shadow-2xs shrink-0 cursor-pointer"
-              title="Cerrar sesión / Cambiar de PIN"
-            >
-              <LogOut className="w-4 h-4 text-red-600" />
-              <span className="hidden sm:inline">Salir (PIN)</span>
-            </button>
+            {/* Shift Status Mobile */}
+            <div className="shrink-0">
+              {currentShift ? (
+                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Turno #{String(currentShift.id || '1').padStart(2, '0')} (Abierto)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                  Caja Cerrada
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-6">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-5 space-y-4 sm:space-y-6">
         {loading && !refreshing ? (
-          <div className="flex flex-col items-center justify-center py-24 text-slate-400">
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
             <Loader2 className="w-10 h-10 animate-spin text-blue-600 mb-3" />
             <p className="text-sm font-medium">Cargando estado del turno y arqueo...</p>
           </div>
@@ -542,71 +584,185 @@ export function ShiftsPage({ onBack }) {
           /* CASO 1: TURNO ACTIVO - INTERFAZ DE PRE-CIERRE, ARQUEO Y BALANCE EN TIEMPO REAL */
           /* ========================================================================= */
           <>
-            {/* 2. TOP BANNER: SESIÓN DE CAJA ABIERTA */}
+            {/* 2. TOP BANNER: SESIÓN DE CAJA ABIERTA & ACTIVIDAD */}
             <m.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4"
+              className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-3.5 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4"
             >
-              <div className="flex items-center gap-3.5">
-                <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0">
-                  <CheckCircle className="w-6 h-6 text-emerald-600" />
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0">
+                  <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold text-slate-900">Sesión de Caja Abierta</h2>
-                    <span className="text-xs font-mono font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-sm sm:text-base font-bold text-slate-900 truncate">Sesión de Caja Abierta</h2>
+                    <span className="text-[11px] sm:text-xs font-mono font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
                       ID #TRN-{currentShift.id}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">
                     Iniciado hoy a las {safeFormatLocaleTime(shiftDates.openedAt, '08:30 AM')} por {user?.full_name || 'Carlos Samalaj'} • {selectedCenterName}
                   </p>
                 </div>
               </div>
 
-              {/* Badges de Actividad */}
-              <div className="flex items-center gap-3">
-                <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2 text-right">
-                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Tiempo de Actividad</div>
-                  <div className="text-base font-extrabold text-slate-800">{getElapsedTime(shiftDates.openedAt)}</div>
+              {/* Badges de Actividad (Grid 2 cols en mobile para prevenir desborde) */}
+              <div className="grid grid-cols-2 gap-2 w-full sm:w-auto shrink-0 pt-1 sm:pt-0 border-t sm:border-0 border-slate-100">
+                <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-center sm:text-right">
+                  <div className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-400">Actividad</div>
+                  <div className="text-sm sm:text-base font-extrabold text-slate-800">{getElapsedTime(shiftDates.openedAt)}</div>
                 </div>
-                <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2 text-right">
-                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Total Transacciones</div>
-                  <div className="text-base font-extrabold text-slate-800">{totalChecksNum} operaciones</div>
+                <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-center sm:text-right">
+                  <div className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-400">Transacciones</div>
+                  <div className="text-sm sm:text-base font-extrabold text-slate-800">{totalChecksNum} ops</div>
                 </div>
               </div>
             </m.div>
 
-            {/* 3. MAIN GRID 2 COLUMNS */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* BARRA DE ACCIÓN RÁPIDA (TOUCH FRIENDLY) PARA MOBILE & DESKTOP */}
+            <div className="grid grid-cols-2 gap-2.5 sm:hidden">
+              <button
+                onClick={() => handlePrint('X')}
+                className="py-3 px-3 bg-white active:bg-slate-100 text-slate-800 border-2 border-slate-200 rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all"
+              >
+                <FileText className="w-4 h-4 text-blue-600" />
+                <span>Arqueo Parcial (X)</span>
+              </button>
+
+              {hasPermission('shifts.close') && (
+                <button
+                  onClick={() => setShowConfirmClose(true)}
+                  className="py-3 px-3 bg-gradient-to-r from-rose-600 to-red-600 active:from-rose-700 active:to-red-700 text-white rounded-xl font-bold text-xs shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <StopCircle className="w-4 h-4 text-white" />
+                  <span>Cerrar Turno (Z)</span>
+                </button>
+              )}
+            </div>
+
+            {/* 3. BENTO GRID DE MÉTRICAS FINANCIERAS (GRID 2x2 ERGONÓMICO EN MOBILE) */}
+            <section className="space-y-1.5">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Métricas de Turno en Vivo
+                </span>
+                <span className="text-[11px] font-semibold text-blue-600 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+                  Tiempo Real
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+                {/* Fondo Inicial */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-3.5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Fondo Inicial</span>
+                    <Wallet className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-lg sm:text-2xl font-extrabold text-slate-900 tracking-tight truncate">
+                      Q {openingCashNum.toFixed(2)}
+                    </div>
+                    <span className="text-[10px] text-slate-400">Apertura gaveta</span>
+                  </div>
+                </div>
+
+                {/* Ventas Totales */}
+                <div className="bg-white rounded-2xl border border-blue-200/80 shadow-xs p-3.5 flex flex-col justify-between bg-gradient-to-br from-white to-blue-50/30">
+                  <div className="flex items-center justify-between text-blue-600">
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Ventas Brutas</span>
+                    <ShoppingBag className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-lg sm:text-2xl font-extrabold text-blue-700 tracking-tight truncate">
+                      Q {grandTotalNum.toFixed(2)}
+                    </div>
+                    <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold text-[10px]">
+                      {totalChecksNum} pedidos
+                    </span>
+                  </div>
+                </div>
+
+                {/* Efectivo Esperado */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-3.5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Esperado en Caja</span>
+                    <Coins className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-lg sm:text-2xl font-extrabold text-slate-900 tracking-tight truncate">
+                      Q {expectedCashNum.toFixed(2)}
+                    </div>
+                    <span className="text-[10px] text-slate-400 truncate block">Fondo + Efectivo - Gastos</span>
+                  </div>
+                </div>
+
+                {/* Diferencia / Cuadre */}
+                <div className={`rounded-2xl border shadow-xs p-3.5 flex flex-col justify-between ${
+                  cashDiff === null
+                    ? 'bg-white border-slate-200/80 text-slate-600'
+                    : cashDiff === 0
+                    ? 'bg-emerald-50/70 border-emerald-200 text-emerald-800'
+                    : cashDiff > 0
+                    ? 'bg-blue-50/70 border-blue-200 text-blue-800'
+                    : 'bg-rose-50/70 border-rose-200 text-rose-800'
+                }`}>
+                  <div className="flex items-center justify-between opacity-80">
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Diferencia</span>
+                    <CheckCircle className="w-4 h-4" />
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-lg sm:text-2xl font-extrabold tracking-tight truncate">
+                      {cashDiff === null ? '---' : `${cashDiff >= 0 ? '+' : ''}Q ${cashDiff.toFixed(2)}`}
+                    </div>
+                    <span className="text-[10px] font-semibold truncate block mt-0.5">
+                      {cashDiff === null
+                        ? 'Pendiente arqueo'
+                        : cashDiff === 0
+                        ? 'Cuadre Exacto'
+                        : cashDiff > 0
+                        ? 'Sobrante en caja'
+                        : 'Faltante en caja'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* 4. MAIN GRID 2 COLUMNS */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-start w-full">
               {/* LEFT COLUMN: ARQUEO FÍSICO Y PRE-CIERRE (Col 7 / 12) */}
-              <div className="lg:col-span-7 space-y-6">
+              <div className="lg:col-span-7 space-y-5 sm:space-y-6 w-full min-w-0">
                 {/* CARD 1: EFECTIVO CONTADO AL CERRAR */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                        <Wallet className="w-5 h-5" />
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-6 w-full">
+                  <div className="flex items-center justify-between mb-3.5">
+                    <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                      <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                        <Wallet className="w-4 h-4 sm:w-5 sm:h-5" />
                       </div>
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900">Efectivo Contado al Cerrar</h3>
-                        <p className="text-xs text-slate-500">Realiza el arqueo físico de billetes y monedas en el cajón de dinero</p>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-bold text-slate-900 truncate">Efectivo Físico en Caja</h3>
+                        <p className="text-[11px] sm:text-xs text-slate-500 truncate">Arqueo físico de billetes y monedas en gaveta</p>
                       </div>
                     </div>
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1.5">
-                      <Coins className="w-3.5 h-3.5 text-slate-500" />
-                      Desglose de Billetes
-                    </span>
+                    <button
+                      type="button"
+                      onClick={handleResetCount}
+                      className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 flex items-center gap-1 shrink-0 transition-colors"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span className="hidden sm:inline">Limpiar</span> Conteo
+                    </button>
                   </div>
 
                   {/* DISPLAY TOTAL EFECTIVO FÍSICO */}
                   <div className="space-y-1.5 mb-3">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      Total Efectivo Físico en Caja
+                    <label className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Monto Total Físico Contado
                     </label>
                     <div className="relative flex items-center">
-                      <span className="absolute left-4 text-2xl font-bold text-slate-400">Q</span>
+                      <span className="absolute left-3.5 text-xl sm:text-2xl font-bold text-slate-400">Q</span>
                       <input
                         type="number"
                         step="0.01"
@@ -614,32 +770,37 @@ export function ShiftsPage({ onBack }) {
                         value={closingCash}
                         onChange={(e) => setClosingCash(e.target.value)}
                         placeholder="0.00"
-                        className="w-full pl-11 pr-28 py-3.5 bg-slate-50/60 border-2 border-slate-200 focus:border-blue-500 focus:bg-white rounded-2xl text-3xl font-extrabold text-slate-900 focus:outline-none transition-all tracking-tight"
+                        className="w-full pl-9 sm:pl-11 pr-24 py-3 sm:py-3.5 bg-slate-50/70 border-2 border-slate-200 focus:border-blue-500 focus:bg-white rounded-2xl text-2xl sm:text-3xl font-extrabold text-slate-900 focus:outline-none transition-all tracking-tight"
                       />
                       <button
                         type="button"
                         onClick={handleResetCount}
-                        className="absolute right-3 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors shadow-2xs"
+                        className="absolute right-2.5 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors shadow-2xs"
                       >
                         Recontar
                       </button>
                     </div>
-                    <p className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1">
-                      <AlertCircle className="w-3.5 h-3.5 text-blue-500" />
-                      Ingresa el monto exacto antes de continuar. Puedes ayudarte con el desglose por denominación.
+                    <p className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-0.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                      <span>Ingresa el monto directo o utiliza el desglose por denominación.</span>
                     </p>
                   </div>
 
                   {/* CONTEO RÁPIDO POR DENOMINACIÓN (QUETZALES) */}
-                  <div className="mt-5 pt-4 border-t border-slate-100">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3">
-                      Conteo Rápido por Denominación (Quetzales)
+                  <div className="mt-4 pt-3.5 border-t border-slate-100">
+                    <div className="flex items-center justify-between mb-2.5">
+                      <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        Desglose de Billetes y Monedas
+                      </div>
+                      <span className="text-[10px] text-slate-400">Calculado en vivo</span>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+
+                    {/* Matrix de 2 columnas en mobile, 3 en sm, 6 en desktop */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
                       {/* Q200 */}
-                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5">
-                        <div className="text-[11px] font-semibold text-slate-600 mb-1">Billetes Q200</div>
-                        <div className="flex items-center gap-1.5">
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2">
+                        <div className="text-[10px] font-semibold text-slate-600 mb-1">Billetes Q200</div>
+                        <div className="flex items-center gap-1">
                           <span className="text-xs text-slate-400 font-bold">×</span>
                           <input
                             type="number"
@@ -647,18 +808,18 @@ export function ShiftsPage({ onBack }) {
                             placeholder="0"
                             value={denominations.q200}
                             onChange={(e) => handleDenominationChange('q200', e.target.value)}
-                            className="w-full py-1 px-2 text-center text-sm font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                            className="w-full py-1 px-1 text-center text-xs font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                           />
                         </div>
-                        <div className="text-right text-[11px] font-bold text-slate-800 mt-1">
-                          Q {((Number(denominations.q200) || 0) * 200).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <div className="text-right text-[10px] font-bold text-slate-800 mt-1 truncate">
+                          Q {((Number(denominations.q200) || 0) * 200).toFixed(2)}
                         </div>
                       </div>
 
                       {/* Q100 */}
-                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5">
-                        <div className="text-[11px] font-semibold text-slate-600 mb-1">Billetes Q100</div>
-                        <div className="flex items-center gap-1.5">
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2">
+                        <div className="text-[10px] font-semibold text-slate-600 mb-1">Billetes Q100</div>
+                        <div className="flex items-center gap-1">
                           <span className="text-xs text-slate-400 font-bold">×</span>
                           <input
                             type="number"
@@ -666,18 +827,18 @@ export function ShiftsPage({ onBack }) {
                             placeholder="0"
                             value={denominations.q100}
                             onChange={(e) => handleDenominationChange('q100', e.target.value)}
-                            className="w-full py-1 px-2 text-center text-sm font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                            className="w-full py-1 px-1 text-center text-xs font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                           />
                         </div>
-                        <div className="text-right text-[11px] font-bold text-slate-800 mt-1">
-                          Q {((Number(denominations.q100) || 0) * 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <div className="text-right text-[10px] font-bold text-slate-800 mt-1 truncate">
+                          Q {((Number(denominations.q100) || 0) * 100).toFixed(2)}
                         </div>
                       </div>
 
                       {/* Q50 */}
-                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5">
-                        <div className="text-[11px] font-semibold text-slate-600 mb-1">Billetes Q50</div>
-                        <div className="flex items-center gap-1.5">
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2">
+                        <div className="text-[10px] font-semibold text-slate-600 mb-1">Billetes Q50</div>
+                        <div className="flex items-center gap-1">
                           <span className="text-xs text-slate-400 font-bold">×</span>
                           <input
                             type="number"
@@ -685,18 +846,18 @@ export function ShiftsPage({ onBack }) {
                             placeholder="0"
                             value={denominations.q50}
                             onChange={(e) => handleDenominationChange('q50', e.target.value)}
-                            className="w-full py-1 px-2 text-center text-sm font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                            className="w-full py-1 px-1 text-center text-xs font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                           />
                         </div>
-                        <div className="text-right text-[11px] font-bold text-slate-800 mt-1">
-                          Q {((Number(denominations.q50) || 0) * 50).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <div className="text-right text-[10px] font-bold text-slate-800 mt-1 truncate">
+                          Q {((Number(denominations.q50) || 0) * 50).toFixed(2)}
                         </div>
                       </div>
 
-                      {/* Q20 / Q10 / Q5 */}
-                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5">
-                        <div className="text-[11px] font-semibold text-slate-600 mb-1">Billetes Q20</div>
-                        <div className="flex items-center gap-1.5">
+                      {/* Q20 */}
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2">
+                        <div className="text-[10px] font-semibold text-slate-600 mb-1">Billetes Q20</div>
+                        <div className="flex items-center gap-1">
                           <span className="text-xs text-slate-400 font-bold">×</span>
                           <input
                             type="number"
@@ -704,19 +865,57 @@ export function ShiftsPage({ onBack }) {
                             placeholder="0"
                             value={denominations.q20}
                             onChange={(e) => handleDenominationChange('q20', e.target.value)}
-                            className="w-full py-1 px-2 text-center text-sm font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                            className="w-full py-1 px-1 text-center text-xs font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                           />
                         </div>
-                        <div className="text-right text-[11px] font-bold text-slate-800 mt-1">
-                          Q {((Number(denominations.q20) || 0) * 20).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <div className="text-right text-[10px] font-bold text-slate-800 mt-1 truncate">
+                          Q {((Number(denominations.q20) || 0) * 20).toFixed(2)}
+                        </div>
+                      </div>
+
+                      {/* Q10 */}
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2">
+                        <div className="text-[10px] font-semibold text-slate-600 mb-1">Billetes Q10</div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-slate-400 font-bold">×</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={denominations.q10}
+                            onChange={(e) => handleDenominationChange('q10', e.target.value)}
+                            className="w-full py-1 px-1 text-center text-xs font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div className="text-right text-[10px] font-bold text-slate-800 mt-1 truncate">
+                          Q {((Number(denominations.q10) || 0) * 10).toFixed(2)}
+                        </div>
+                      </div>
+
+                      {/* Q5 */}
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2">
+                        <div className="text-[10px] font-semibold text-slate-600 mb-1">Billetes Q5</div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-slate-400 font-bold">×</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={denominations.q5}
+                            onChange={(e) => handleDenominationChange('q5', e.target.value)}
+                            className="w-full py-1 px-1 text-center text-xs font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div className="text-right text-[10px] font-bold text-slate-800 mt-1 truncate">
+                          Q {((Number(denominations.q5) || 0) * 5).toFixed(2)}
                         </div>
                       </div>
                     </div>
 
                     {/* Monedas y total desglose */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 mt-3 pt-3 border-t border-slate-100 text-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mt-3 pt-3 border-t border-slate-100 text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-600 font-medium">Monedas y fraccionario sumados:</span>
+                        <span className="text-slate-600 font-medium">Monedas sumadas:</span>
                         <div className="relative inline-flex items-center">
                           <span className="absolute left-2 font-bold text-slate-400">Q</span>
                           <input
@@ -730,7 +929,7 @@ export function ShiftsPage({ onBack }) {
                           />
                         </div>
                       </div>
-                      <div className="font-bold text-blue-700 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">
+                      <div className="font-bold text-blue-700 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100 text-right">
                         Total Desglose: Q {closingCash || '0.00'}
                       </div>
                     </div>
@@ -738,58 +937,60 @@ export function ShiftsPage({ onBack }) {
                 </div>
 
                 {/* CARD 2: PRE-CIERRE Y BALANCE DE CAJA */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-6 w-full">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                     <div>
                       <h3 className="text-base font-bold text-slate-900">Pre-Cierre y Balance de Caja</h3>
                       <p className="text-xs text-slate-500">Comparativa automática entre lo registrado por sistema y el arqueo real</p>
                     </div>
 
                     {/* BADGE DE CUADRE */}
-                    {cashDiff === null ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                        Ingresa conteo físico
-                      </span>
-                    ) : cashDiff === 0 ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                        Cuadre Exacto (Diferencia: Q 0.00)
-                      </span>
-                    ) : cashDiff > 0 ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                        <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
-                        Sobrante en Caja (+Q {cashDiff.toFixed(2)})
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                        Faltante en Caja (-Q {Math.abs(cashDiff).toFixed(2)})
-                      </span>
-                    )}
+                    <div className="shrink-0">
+                      {cashDiff === null ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                          Ingresa conteo físico
+                        </span>
+                      ) : cashDiff === 0 ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          Cuadre Exacto (Q 0.00)
+                        </span>
+                      ) : cashDiff > 0 ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                          <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
+                          Sobrante (+Q {cashDiff.toFixed(2)})
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                          Faltante (-Q {Math.abs(cashDiff).toFixed(2)})
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  {/* 3 METRIC CARDS */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-6">
+                  {/* 3 METRIC CARDS EN 1 COLUMNA EN MOBILE */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3.5 mb-5">
                     {/* Esperado en Sistema */}
-                    <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4">
+                    <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-3.5 sm:p-4">
                       <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">Esperado en Sistema</div>
-                      <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                      <div className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight truncate">
                         Q {expectedCashNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
-                      <div className="text-[11px] text-slate-500 mt-1">Fondo + Ventas - Egresos</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">Fondo + Ventas - Egresos</div>
                     </div>
 
                     {/* Contado en Caja */}
-                    <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-4">
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-3.5 sm:p-4">
                       <div className="text-[10px] uppercase font-bold tracking-wider text-blue-600 mb-1">Contado en Caja</div>
-                      <div className="text-2xl font-extrabold text-blue-700 tracking-tight">
+                      <div className="text-xl sm:text-2xl font-extrabold text-blue-700 tracking-tight truncate">
                         {closingCashNum !== null ? `Q ${closingCashNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '---'}
                       </div>
-                      <div className="text-[11px] text-blue-600/80 mt-1">Monto físico reportado</div>
+                      <div className="text-[11px] text-blue-600/80 mt-0.5">Monto físico reportado</div>
                     </div>
 
                     {/* Diferencia Final */}
-                    <div className={`border rounded-2xl p-4 ${
+                    <div className={`border rounded-2xl p-3.5 sm:p-4 ${
                       cashDiff === null
                         ? 'bg-slate-50 border-slate-200 text-slate-600'
                         : cashDiff === 0
@@ -799,24 +1000,62 @@ export function ShiftsPage({ onBack }) {
                         : 'bg-rose-50/60 border-rose-200 text-rose-800'
                     }`}>
                       <div className="text-[10px] uppercase font-bold tracking-wider opacity-75 mb-1">Diferencia Final</div>
-                      <div className="text-2xl font-extrabold tracking-tight">
+                      <div className="text-xl sm:text-2xl font-extrabold tracking-tight truncate">
                         {cashDiff === null ? '---' : `${cashDiff >= 0 ? '+' : ''}Q ${cashDiff.toFixed(2)}`}
                       </div>
-                      <div className="text-[11px] opacity-80 mt-1">
+                      <div className="text-[11px] opacity-80 mt-0.5">
                         {cashDiff === null
                           ? 'Pendiente de conteo'
                           : cashDiff === 0
                           ? 'Sin sobrantes ni faltantes'
                           : cashDiff > 0
-                          ? 'Efectivo sobrante reportado'
-                          : 'Efectivo faltante reportado'}
+                          ? 'Efectivo sobrante'
+                          : 'Efectivo faltante'}
                       </div>
+                    </div>
+                  </div>
+
+                  {/* DESGLOSE POR FORMAS DE PAGO (INSPIRADO EN STITCH MCP) */}
+                  <div className="mb-5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Desglose de Formas de Pago
+                      </span>
+                      <span className="text-[11px] text-slate-400">Total Q {grandTotalNum.toFixed(2)}</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {[
+                        { key: 'cash', label: 'Efectivo', total: cashTotalNum, icon: Coins, barColor: 'bg-emerald-500' },
+                        { key: 'card', label: 'Tarjetas POS', total: cardTotalNum, icon: CreditCard, barColor: 'bg-purple-500' },
+                        { key: 'transfer', label: 'Transferencia / QR', total: transferTotalNum, icon: Landmark, barColor: 'bg-blue-500' },
+                        { key: 'cxc', label: 'Cuentas x Cobrar', total: cxcTotalNum, icon: Receipt, barColor: 'bg-amber-500' },
+                      ].filter(m => m.total > 0 || m.key === 'cash').map(item => {
+                        const Icon = item.icon;
+                        const pct = grandTotalNum > 0 ? ((item.total / grandTotalNum) * 100).toFixed(0) : 0;
+                        return (
+                          <div key={item.key} className="bg-slate-50/80 rounded-xl p-2.5 border border-slate-200/60">
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                                <Icon className="w-3.5 h-3.5 text-slate-500" />
+                                <span>{item.label}</span>
+                              </div>
+                              <div className="font-extrabold text-slate-900">
+                                Q {item.total.toFixed(2)} <span className="text-[11px] text-slate-400 font-normal ml-1">({pct}%)</span>
+                              </div>
+                            </div>
+                            <div className="w-full bg-slate-200/70 h-1.5 rounded-full overflow-hidden">
+                              <div className={`${item.barColor} h-full rounded-full transition-all`} style={{ width: `${pct}%` }}></div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
                   {/* DESGLOSE DE MOVIMIENTOS DEL TURNO */}
                   <div className="space-y-3 pt-2">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
                         Desglose de Movimientos del Turno
                       </div>
@@ -829,91 +1068,91 @@ export function ShiftsPage({ onBack }) {
                       </button>
                     </div>
 
-                    <div className="divide-y divide-slate-100 text-sm">
+                    <div className="divide-y divide-slate-100 text-xs sm:text-sm">
                       {/* Efectivo Inicial */}
-                      <div className="py-2.5 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                          <span>Efectivo Inicial en Caja (Fondo de apertura)</span>
+                      <div className="py-2.5 flex items-center justify-between gap-2 min-w-0">
+                        <div className="flex items-center gap-2 text-slate-600 min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
+                          <span className="truncate">Fondo de apertura inicial</span>
                         </div>
-                        <span className="font-bold text-slate-900">
+                        <span className="font-bold text-slate-900 shrink-0">
                           Q {openingCashNum.toFixed(2)}
                         </span>
                       </div>
 
                       {/* Ventas en Efectivo */}
-                      <div className="py-2.5 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                          <span>Ventas en Efectivo (+ Cobros registrados)</span>
+                      <div className="py-2.5 flex items-center justify-between gap-2 min-w-0">
+                        <div className="flex items-center gap-2 text-slate-600 min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                          <span className="truncate">Ventas en Efectivo (+ Cobros)</span>
                         </div>
-                        <span className="font-bold text-emerald-600">
+                        <span className="font-bold text-emerald-600 shrink-0">
                           + Q {cashTotalNum.toFixed(2)}
                         </span>
                       </div>
 
                       {/* Retiros de Caja Chica */}
-                      <div className="py-2.5 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                          <span>Retiros de Caja chica / Gastos autorizados</span>
+                      <div className="py-2.5 flex items-center justify-between gap-2 min-w-0">
+                        <div className="flex items-center gap-2 text-slate-600 min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span>
+                          <span className="truncate">Retiros de Caja chica / Gastos</span>
                         </div>
-                        <span className="font-bold text-rose-600">
+                        <span className="font-bold text-rose-600 shrink-0">
                           - Q {expensesTotalNum.toFixed(2)}
                         </span>
                       </div>
 
                       {/* Efectivo Teórico Esperado */}
-                      <div className="py-3 flex items-center justify-between font-bold bg-slate-50/70 px-3 rounded-xl mt-1">
-                        <span className="text-slate-800">Efectivo Teórico Total Esperado en Caja</span>
-                        <span className="text-slate-900 text-base">
+                      <div className="py-2.5 sm:py-3 flex items-center justify-between gap-2 font-bold bg-slate-50/70 px-2.5 sm:px-3 rounded-xl mt-1">
+                        <span className="text-slate-800 text-xs sm:text-sm truncate">Efectivo Teórico Total en Gaveta</span>
+                        <span className="text-slate-900 text-sm sm:text-base shrink-0">
                           Q {expectedCashNum.toFixed(2)}
                         </span>
                       </div>
 
                       {/* Ventas con Tarjeta */}
-                      <div className="py-2.5 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                          <span>Ventas con Tarjeta Crédito / Débito (POS BAC/Visa)</span>
+                      <div className="py-2.5 flex items-center justify-between gap-2 min-w-0">
+                        <div className="flex items-center gap-2 text-slate-600 min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0"></span>
+                          <span className="truncate">Tarjetas POS (Crédito / Débito)</span>
                         </div>
-                        <span className="font-bold text-slate-900">
+                        <span className="font-bold text-slate-900 shrink-0">
                           Q {cardTotalNum.toFixed(2)}
                         </span>
                       </div>
 
                       {/* Transferencias & QR */}
-                      <div className="py-2.5 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                          <span>Transferencias Bancarias & QR Pagos</span>
+                      <div className="py-2.5 flex items-center justify-between gap-2 min-w-0">
+                        <div className="flex items-center gap-2 text-slate-600 min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
+                          <span className="truncate">Transferencias Bancarias & QR</span>
                         </div>
-                        <span className="font-bold text-slate-900">
+                        <span className="font-bold text-slate-900 shrink-0">
                           Q {transferTotalNum.toFixed(2)}
                         </span>
                       </div>
 
-                      {/* Otras formas de pago si aplican (CxC, etc.) */}
+                      {/* CxC si aplica */}
                       {cxcTotalNum > 0 && (
-                        <div className="py-2.5 flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-slate-600">
-                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                            <span>Cuentas por Cobrar (CxC / Crédito)</span>
+                        <div className="py-2.5 flex items-center justify-between gap-2 min-w-0">
+                          <div className="flex items-center gap-2 text-slate-600 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
+                            <span className="truncate">Cuentas por Cobrar (Crédito)</span>
                           </div>
-                          <span className="font-bold text-slate-900">
+                          <span className="font-bold text-slate-900 shrink-0">
                             Q {cxcTotalNum.toFixed(2)}
                           </span>
                         </div>
                       )}
                     </div>
 
-                    {/* BANNER OSCURO TOTAL VENTAS BRUTAS */}
-                    <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 flex items-center justify-between mt-4 shadow-sm">
+                    {/* BANNER TOTAL VENTAS BRUTAS */}
+                    <div className="bg-slate-900 text-white rounded-2xl p-3.5 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-4 shadow-sm">
                       <div>
-                        <div className="text-xs uppercase tracking-wider font-semibold text-slate-400">Total Ventas Brutas del Turno</div>
-                        <div className="text-xs text-slate-400 mt-0.5">{totalChecksNum} cuentas pagadas en este turno</div>
+                        <div className="text-[11px] sm:text-xs uppercase tracking-wider font-semibold text-slate-400">Total Ventas Brutas del Turno</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">{totalChecksNum} cuentas pagadas en este turno</div>
                       </div>
-                      <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400 tracking-tight">
+                      <div className="text-xl sm:text-3xl font-extrabold text-emerald-400 tracking-tight">
                         Q {grandTotalNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                     </div>
@@ -922,40 +1161,40 @@ export function ShiftsPage({ onBack }) {
               </div>
 
               {/* RIGHT COLUMN: RENDIMIENTO, ADVERTENCIA, FLUJO Y BOTONES (Col 5 / 12) */}
-              <div className="lg:col-span-5 space-y-6">
+              <div className="lg:col-span-5 space-y-5 sm:space-y-6 w-full min-w-0">
                 {/* RENDIMIENTO DEL TURNO */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6 space-y-4">
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-6 space-y-3.5">
                   <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
                     Rendimiento del Turno
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5">
-                      <div className="text-xs text-slate-500 mb-1">Ticket Promedio</div>
-                      <div className="text-xl font-extrabold text-slate-900">
+                  <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 sm:p-3.5">
+                      <div className="text-[11px] sm:text-xs text-slate-500 mb-1">Ticket Promedio</div>
+                      <div className="text-lg sm:text-xl font-extrabold text-slate-900 truncate">
                         Q {averageTicketNum.toFixed(2)}
                       </div>
                     </div>
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5">
-                      <div className="text-xs text-slate-500 mb-1">Artículos Vendidos</div>
-                      <div className="text-xl font-extrabold text-slate-900">
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 sm:p-3.5">
+                      <div className="text-[11px] sm:text-xs text-slate-500 mb-1">Artículos Vendidos</div>
+                      <div className="text-lg sm:text-xl font-extrabold text-slate-900 truncate">
                         {itemsSoldNum} items
                       </div>
                     </div>
                   </div>
 
                   {/* ADVERTENCIA DE CIERRE IRREVERSIBLE */}
-                  <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 flex gap-3 text-amber-900">
+                  <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3.5 sm:p-4 flex gap-2.5 sm:gap-3 text-amber-900">
                     <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div className="text-xs leading-relaxed">
                       <strong className="font-bold block text-amber-950 mb-0.5">Cierre Irreversible</strong>
-                      Al efectuar el cierre definitivo (Cierre Z), se imprimirá la tira de auditoría fiscal y se deshabilitará la caja para este cajero.
+                      Al efectuar el cierre definitivo (Corte Z), se imprimirá la tira de auditoría fiscal y se deshabilitará la caja para este cajero.
                     </div>
                   </div>
                 </div>
 
-                {/* FLUJO DE TRABAJO SUGERIDO */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6">
+                {/* FLUJO DE TRABAJO SUGERIDO (COLAPSIBLE O COMPACTO) */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-6 hidden sm:block">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                       Flujo de Trabajo Sugerido
@@ -965,56 +1204,43 @@ export function ShiftsPage({ onBack }) {
                     </span>
                   </div>
 
-                  <div className="space-y-3.5 text-xs">
-                    {/* Paso 1 */}
-                    <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-xs">
-                        ✓
-                      </div>
+                  <div className="space-y-3 text-xs">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-xs">✓</div>
                       <div>
                         <div className="font-bold text-slate-900">1. Arqueo de Apertura</div>
-                        <p className="text-slate-500 mt-0.5">Se validó el fondo de caja inicial de Q {openingCashNum.toFixed(2)}</p>
+                        <p className="text-slate-500 mt-0.5">Fondo validado: Q {openingCashNum.toFixed(2)}</p>
                       </div>
                     </div>
 
-                    {/* Paso 2 */}
-                    <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-xs">
-                        ✓
-                      </div>
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-xs">✓</div>
                       <div>
                         <div className="font-bold text-slate-900">2. Operación y Cobros</div>
-                        <p className="text-slate-500 mt-0.5">{totalChecksNum} transacciones completadas sin notas pendientes</p>
+                        <p className="text-slate-500 mt-0.5">{totalChecksNum} transacciones registradas</p>
                       </div>
                     </div>
 
-                    {/* Paso 3 (Actual) */}
-                    <div className="flex items-start gap-3 bg-blue-50/60 p-2.5 rounded-xl border border-blue-100">
-                      <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0 font-bold text-xs">
-                        3
-                      </div>
+                    <div className="flex items-start gap-2.5 bg-blue-50/60 p-2.5 rounded-xl border border-blue-100">
+                      <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0 font-bold text-xs">3</div>
                       <div>
                         <div className="font-bold text-blue-900">3. Conteo Físico de Cierre</div>
-                        <p className="text-blue-700/80 mt-0.5">Ingresar el dinero en caja y contrastar contra el esperado.</p>
+                        <p className="text-blue-700/80 mt-0.5">Ingresar dinero en gaveta y contrastar contra esperado.</p>
                       </div>
                     </div>
 
-                    {/* Paso 4 */}
-                    <div className="flex items-start gap-3 opacity-60">
-                      <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center shrink-0 font-bold text-xs">
-                        4
-                      </div>
+                    <div className="flex items-start gap-2.5 opacity-60">
+                      <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center shrink-0 font-bold text-xs">4</div>
                       <div>
                         <div className="font-bold text-slate-700">4. Cierre Z y Bloqueo</div>
-                        <p className="text-slate-500 mt-0.5">Emisión de reporte fiscal y entrega al supervisor.</p>
+                        <p className="text-slate-500 mt-0.5">Emisión de reporte fiscal definitivo.</p>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* BOTONES DE ACCIÓN: CORTE X & CIERRE Z */}
+                {/* BOTONES DE ACCIÓN DESKTOP: CORTE X & CIERRE Z */}
                 <div className="space-y-3 pt-1">
-                  {/* Vista Previa de Corte (X) */}
                   <button
                     onClick={() => handlePrint('X')}
                     className="w-full py-3.5 px-4 bg-white hover:bg-slate-50 text-slate-800 border-2 border-slate-200 rounded-2xl font-bold text-sm shadow-xs flex items-center justify-center gap-2.5 transition-all active:scale-[0.99]"
@@ -1023,7 +1249,6 @@ export function ShiftsPage({ onBack }) {
                     Vista Previa de Corte (X)
                   </button>
 
-                  {/* Finalizar y Cerrar Turno (Cierre Z) - Solo con permiso shifts.close */}
                   {hasPermission('shifts.close') && (
                     <button
                       onClick={() => setShowConfirmClose(true)}
@@ -1035,19 +1260,20 @@ export function ShiftsPage({ onBack }) {
                   )}
 
                   <div className="text-center text-[11px] text-slate-400">
-                    Atajo de teclado: <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono text-[10px]">Ctrl + Z</kbd> para confirmación
+                    Atajo de teclado: <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono text-[10px]">Ctrl + Z</kbd>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* 4. RECTIFICACIÓN Y DETALLES DEL TURNO (PESTAÑAS) */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6 mt-6">
-              <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-3 mb-4 gap-2">
-                <div className="flex items-center gap-2">
+            {/* 5. RECTIFICACIÓN Y DETALLES DEL TURNO (PESTAÑAS RESPONSIVAS) */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-6 mt-6 w-full">
+              {/* Header de pestañas scrollable horizontalmente */}
+              <div className="border-b border-slate-100 pb-3 mb-4">
+                <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 scrollbar-none no-scrollbar flex-nowrap w-full">
                   <button
                     onClick={() => setActiveTab('accounts')}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 ${
+                    className={`px-3 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                       activeTab === 'accounts'
                         ? 'bg-blue-50 text-blue-700 border border-blue-200'
                         : 'text-slate-600 hover:bg-slate-100'
@@ -1059,20 +1285,20 @@ export function ShiftsPage({ onBack }) {
 
                   <button
                     onClick={() => setActiveTab('expenses')}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 ${
+                    className={`px-3 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                       activeTab === 'expenses'
                         ? 'bg-rose-50 text-rose-700 border border-rose-200'
                         : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
                     <Coins className="w-4 h-4" />
-                    Retiros de Caja Chica ({s.expenses?.length || 0})
+                    Retiros de Caja ({s.expenses?.length || 0})
                   </button>
 
                   {(s.openAccounts?.length || 0) > 0 && (
                     <button
                       onClick={() => setActiveTab('open_accounts')}
-                      className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 ${
+                      className={`px-3 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                         activeTab === 'open_accounts'
                           ? 'bg-amber-50 text-amber-700 border border-amber-200'
                           : 'text-amber-700 bg-amber-50/50 hover:bg-amber-100/50'
@@ -1086,7 +1312,7 @@ export function ShiftsPage({ onBack }) {
                   {(s.voidedItems?.length || 0) > 0 && (
                     <button
                       onClick={() => setActiveTab('voided')}
-                      className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 ${
+                      className={`px-3 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                         activeTab === 'voided'
                           ? 'bg-slate-100 text-slate-800'
                           : 'text-slate-600 hover:bg-slate-100'
@@ -1098,8 +1324,8 @@ export function ShiftsPage({ onBack }) {
                   )}
                 </div>
 
-                <div className="text-xs text-slate-400">
-                  Revisa y rectifica los cobros antes de realizar el Cierre Z
+                <div className="text-[11px] sm:text-xs text-slate-400 mt-2">
+                  Revisa y rectifica los cobros antes de realizar el Cierre Z definitivo.
                 </div>
               </div>
 
@@ -1111,25 +1337,25 @@ export function ShiftsPage({ onBack }) {
                   ) : (
                     <div className="divide-y divide-slate-100">
                       {s.paidAccounts.map((account) => {
-                        // Find matching payments detail
                         const payments = (s.paymentsDetail || []).filter(p => p.account_id === account.id);
                         return (
-                          <div key={account.id} className="py-3 flex flex-wrap items-center justify-between gap-3 hover:bg-slate-50/60 px-2 rounded-xl transition-colors">
-                            <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-xl bg-slate-100 font-mono font-bold text-slate-800 flex items-center justify-center text-xs">
+                          <div key={account.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-slate-50/60 px-2 rounded-xl transition-colors">
+                            {/* Top / Left Account info */}
+                            <div className="flex items-start gap-2.5 min-w-0">
+                              <div className="w-9 h-9 rounded-xl bg-slate-100 font-mono font-bold text-slate-800 flex items-center justify-center text-xs shrink-0 mt-0.5 sm:mt-0">
                                 #{account.check_number}
                               </div>
-                              <div>
-                                <div className="flex items-center gap-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-bold text-sm text-slate-900">Cuenta #{account.check_number}</span>
-                                  <span className="text-xs text-slate-500">• Mesero: {account.waiter_name || 'General'}</span>
+                                  <span className="text-xs text-slate-500">• {account.waiter_name || 'General'}</span>
                                   {account.closed_at && (
                                     <span className="text-[11px] text-slate-400">
                                       {safeFormatLocaleTime(account.closed_at, '')}
                                     </span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2 mt-1">
+                                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                                   {payments.map((p, idx) => (
                                     <span key={idx} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
                                       <span className="font-bold uppercase">{p.method}:</span> Q{Number(p.amount).toFixed(2)}
@@ -1139,13 +1365,13 @@ export function ShiftsPage({ onBack }) {
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-3">
-                              <span className="text-base font-extrabold text-slate-900">
+                            {/* Bottom / Right Total & Action Buttons */}
+                            <div className="flex items-center justify-between sm:justify-end gap-2.5 pt-1.5 sm:pt-0 border-t sm:border-0 border-slate-100">
+                              <span className="text-base font-extrabold text-slate-900 shrink-0">
                                 Q {Number(account.total).toFixed(2)}
                               </span>
 
-                              {/* Action buttons */}
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 shrink-0">
                                 {payments.length > 0 && (
                                   <button
                                     onClick={() => setChangePaymentModal({
@@ -1160,7 +1386,7 @@ export function ShiftsPage({ onBack }) {
                                     title="Rectificar si se cobró en Efectivo, Tarjeta o Transferencia"
                                   >
                                     <CreditCard className="w-3.5 h-3.5" />
-                                    Cambiar Pago
+                                    <span>Cambiar</span>
                                   </button>
                                 )}
 
@@ -1175,7 +1401,7 @@ export function ShiftsPage({ onBack }) {
                                   title="Reabrir la orden para modificar platillos"
                                 >
                                   <RefreshCw className="w-3.5 h-3.5" />
-                                  Reabrir Cuenta
+                                  <span>Reabrir</span>
                                 </button>
                               </div>
                             </div>
@@ -1189,7 +1415,7 @@ export function ShiftsPage({ onBack }) {
 
               {activeTab === 'expenses' && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between pb-2">
+                  <div className="flex items-center justify-between pb-2 flex-wrap gap-2">
                     <span className="text-xs text-slate-500">
                       Gastos y retiros efectuados de la caja chica durante el turno actual.
                     </span>
@@ -1207,14 +1433,14 @@ export function ShiftsPage({ onBack }) {
                   ) : (
                     <div className="divide-y divide-slate-100">
                       {s.expenses.map((expense) => (
-                        <div key={expense.id} className="py-2.5 flex items-center justify-between">
-                          <div>
-                            <div className="font-bold text-sm text-slate-900">{expense.reason}</div>
-                            <div className="text-xs text-slate-500">
+                        <div key={expense.id} className="py-2.5 flex items-center justify-between gap-2 min-w-0">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm text-slate-900 truncate">{expense.reason}</div>
+                            <div className="text-xs text-slate-500 truncate">
                               Autorizado por: {expense.authorizer_name || 'Supervisor'} • {safeFormatLocaleTime(expense.created_at, '---')}
                             </div>
                           </div>
-                          <span className="text-base font-extrabold text-rose-600">
+                          <span className="text-base font-extrabold text-rose-600 shrink-0">
                             - Q {Number(expense.amount).toFixed(2)}
                           </span>
                         </div>
@@ -1233,12 +1459,12 @@ export function ShiftsPage({ onBack }) {
 
                   <div className="divide-y divide-slate-100">
                     {(s.openAccounts || []).map((account) => (
-                      <div key={account.id} className="py-2.5 flex items-center justify-between">
-                        <div>
+                      <div key={account.id} className="py-2.5 flex items-center justify-between gap-2 min-w-0">
+                        <div className="min-w-0">
                           <div className="font-bold text-sm text-slate-900">Cuenta #{account.check_number}</div>
-                          <div className="text-xs text-slate-500">Mesero: {account.waiter_name || '---'}</div>
+                          <div className="text-xs text-slate-500 truncate">Mesero: {account.waiter_name || '---'}</div>
                         </div>
-                        <span className="text-sm font-bold text-amber-700">
+                        <span className="text-sm font-bold text-amber-700 shrink-0">
                           Q {Number(account.total).toFixed(2)}
                         </span>
                       </div>
@@ -1251,13 +1477,13 @@ export function ShiftsPage({ onBack }) {
                 <div className="space-y-2">
                   <div className="divide-y divide-slate-100">
                     {(s.voidedItems || []).map((v, i) => (
-                      <div key={i} className="py-2 flex items-center justify-between text-xs">
-                        <div>
+                      <div key={i} className="py-2 flex items-center justify-between text-xs gap-2 min-w-0">
+                        <div className="min-w-0 truncate">
                           <span className="font-mono text-slate-500 font-bold">#{v.check_number}</span>
                           <span className="text-slate-800 font-medium ml-2">{v.product_name}</span>
                           {v.void_reason && <span className="text-slate-400 italic ml-2">({v.void_reason})</span>}
                         </div>
-                        <span className="text-rose-600 font-bold">-Q {Number(v.line_total).toFixed(2)}</span>
+                        <span className="text-rose-600 font-bold shrink-0">-Q {Number(v.line_total).toFixed(2)}</span>
                       </div>
                     ))}
                   </div>
@@ -1269,17 +1495,17 @@ export function ShiftsPage({ onBack }) {
           /* ========================================================================= */
           /* CASO 2: SIN TURNO ACTIVO - PANTALLA MODERNA DE APERTURA DE TURNO          */
           /* ========================================================================= */
-          <div className="max-w-xl mx-auto py-8">
+          <div className="max-w-xl mx-auto py-4 sm:py-8 w-full">
             <m.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-6"
+              className="bg-white rounded-3xl border border-slate-200/80 shadow-md p-5 sm:p-8 space-y-5 sm:space-y-6 w-full"
             >
               <div className="text-center space-y-2">
-                <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center mx-auto shadow-xs">
-                  <Wallet className="w-8 h-8" />
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center mx-auto shadow-xs">
+                  <Wallet className="w-7 h-7 sm:w-8 sm:h-8" />
                 </div>
-                <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Apertura de Turno de Caja</h2>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Apertura de Turno de Caja</h2>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
                   Inicia la sesión de caja en {selectedCenterName} registrando el fondo inicial de cambio
                 </p>
@@ -1320,13 +1546,13 @@ export function ShiftsPage({ onBack }) {
                     />
                   </div>
                   {/* Botones rápidos de fondo */}
-                  <div className="flex gap-2 mt-2">
+                  <div className="grid grid-cols-4 gap-2 mt-2">
                     {[100, 200, 300, 500].map(amt => (
                       <button
                         key={amt}
                         type="button"
                         onClick={() => setOpeningCash(amt.toString())}
-                        className="flex-1 py-1 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors"
+                        className="py-1.5 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors"
                       >
                         +Q{amt}
                       </button>
@@ -1349,12 +1575,12 @@ export function ShiftsPage({ onBack }) {
                 </div>
               </div>
 
-              {/* Botón Abrir Turno - Solo con permiso shifts.open */}
+              {/* Botón Abrir Turno */}
               {hasPermission('shifts.open') ? (
                 <button
                   onClick={handleOpenShift}
                   disabled={loading || !selectedCenter}
-                  className="w-full py-4 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-base shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-50"
+                  className="w-full py-3.5 sm:py-4 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-base shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-50"
                 >
                   {loading ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -1392,12 +1618,12 @@ export function ShiftsPage({ onBack }) {
       {/* ========================================================================= */}
       <AnimatePresence>
         {showExpenseModal && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
             <m.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-5"
+              className="bg-white rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 sm:space-y-5"
             >
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2 text-rose-600">
@@ -1491,12 +1717,12 @@ export function ShiftsPage({ onBack }) {
       {/* ========================================================================= */}
       <AnimatePresence>
         {changePaymentModal.open && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
             <m.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-5"
+              className="bg-white rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 sm:space-y-5"
             >
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2 text-blue-600">
@@ -1544,7 +1770,7 @@ export function ShiftsPage({ onBack }) {
                           key={opt.code}
                           type="button"
                           onClick={() => setChangePaymentModal({ ...changePaymentModal, newMethod: opt.code })}
-                          className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1 ${
+                          className={`p-2.5 sm:p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1 ${
                             selected
                               ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold shadow-2xs'
                               : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -1616,17 +1842,17 @@ export function ShiftsPage({ onBack }) {
       {/* ========================================================================= */}
       <AnimatePresence>
         {reopenModal.open && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
             <m.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-5"
+              className="bg-white rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 sm:space-y-5"
             >
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2 text-rose-600">
                   <RefreshCw className="w-5 h-5" />
-                  <h3 className="font-bold text-base text-slate-900">Reabrir Cuenta #{reopenModal.account?.check_number}</h3>
+                  <h3 className="font-bold text-base text-slate-900 truncate">Reabrir Cuenta #{reopenModal.account?.check_number}</h3>
                 </div>
                 <button
                   onClick={() => setReopenModal({ ...reopenModal, open: false })}
@@ -1700,26 +1926,26 @@ export function ShiftsPage({ onBack }) {
       {/* ========================================================================= */}
       <AnimatePresence>
         {showConfirmClose && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
             <m.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border border-slate-100 text-center space-y-4"
+              className="bg-white rounded-3xl w-full max-w-sm max-h-[90vh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-slate-100 text-center space-y-4"
             >
-              <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
-                <AlertTriangle className="w-7 h-7 text-rose-600" />
+              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+                <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 text-rose-600" />
               </div>
 
               <div>
-                <h3 className="text-lg font-bold text-slate-900">¿Finalizar y Cerrar Turno?</h3>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900">¿Finalizar y Cerrar Turno?</h3>
                 <p className="text-xs text-slate-500 mt-1">
                   Se emitirá la tira final de auditoría (Corte Z) y la caja quedará inhabilitada. Esta acción es irreversible.
                 </p>
               </div>
 
               {/* Resumen de cuadre */}
-              <div className="bg-slate-50 rounded-2xl p-3.5 text-xs text-left space-y-1.5 border border-slate-100">
+              <div className="bg-slate-50 rounded-2xl p-3 sm:p-3.5 text-xs text-left space-y-1.5 border border-slate-100">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Esperado en Sistema:</span>
                   <span className="font-bold text-slate-900">Q {expectedCashNum.toFixed(2)}</span>
@@ -1743,14 +1969,14 @@ export function ShiftsPage({ onBack }) {
               <div className="flex gap-2.5 pt-2">
                 <button
                   onClick={() => setShowConfirmClose(false)}
-                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm rounded-xl transition-colors"
+                  className="flex-1 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm rounded-xl transition-colors"
                 >
                   Regresar
                 </button>
                 <button
                   onClick={confirmCloseShift}
                   disabled={loading}
-                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-xl transition-colors shadow-xs flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 sm:py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-xl transition-colors shadow-xs flex items-center justify-center gap-1.5"
                 >
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirmar Cierre'}
                 </button>

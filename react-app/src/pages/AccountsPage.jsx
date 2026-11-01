@@ -5,6 +5,7 @@ import { useToast } from '../hooks/useToast';
 import api from '../api';
 import { BackButton } from '../components/BackButton';
 import { printPrecheckThermal } from '../utils/printReceipts';
+import { executePrecheckPrint } from '../utils/precheckPrinter';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { formatElapsedTime, safeMinutesSince, safeFormatLocaleTime } from '../utils/dateUtils';
 import { 
@@ -31,7 +32,7 @@ import {
 } from 'lucide-react';
 
 export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
-  const { user, logout } = useAuth();
+  const { user, logout, selectedTerminal, businessProfile: authProfile } = useAuth();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState('open'); // 'open' | 'closed'
   const [accounts, setAccounts] = useState([]);
@@ -231,15 +232,14 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
   const handlePrint = async (accountId) => {
     setPrinting(accountId);
     try {
-      const data = await api.printPrecheck(accountId);
-      printPrecheckThermal({
-        account: data.account,
-        items: data.items,
-        businessProfile
+      await executePrecheckPrint({
+        accountId,
+        selectedTerminal,
+        businessProfile: businessProfile || authProfile,
+        toast,
       });
-      toast.success('Precuenta enviada a imprimir');
-    } catch (err) {
-      toast.error('Error al imprimir precuenta');
+    } catch (_) {
+      // Notificado por toast dentro de executePrecheckPrint
     } finally {
       setPrinting(null);
     }
@@ -284,24 +284,25 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
     return `${hrs}h ${mins}m`;
   }, [accounts]);
 
-  // Dynamic Salones / Areas from open accounts
+  // Dynamic Areas from open accounts (sincronizado con el filtro de Mis Mesas)
+  const baseAccountsForAreas = useMemo(() => {
+    if (filterMyTables && user?.id) {
+      return accounts.filter((a) => a.waiter_id === user.id);
+    }
+    return accounts;
+  }, [accounts, filterMyTables, user]);
+
   const areaGroups = useMemo(() => {
     const map = {};
-    accounts.forEach((a) => {
-      let areaKey = a.area_name || a.center_name || 'Salón Principal';
-      const prefixMatch = (a.table_code || '').match(/^([A-Za-z]+)/);
-      const prefix = prefixMatch ? prefixMatch[1] : '';
-      let displayLabel = areaKey;
-      if (prefix && !areaKey.toLowerCase().includes(prefix.toLowerCase())) {
-        displayLabel = `${areaKey} - ${prefix}`;
+    baseAccountsForAreas.forEach((a) => {
+      const areaLabel = a.area_name || 'Área Principal';
+      if (!map[areaLabel]) {
+        map[areaLabel] = { key: areaLabel, label: areaLabel, count: 0 };
       }
-      if (!map[displayLabel]) {
-        map[displayLabel] = { key: displayLabel, label: displayLabel, count: 0 };
-      }
-      map[displayLabel].count += 1;
+      map[areaLabel].count += 1;
     });
     return Object.values(map);
-  }, [accounts]);
+  }, [baseAccountsForAreas]);
 
   const myAccountsCount = useMemo(() => {
     return accounts.filter((a) => a.waiter_id === user?.id).length;
@@ -321,21 +322,15 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
         }
       }
 
-      // 2. Salón / Area Filter
+      // 2. Area Filter
       if (selectedArea !== 'ALL') {
-        let areaKey = account.area_name || account.center_name || 'Salón Principal';
-        const prefixMatch = (account.table_code || '').match(/^([A-Za-z]+)/);
-        const prefix = prefixMatch ? prefixMatch[1] : '';
-        let displayLabel = areaKey;
-        if (prefix && !areaKey.toLowerCase().includes(prefix.toLowerCase())) {
-          displayLabel = `${areaKey} - ${prefix}`;
-        }
-        if (displayLabel !== selectedArea) {
+        const areaLabel = account.area_name || 'Área Principal';
+        if (areaLabel !== selectedArea) {
           return false;
         }
       }
 
-      // 3. Mis Mesas / Todo el Salón
+      // 3. Mis Mesas / Todas las Áreas
       if (filterMyTables && user?.id) {
         if (account.waiter_id !== user.id) {
           return false;
@@ -624,10 +619,10 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
 
         {/* Filters Row */}
         <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
-          {/* Left: Salón Pills */}
+          {/* Left: Área Pills */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full scrollbar-none">
             <span className="text-xs font-bold text-slate-400 mr-1 flex-shrink-0">
-              Salón:
+              Área:
             </span>
             <button
               onClick={() => setSelectedArea('ALL')}
@@ -637,7 +632,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                   : 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200/90'
               }`}
             >
-              Todas ({accounts.length})
+              Todas ({baseAccountsForAreas.length})
             </button>
             {areaGroups.map((group) => (
               <button
@@ -678,7 +673,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                Todo el Salón
+                Todas las Áreas
               </button>
             </div>
           </div>

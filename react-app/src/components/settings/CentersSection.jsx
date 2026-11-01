@@ -92,7 +92,7 @@ export function CentersSection({ centers, onReload }) {
             {centers.length} {centers.length === 1 ? 'centro de consumo' : 'centros de consumo'}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Administra los centros de venta, salones y puntos operativos de tu negocio
+            Administra los centros de venta, áreas y puntos operativos de tu negocio
           </p>
         </div>
         <button

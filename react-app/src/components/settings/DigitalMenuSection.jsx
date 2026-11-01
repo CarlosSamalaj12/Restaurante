@@ -429,7 +429,7 @@ export function DigitalMenuSection({ authUser }) {
         ? 'Se habilitará la licencia premium del Menú Digital, Auto-Comanda (QR/NFC) y Kiosco. Los administradores podrán gestionar cartas y los comensales ordenar desde sus mesas.'
         : 'Al desactivar el módulo, los comensales no podrán acceder a las cartas públicas ni generar pedidos por QR o Kiosco.',
       itemName: nextState ? 'Módulo: Menú Digital, Auto-Comanda & Kiosco' : 'Desactivación de Licencia',
-      itemDetail: nextState ? 'Acceso: Superadmin, Administradores y Encargados' : 'Bloqueo para comensales en salón',
+      itemDetail: nextState ? 'Acceso: Superadmin, Administradores y Encargados' : 'Bloqueo para comensales en áreas / mesas',
       variant: nextState ? 'success' : 'warning',
       confirmText: nextState ? 'Activar Módulo Ahora' : 'Desactivar Módulo',
       loading: false,
@@ -551,7 +551,7 @@ export function DigitalMenuSection({ authUser }) {
       title: 'Renovar Código QR de Mesa',
       message: 'Se generará una nueva firma criptográfica HMAC anti-suplantación. El código QR físico anterior dejará de funcionar inmediatamente.',
       itemName: table ? `Mesa ${table.tableCode}` : 'Mesa del Restaurante',
-      itemDetail: table ? `Área: ${table.areaName || 'Salón Principal'}` : '',
+      itemDetail: table ? `Área: ${table.areaName || 'Área Principal'}` : '',
       variant: 'warning',
       confirmText: 'Renovar Código QR',
       loading: false,
@@ -617,7 +617,7 @@ export function DigitalMenuSection({ authUser }) {
                 return `
                 <div class="card">
                   <div class="table-badge">MESA ${table.tableCode}</div>
-                  <div class="area-name">${table.areaName || 'Salón Principal'}</div>
+                  <div class="area-name">${table.areaName || 'Área Principal'}</div>
                   <img class="qr-img" src="${qrImg}" alt="QR Mesa ${table.tableCode}" />
                   <div class="cta">📱 ESCANEA PARA ORDENAR</div>
                   <div class="sub-cta">Descubre el menú, ordena y pide la cuenta desde tu mesa</div>

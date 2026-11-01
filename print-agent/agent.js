@@ -7,7 +7,7 @@ const http = require("http");
 const https = require("https");
 const { io } = require("socket.io-client");
 const net = require("net");
-const { buildKitchenTicket, buildCustomerReceipt, buildTestPage } = require("./builders");
+const { buildKitchenTicket, buildCustomerReceipt, buildPrecheckTicket, buildTestPage } = require("./builders");
 
 // ───────── Bloqueo de Instancia Única ─────────
 // Evita que se abran múltiples agentes en la misma computadora que dupliquen tickets
@@ -200,6 +200,11 @@ async function executePrintJob(job) {
       payload.receipt || {},
       payload.restaurant || {},
       payload.copyInfo || null
+    );
+  } else if (jobType === "precheck") {
+    builder = buildPrecheckTicket(
+      payload.data || payload,
+      payload.businessProfile || {}
     );
   } else if (jobType === "test") {
     builder = buildTestPage(

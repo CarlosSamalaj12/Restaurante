@@ -576,7 +576,7 @@ export function SalesByUserReportPage({ onBack }) {
                             {u.user_name}
                           </div>
                           <div className="text-[10px] text-slate-500 font-semibold">
-                            {u.user_role || 'Mesero'} · {u.center_name || 'Salón Principal'}
+                            {u.user_role || 'Mesero'} · {u.center_name || 'Área Principal'}
                           </div>
                         </div>
                       </div>
@@ -677,7 +677,7 @@ export function SalesByUserReportPage({ onBack }) {
               <thead className="bg-slate-100/90 text-slate-600 font-extrabold uppercase text-[10px] tracking-wider sticky top-0 z-10 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3">Mesero</th>
-                  <th className="px-4 py-3">Salón</th>
+                  <th className="px-4 py-3">Área / Centro</th>
                   <th className="px-4 py-3">Platillo / Producto</th>
                   <th className="px-4 py-3 text-center">Cuenta</th>
                   <th className="px-4 py-3 text-center">Fecha</th>

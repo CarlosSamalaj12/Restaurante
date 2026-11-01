@@ -484,7 +484,7 @@ function TerminalWizardModal({
 
                 <div>
                   <label className="block text-xs font-bold text-indigo-950 mb-1">
-                    Centro de Consumo KDS (Filtro de salón)
+                    Centro de Consumo KDS (Filtro de área)
                   </label>
                   <select
                     value={form.kdsOperationCenterId}

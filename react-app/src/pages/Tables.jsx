@@ -8,6 +8,7 @@ import { playNewOrderChime, playCallWaiterChime } from '../utils/soundAlerts';
 import { MacDock } from '../components/MacDock';
 import { BackButton } from '../components/BackButton';
 import { printPrecheckThermal } from '../utils/printReceipts';
+import { executePrecheckPrint } from '../utils/precheckPrinter';
 import {
   ArrowLeft,
   Users,
@@ -377,15 +378,14 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
     e.stopPropagation();
     setPrintingId(accountId);
     try {
-      const data = await api.printPrecheck(accountId);
-      printPrecheckThermal({
-        account: data.account,
-        items: data.items,
-        businessProfile
+      await executePrecheckPrint({
+        accountId,
+        selectedTerminal,
+        businessProfile,
+        toast,
       });
-      toast.success('Pre-cuenta enviada a imprimir');
-    } catch (error) {
-      toast.error(error.message || 'Error al imprimir pre-cuenta');
+    } catch (_) {
+      // Notificado por toast dentro de executePrecheckPrint
     } finally {
       setPrintingId(null);
     }
@@ -468,7 +468,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
             </div>
           </div>
 
-          {/* Fila Secundaria: Badges en móvil + Filtro de Salones con Scroll Horizontal */}
+          {/* Fila Secundaria: Badges en móvil + Filtro de Áreas con Scroll Horizontal */}
           <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100/80 overflow-x-auto scrollbar-hide py-0.5">
             {/* Badges de estado visibles en móvil */}
             <div className="flex md:hidden items-center gap-1.5 shrink-0">
@@ -485,7 +485,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
             {/* Separador vertical sutil en móvil */}
             <div className="md:hidden w-px h-5 bg-gray-200 shrink-0" />
 
-            {/* Pista de selección de centros / salones */}
+            {/* Pista de selección de centros / áreas */}
             {canSwitchCenters ? (
               <div className="flex items-center bg-gray-100 p-0.5 sm:p-1 rounded-xl gap-1 shrink-0">
                 <button
@@ -518,7 +518,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
                 <span>
                   {centers?.find((c) => c.id === selectedCenter)?.name ||
                     selectedTerminal?.center_name ||
-                    'Salón Asignado'}
+                    'Área Asignada'}
                 </span>
               </div>
             )}
@@ -1014,7 +1014,7 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 font-medium">
-                      <span>{activeTable.area_name || 'Salón Principal'}</span>
+                      <span>{activeTable.area_name || 'Área Principal'}</span>
                       <span className="text-gray-300">•</span>
                       <span>Total en mesa:</span>
                       <span className="font-extrabold text-amber-900 bg-amber-50 border border-amber-200/70 px-2 py-0.5 rounded-lg text-xs">

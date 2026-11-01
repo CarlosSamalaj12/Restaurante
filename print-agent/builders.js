@@ -312,8 +312,108 @@ function buildTestPage(target) {
   };
 }
 
+function buildPrecheckTicket(data, businessProfile = {}) {
+  return (printer) => {
+    const { account = {}, items = [], totals = {} } = data || {};
+    const subtitle = businessProfile?.business_subtitle || "POS RESTAURANTE & BAR";
+    const restaurantName = businessProfile?.restaurant_name || account?.center_name || "RESTAURANTE";
+    const address = businessProfile?.address || account?.center_name || "Ciudad de Guatemala";
+    const nit = businessProfile?.tax_id || businessProfile?.nit || "8492048-2";
+    const phone = businessProfile?.phone || "(502) 2345-6789";
+    const footerText = businessProfile?.receipt_footer || "¡Gracias por su preferencia!";
+
+    const checkNumber = account.check_number || `CHK-${String(account.id || '').padStart(4, '0')}`;
+    const tableName = account.table_code ? `Mesa ${account.table_code}` : (account.table_name || 'Mostrador / Barra');
+    const waiterName = account.waiter_name || 'Personal POS';
+    const nowStr = new Date().toLocaleString('es-GT');
+
+    const subtotal = totals.subtotal !== undefined
+      ? Number(totals.subtotal)
+      : items.reduce((sum, i) => sum + Number(i.line_total || (i.qty * (i.unit_price || 0)) || 0), 0);
+    const discount = Number(totals.discountTotal || totals.discount || 0);
+    const tip = Number(totals.tipAmount || (totals.tipPercent ? (subtotal * totals.tipPercent / 100) : (totals.tip || 0)));
+    const total = totals.total !== undefined ? Number(totals.total) : (subtotal - discount + tip);
+
+    printer
+      .align("ct")
+      .style("b")
+      .size(1, 1)
+      .text(restaurantName)
+      .style("normal")
+      .size(0, 0);
+
+    if (subtitle) printer.text(subtitle);
+    if (address) printer.text(address);
+    if (phone) printer.text(`Tel: ${phone}`);
+    if (nit) printer.text(`NIT: ${nit}`);
+    printer.text("================================");
+    printer
+      .style("b")
+      .text("*** PRE-CUENTA / ESTADO ***")
+      .text("DOCUMENTO DE CONTROL INTERNO")
+      .style("normal")
+      .text("NO ES FACTURA CONTABLE")
+      .text("--------------------------------");
+
+    printer.align("lt");
+    printer.text(`Comanda: #${checkNumber}`);
+    printer.text(`Mesa:    ${tableName}`);
+    printer.text(`Atiende: ${waiterName}`);
+    printer.text(`Fecha:   ${nowStr}`);
+    printer.text("--------------------------------");
+
+    for (const item of items) {
+      const qty = item.qty || 1;
+      const name = (item.product_name || item.name || "Producto").toUpperCase();
+      const lineTotal = Number(item.line_total || (qty * (item.unit_price || item.price || 0)) || 0).toFixed(2);
+      printer.text(`${qty}x ${name}`);
+      printer.align("rt").text(`Q ${lineTotal}`).align("lt");
+    }
+
+    printer.text("--------------------------------");
+    printer.text("Subtotal:");
+    printer.align("rt").text(`Q ${subtotal.toFixed(2)}`).align("lt");
+
+    if (discount > 0) {
+      printer.text("Descuento:");
+      printer.align("rt").text(`-Q ${discount.toFixed(2)}`).align("lt");
+    }
+    if (tip > 0) {
+      printer.text("Propina sugerida:");
+      printer.align("rt").text(`Q ${tip.toFixed(2)}`).align("lt");
+    }
+
+    printer
+      .style("b")
+      .text("TOTAL:")
+      .align("rt")
+      .size(1, 1)
+      .text(`Q ${total.toFixed(2)}`)
+      .size(0, 0)
+      .align("lt")
+      .style("normal");
+
+    printer
+      .text("================================")
+      .align("ct")
+      .text(footerText);
+
+    try {
+      if (typeof printer.cut === "function") {
+        printer.cut(false, 4);
+      } else {
+        printer.feed(4);
+        printer.raw(Buffer.from([0x1d, 0x56, 0x00]));
+      }
+    } catch (_) {}
+
+    return printer;
+  };
+}
+
 module.exports = {
   buildKitchenTicket,
   buildCustomerReceipt,
+  buildPrecheckTicket,
   buildTestPage,
 };

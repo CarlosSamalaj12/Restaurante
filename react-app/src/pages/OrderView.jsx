@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
   Send,
   MoreVertical,
   Check,
-  Loader2
+  Loader2,
+  Utensils,
+  ShoppingBag,
+  ChevronRight
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../hooks/useAuth';
@@ -33,6 +36,8 @@ export function OrderView({ accountId, tableCode, tableId, onBack, onNavigate })
   const [voidError, setVoidError] = useState('');
   const [currentSeat, setCurrentSeat] = useState(1);
   const [itemNotes, setItemNotes] = useState('');
+  const [mobileTab, setMobileTab] = useState('menu'); // 'menu' | 'order'
+  const [isSending, setIsSending] = useState(false);
   const toast = useToast();
 
   const {
@@ -56,7 +61,13 @@ export function OrderView({ accountId, tableCode, tableId, onBack, onNavigate })
     confirmVoidItem
   } = useOrderData(accountId);
 
+  const totalItemsCount = useMemo(() => {
+    return (items || []).reduce((acc, it) => acc + Number(it.quantity || it.qty || 1), 0);
+  }, [items]);
+
   const handleSendOrder = async () => {
+    if (isSending) return;
+    setIsSending(true);
     try {
       await api.sendOrder(accountId);
       toast.success('Pedido enviado ✓');
@@ -79,6 +90,8 @@ export function OrderView({ accountId, tableCode, tableId, onBack, onNavigate })
       }
     } catch (error) {
       toast.error(error.message || 'Error al enviar');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -213,7 +226,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack, onNavigate })
                 </span>
               </div>
               <p className="text-xs text-gray-400 mt-0.5">
-                {account?.operation_center_name || 'Salón'} · Silla activa: {currentSeat}
+                {account?.operation_center_name || 'Área Principal'} · Silla activa: {currentSeat}
               </p>
             </div>
           </div>
@@ -222,10 +235,11 @@ export function OrderView({ accountId, tableCode, tableId, onBack, onNavigate })
             <m.button
               whileTap={{ scale: 0.95 }}
               onClick={handleSendOrder}
-              className="px-3.5 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-sm font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
+              disabled={isSending || (items && items.length === 0)}
+              className="px-3.5 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-sm font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors disabled:opacity-50"
             >
-              <Send className="w-4 h-4" />
-              <span>Enviar</span>
+              {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              <span className="hidden sm:inline">Enviar</span>
             </m.button>
             <m.button
               whileTap={{ scale: 0.95 }}
@@ -237,62 +251,130 @@ export function OrderView({ accountId, tableCode, tableId, onBack, onNavigate })
             </m.button>
           </div>
         </div>
+
+        {/* Segmented Control Móvil (Catálogo vs Comanda) */}
+        <div className="lg:hidden flex items-center p-1.5 bg-slate-100/90 border-t border-gray-200">
+          <button
+            type="button"
+            onClick={() => setMobileTab('menu')}
+            className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              mobileTab === 'menu'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <Utensils className={`w-3.5 h-3.5 ${mobileTab === 'menu' ? 'text-emerald-600' : 'text-gray-400'}`} />
+            <span>Menú / Catálogo</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('order')}
+            className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              mobileTab === 'order'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <ShoppingBag className={`w-3.5 h-3.5 ${mobileTab === 'order' ? 'text-emerald-600' : 'text-gray-400'}`} />
+            <span>Comanda</span>
+            {totalItemsCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-emerald-600 text-white">
+                {totalItemsCount}
+              </span>
+            )}
+          </button>
+        </div>
       </m.header>
 
       <div className="flex flex-col lg:flex-row">
-        {/* Order Summary (Items & Totals) */}
-        <OrderItemsList
-          items={items}
-          account={account}
-          totals={totals}
-          updateItemQuantity={updateItemQuantity}
-          updateItemNotes={updateItemNotes}
-          handleVoidItem={handleVoidItem}
-          quickNotes={kitchenNotes}
-        />
+        {/* Order Summary (Items & Totals) - Móvil condicional por tab, Desktop siempre visible */}
+        <div className={`${mobileTab === 'order' ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0`}>
+          <OrderItemsList
+            items={items}
+            account={account}
+            totals={totals}
+            updateItemQuantity={updateItemQuantity}
+            updateItemNotes={updateItemNotes}
+            handleVoidItem={handleVoidItem}
+            quickNotes={kitchenNotes}
+            onSwitchToMenu={() => setMobileTab('menu')}
+            onSendOrder={handleSendOrder}
+            onPay={() => setShowPayment(true)}
+            sendingOrder={isSending}
+          />
+        </div>
 
-        {/* Products Panel */}
-        <CatalogGrid
-          centers={centers}
-          selectedCenter={selectedCenter}
-          setSelectedCenter={setSelectedCenter}
-          categories={categories}
-          selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
-          currentSeat={currentSeat}
-          setCurrentSeat={setCurrentSeat}
-          guestCount={account?.guest_count}
-          filteredProducts={filteredProducts}
-          handleAddItem={handleAddItem}
-          addingProductId={addingProductId}
-          items={items}
-        />
+        {/* Products Panel - Móvil condicional por tab, Desktop siempre visible */}
+        <div className={`${mobileTab === 'menu' ? 'block' : 'hidden'} lg:block flex-1 min-w-0`}>
+          <CatalogGrid
+            centers={centers}
+            selectedCenter={selectedCenter}
+            setSelectedCenter={setSelectedCenter}
+            categories={categories}
+            selectedCategory={selectedCategory}
+            setSelectedCategory={setSelectedCategory}
+            currentSeat={currentSeat}
+            setCurrentSeat={setCurrentSeat}
+            guestCount={account?.guest_count}
+            filteredProducts={filteredProducts}
+            handleAddItem={handleAddItem}
+            addingProductId={addingProductId}
+            items={items}
+          />
+        </div>
       </div>
 
-      {/* Bottom Pay Button (Mobile) - Solo visible con permiso payments.create */}
-      {hasPermission?.('payments.create') && (
-        <m.div 
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-gray-100 lg:hidden shadow-lg z-20"
-        >
-          <m.button
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setShowPayment(true)}
-            disabled={!totals.pending || totals.pending <= 0}
-            className={`
-              w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md
-              ${totals.pending > 0
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
-              }
-            `}
+      {/* Barra Flotante de Comanda (Solo Móvil en pestaña 'Menú') */}
+      <AnimatePresence>
+        {mobileTab === 'menu' && totalItemsCount > 0 && (
+          <m.div 
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            className="fixed bottom-3 left-3 right-3 z-30 lg:hidden"
           >
-            <Check className="w-4 h-4" />
-            Cobrar {currencySymbol} {Number(totals.pending || totals.total || 0).toFixed(2)}
-          </m.button>
-        </m.div>
-      )}
+            <div className="bg-gray-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-xl flex items-center justify-between border border-gray-800">
+              <button
+                type="button"
+                onClick={() => setMobileTab('order')}
+                className="flex items-center gap-3 text-left focus:outline-none cursor-pointer group"
+              >
+                <div className="relative p-2 rounded-xl bg-emerald-500/20 text-emerald-400 group-hover:bg-emerald-500/30 transition-colors">
+                  <ShoppingBag className="w-5 h-5" />
+                  <span className="absolute -top-1 -right-1 bg-emerald-500 text-gray-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                    {totalItemsCount}
+                  </span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1 text-[11px] text-gray-400 font-bold uppercase tracking-wider">
+                    <span>Ver Comanda</span>
+                    <ChevronRight className="w-3 h-3 text-gray-400" />
+                  </div>
+                  <span className="text-sm font-black text-white">
+                    {currencySymbol} {Number(totals.total || 0).toFixed(2)}
+                  </span>
+                </div>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <m.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleSendOrder}
+                  disabled={isSending}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-lg shadow-emerald-950/50 cursor-pointer transition-colors"
+                >
+                  {isSending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5" />
+                  )}
+                  <span>Enviar</span>
+                </m.button>
+              </div>
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
 
       {/* Desktop Pay Button - Solo visible con permiso payments.create */}
       {hasPermission?.('payments.create') && (
@@ -354,6 +436,7 @@ export function OrderView({ accountId, tableCode, tableId, onBack, onNavigate })
         addingItem={Boolean(addingProductId)}
         currencySymbol={currencySymbol}
         quickNotes={kitchenNotes}
+        currentSeat={currentSeat}
         onClose={() => setShowModifierModal(false)}
       />
 

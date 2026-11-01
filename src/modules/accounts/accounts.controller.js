@@ -33,7 +33,16 @@ const accountsController = {
   }),
 
   getAccountPrecheck: asyncHandler(async (req, res) => {
-    const result = await accountsService.getAccountPrecheck(req.params.accountId);
+    const terminalId = req.body?.terminalId || req.query?.terminalId || req.headers["x-terminal-id"];
+    const userId = req.user?.id;
+    const result = await accountsService.getAccountPrecheck(req.params.accountId, { terminalId, userId });
+    res.json(result);
+  }),
+
+  reprintAccount: asyncHandler(async (req, res) => {
+    const terminalId = req.body?.terminalId || req.query?.terminalId || req.headers["x-terminal-id"];
+    const userId = req.user?.id;
+    const result = await accountsService.reprintAccountReceipt(req.params.accountId, { terminalId, userId });
     res.json(result);
   }),
 
