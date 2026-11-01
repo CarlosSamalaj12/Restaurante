@@ -218,7 +218,7 @@ const catalogService = {
       centroProduccionExclusivoId,
       imageUrl: imageUrl || image_url || null,
       description: description || null,
-      estimatedPrepMin: estimatedPrepMin || estimated_prep_min || null,
+      estimatedPrepMin: (estimatedPrepMin || estimated_prep_min) ? Number(estimatedPrepMin || estimated_prep_min) : 15,
     });
     return { productId };
   },

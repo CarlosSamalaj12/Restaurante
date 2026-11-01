@@ -215,10 +215,10 @@ export function ProductionCentersSection({ productionCenters, centers, printers 
       <div className="flex justify-between items-center mb-5">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-            Centros de Producción
+            Áreas de Preparación (Cocinas y Barras)
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Define dónde se preparan los productos (cocina, bar, despacho, etc.)
+            Define dónde se elaboran los pedidos (Cocina Caliente, Fría, Barra, Repostería) y sus pantallas KDS o impresoras
           </p>
         </div>
         <button
@@ -226,7 +226,7 @@ export function ProductionCentersSection({ productionCenters, centers, printers 
           className="group bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-200 active:scale-[0.98]"
         >
           <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-          <span>Nuevo Centro</span>
+          <span>Nueva Área de Preparación</span>
         </button>
       </div>
 
@@ -262,7 +262,7 @@ export function ProductionCentersSection({ productionCenters, centers, printers 
               )}
               {getOperationCenterName(center.operation_center_id) && (
                 <p className="text-xs text-blue-600 mt-0.5 font-medium">
-                  Centro de Operación: {getOperationCenterName(center.operation_center_id)}
+                  Centro de Venta: {getOperationCenterName(center.operation_center_id)}
                 </p>
               )}
             </div>
@@ -439,10 +439,10 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
       };
       if (editingCenter) {
         await api.updateProductionCenter(editingCenter.id, payload);
-        toast.success('Centro actualizado');
+        toast.success('Área de preparación actualizada');
       } else {
         await api.createProductionCenter(payload);
-        toast.success('Centro de producción creado');
+        toast.success('Área de preparación creada con éxito');
       }
       onCreated();
     } catch (error) {
@@ -461,13 +461,13 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
       >
         <div className="p-6">
           <h3 className="text-lg font-bold text-gray-900 mb-4">
-            {editingCenter ? 'Editar' : 'Nuevo'} Centro de Producción
+            {editingCenter ? 'Editar' : 'Nueva'} Área de Preparación
           </h3>
 
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                Nombre de la Estación
+                Nombre del Área (Cocina / Barra)
               </label>
               <input
                 type="text"
@@ -481,14 +481,14 @@ function ProductionCenterWizardModal({ onClose, onCreated, editingCenter, center
 
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                Centro de Operación (opcional)
+                Centro de Venta vinculado (opcional)
               </label>
               <select
                 value={form.operationCenterId}
                 onChange={e => setForm({ ...form, operationCenterId: e.target.value ? Number(e.target.value) : '' })}
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-sm"
               >
-                <option value="">Común a todas las áreas / centros</option>
+                <option value="">Común a todos los centros de venta</option>
                 {centers && centers.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}

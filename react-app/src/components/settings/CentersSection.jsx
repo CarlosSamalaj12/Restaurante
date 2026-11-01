@@ -89,10 +89,10 @@ export function CentersSection({ centers, onReload }) {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-            {centers.length} {centers.length === 1 ? 'centro de consumo' : 'centros de consumo'}
+            {centers.length} {centers.length === 1 ? 'Centro de Venta' : 'Centros de Venta'}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Administra los centros de venta, áreas y puntos operativos de tu negocio
+            Puntos de venta y facturación para separar operaciones (ej. Restaurante Principal, Bar, Delivery)
           </p>
         </div>
         <button
@@ -103,7 +103,7 @@ export function CentersSection({ centers, onReload }) {
           className="group bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-200 active:scale-[0.98]"
         >
           <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-          <span>Nuevo Centro</span>
+          <span>Nuevo Centro de Venta</span>
         </button>
       </div>
 
@@ -426,12 +426,12 @@ function CenterWizardModal({ editingCenter, onClose, onCreated }) {
           name: form.name.trim(),
           isActive: form.isActive ? 1 : 0,
         });
-        toast.success('¡Centro de consumo actualizado con éxito!');
+        toast.success('¡Centro de venta actualizado con éxito!');
       } else {
         await api.settings.createOperationCenter({
           name: form.name.trim(),
         });
-        toast.success('¡Centro de consumo creado con éxito!');
+        toast.success('¡Centro de venta creado con éxito!');
       }
       onCreated();
     } catch (error) {
@@ -458,7 +458,7 @@ function CenterWizardModal({ editingCenter, onClose, onCreated }) {
         <div className="px-6 pt-4 pb-3 border-b border-gray-100">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-gray-900 text-lg">
-              {isEditing ? 'Editar Centro de Consumo' : 'Nuevo Centro de Consumo'}
+              {isEditing ? 'Editar Centro de Venta' : 'Nuevo Centro de Venta'}
             </h3>
             {isEditing && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
@@ -494,14 +494,14 @@ function CenterWizardModal({ editingCenter, onClose, onCreated }) {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
-                  Nombre del centro
+                  Nombre del centro de venta
                 </label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-lg font-medium focus:border-primary-500 focus:outline-none transition-colors"
-                  placeholder="Ej: Terraza, Flor de Cafe, Bar..."
+                  placeholder="Ej: Restaurante Principal, Bar, Terraza, Delivery..."
                   autoFocus
                 />
               </div>

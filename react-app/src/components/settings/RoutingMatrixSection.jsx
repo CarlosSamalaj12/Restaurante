@@ -459,7 +459,7 @@ export function RoutingMatrixSection({
           </div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
             <Utensils className="w-3.5 h-3.5 text-amber-600" />
-            <span>{productionCenters.length} Estaciones (Cocina/Bar)</span>
+            <span>{productionCenters.length} Áreas de Preparación (Cocinas/Barras)</span>
           </div>
         </div>
 

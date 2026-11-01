@@ -256,7 +256,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
     trackInventory: editingProduct?.track_inventory ?? false,
     image_url: editingProduct?.image_url || '',
     description: editingProduct?.description || '',
-    estimated_prep_min: editingProduct?.estimated_prep_min || '',
+    estimated_prep_min: editingProduct?.estimated_prep_min ?? 15,
     productionCenterIds: existingProductionCenters,
     modifierGroupIds: existingModifierGroupIds,
     recipe: [],
@@ -344,8 +344,8 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
         imageUrl: form.image_url || null,
         image_url: form.image_url || null,
         description: form.description || null,
-        estimatedPrepMin: form.estimated_prep_min ? Number(form.estimated_prep_min) : null,
-        estimated_prep_min: form.estimated_prep_min ? Number(form.estimated_prep_min) : null,
+        estimatedPrepMin: form.estimated_prep_min ? Number(form.estimated_prep_min) : 15,
+        estimated_prep_min: form.estimated_prep_min ? Number(form.estimated_prep_min) : 15,
       };
       if (isEditing) {
         await api.settings.updateProduct(editingProduct.id, payload);
@@ -581,13 +581,13 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                       </div>
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">{center.name}</p>
-                        <p className="text-xs text-gray-500">Centro de consumo</p>
+                        <p className="text-xs text-gray-500">Centro de Venta</p>
                       </div>
                     </button>
                   ))}
                 </div>
               )}
-              <p className="text-xs text-gray-400 text-center">Los centros de producción se mostrarán en el siguiente paso según el centro seleccionado</p>
+              <p className="text-xs text-gray-400 text-center">Las áreas de preparación se mostrarán en el siguiente paso según el centro de venta seleccionado</p>
             </div>
           )}
 
@@ -606,9 +606,9 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                 {!filteredProductionCenters.length ? (
                   <div className="text-center py-6 px-4 bg-amber-50 border border-amber-200 rounded-2xl">
                     <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                    <p className="text-sm font-semibold text-amber-800">No hay estaciones de producción registradas</p>
+                    <p className="text-sm font-semibold text-amber-800">No hay áreas de preparación registradas</p>
                     <p className="text-xs text-amber-600 mt-1">
-                      Crea tus centros de producción (ej. Cocina, Bar) en la pestaña correspondiente antes de continuar.
+                      Crea tus áreas de preparación (ej. Cocina, Barra) en Infraestructura y Piso antes de continuar.
                     </p>
                   </div>
                 ) : (
@@ -725,17 +725,17 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                     {/* Override centro exclusivo */}
                     <div className="space-y-1.5 pt-2 border-t border-slate-100">
                       <label className="block text-xs font-bold text-purple-900">
-                        Forzar Estación Exclusiva (Override)
+                        Forzar Área de Preparación Exclusiva (Override)
                       </label>
                       <p className="text-[11px] text-purple-700/80">
-                        Garantiza que siempre saldrá en esta estación fija sin importar el área de la orden.
+                        Garantiza que siempre saldrá en esta área fija sin importar el área de la orden.
                       </p>
                       <select
                         value={form.centroProduccionExclusivoId}
                         onChange={e => setForm({ ...form, centroProduccionExclusivoId: e.target.value ? Number(e.target.value) : '' })}
                         className="w-full px-3.5 py-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 font-medium"
                       >
-                        <option value="">Automático (Según estación seleccionada)</option>
+                        <option value="">Automático (Según área de preparación seleccionada)</option>
                         {productionCenters.map(center => (
                           <option key={center.id} value={center.id}>
                             {center.name} {center.printer_name ? `(${center.printer_name})` : ''}
@@ -989,7 +989,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
                         max="180"
                         value={form.estimated_prep_min}
                         onChange={(e) => setForm({ ...form, estimated_prep_min: e.target.value })}
-                        placeholder="Ej: 15"
+                        placeholder="15"
                         className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
                       />
                     </div>

@@ -45,7 +45,7 @@ export function TablesSection({ tables, centers, onReload }) {
             {tables.length} {tables.length === 1 ? 'mesa configurada' : 'mesas configuradas'}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Distribución de mesas y capacidad de asientos por área
+            Distribución de mesas y capacidad de asientos por salón / área
           </p>
         </div>
         <button
@@ -290,7 +290,7 @@ function TableWizardModal({ centers, onClose, onCreated }) {
           )}
           {step === 4 && (
             <div className="space-y-4">
-              <p className="text-gray-500 text-sm">¿A qué centro pertenece?</p>
+              <p className="text-gray-500 text-sm">¿A qué centro de venta pertenece?</p>
               <div className="grid grid-cols-2 gap-3">
                 {centers.length > 0 ? centers.map(center => (
                   <button
@@ -306,8 +306,8 @@ function TableWizardModal({ centers, onClose, onCreated }) {
                   </button>
                 )) : (
                   <div className="col-span-2 text-center py-8 text-gray-500">
-                    <p>No hay centros creados</p>
-                    <p className="text-sm">Crea un centro primero</p>
+                    <p>No hay centros de venta creados</p>
+                    <p className="text-sm">Crea un centro de venta primero</p>
                   </div>
                 )}
               </div>

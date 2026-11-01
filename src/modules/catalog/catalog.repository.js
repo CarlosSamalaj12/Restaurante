@@ -140,7 +140,7 @@ const catalogRepository = {
         centroProduccionExclusivoId ? Number(centroProduccionExclusivoId) : null,
         imageUrl || null,
         description || null,
-        estimatedPrepMin ? Number(estimatedPrepMin) : null,
+        estimatedPrepMin && Number(estimatedPrepMin) > 0 ? Number(estimatedPrepMin) : 15,
       ]
     );
     return result.insertId;
@@ -167,7 +167,7 @@ const catalogRepository = {
         centroProduccionExclusivoId ? Number(centroProduccionExclusivoId) : null,
         imageUrl !== undefined ? (imageUrl || null) : null,
         description !== undefined ? (description || null) : null,
-        estimatedPrepMin !== undefined ? (estimatedPrepMin ? Number(estimatedPrepMin) : null) : null,
+        estimatedPrepMin !== undefined ? (estimatedPrepMin && Number(estimatedPrepMin) > 0 ? Number(estimatedPrepMin) : 15) : null,
         productId,
       ]
     );

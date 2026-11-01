@@ -20,7 +20,8 @@ async function ensureDigitalMenuTables() {
   await safeExec(`ALTER TABLE products ADD COLUMN image_url TEXT NULL`);
   await safeExec(`ALTER TABLE products ADD COLUMN description TEXT NULL`);
   await safeExec(`ALTER TABLE products ADD COLUMN dietary_tags JSON NULL`);
-  await safeExec(`ALTER TABLE products ADD COLUMN estimated_prep_min INT NOT NULL DEFAULT 15`);
+  await safeExec(`ALTER TABLE products ADD COLUMN estimated_prep_min INT NULL DEFAULT 15`);
+  await safeExec(`ALTER TABLE products MODIFY COLUMN estimated_prep_min INT NULL DEFAULT 15`);
   await safeExec(`ALTER TABLE products ADD COLUMN rating_avg DECIMAL(3,2) NOT NULL DEFAULT 5.00`);
   await safeExec(`ALTER TABLE products ADD COLUMN rating_count INT NOT NULL DEFAULT 0`);
 

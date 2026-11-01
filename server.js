@@ -34,6 +34,11 @@ const maintenanceService = require("./src/modules/maintenance/maintenance.servic
 
   // Superadmin: soporte de rol superadmin en staff_users y asignación
   try {
+    await query(`ALTER TABLE products MODIFY COLUMN estimated_prep_min INT NULL DEFAULT 15`);
+  } catch (e) {
+    // Si la tabla o columna no existe aún, digital_menu.migration se encargará
+  }
+  try {
     await query(`ALTER TABLE staff_users MODIFY COLUMN role VARCHAR(40) NOT NULL DEFAULT 'waiter'`);
     await query(`
       INSERT INTO roles (name, slug, description, is_system)

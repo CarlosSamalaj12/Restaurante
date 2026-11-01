@@ -463,14 +463,14 @@ function TerminalWizardModal({
 
                 <div>
                   <label className="block text-xs font-bold text-indigo-950 mb-1">
-                    Estación de Producción KDS (Filtro de productos)
+                    Área de Preparación KDS (Filtro de productos)
                   </label>
                   <select
                     value={form.kdsProductionCenterId}
                     onChange={e => setForm({ ...form, kdsProductionCenterId: e.target.value })}
                     className="w-full px-3.5 py-2 text-sm bg-white border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   >
-                    <option value="">✨ Todas las estaciones (KDS General / Supervisión)</option>
+                    <option value="">✨ Todas las áreas de preparación (KDS General / Supervisión)</option>
                     {productionCenters.map(pc => (
                       <option key={pc.id} value={pc.id}>
                         {pc.name.toLowerCase().includes('bar') ? '🍸' : '🍳'} {pc.name}
@@ -484,14 +484,14 @@ function TerminalWizardModal({
 
                 <div>
                   <label className="block text-xs font-bold text-indigo-950 mb-1">
-                    Centro de Consumo KDS (Filtro de área)
+                    Centro de Venta KDS (Filtro de salón/origen)
                   </label>
                   <select
                     value={form.kdsOperationCenterId}
                     onChange={e => setForm({ ...form, kdsOperationCenterId: e.target.value })}
                     className="w-full px-3.5 py-2 text-sm bg-white border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   >
-                    <option value="">🏢 Todos los centros de consumo</option>
+                    <option value="">🏢 Todos los centros de venta</option>
                     {centers.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -499,7 +499,7 @@ function TerminalWizardModal({
                     ))}
                   </select>
                   <p className="text-[11px] text-indigo-800/80 mt-1">
-                    Puedes restringir a solo comandas originadas en un centro específico (ej: Vaqueros, Flor de Café, ElDeck) o dejarlo para todos.
+                    Puedes restringir a solo comandas originadas en un centro de venta específico (ej: Restaurante Principal, Bar, Terraza) o dejarlo para todos.
                   </p>
                 </div>
 
@@ -555,7 +555,7 @@ function TerminalWizardModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Centro de Operación Base *
+                  Centro de Venta Base *
                 </label>
                 <select
                   value={form.operationCenterId}

@@ -7,16 +7,11 @@ import { useSettingsData } from '../hooks/useSettingsData';
 import { LicensesTab } from '../components/LicensesTab';
 import { ProductsSection } from '../components/settings/ProductsSection';
 import { CategoriesSection } from '../components/settings/CategoriesSection';
-import { CentersSection } from '../components/settings/CentersSection';
-import { ProductionCentersSection } from '../components/settings/ProductionCentersSection';
-import { TablesSection } from '../components/settings/TablesSection';
-import { TerminalsSection } from '../components/settings/TerminalsSection';
+import { InfrastructureSection } from '../components/settings/InfrastructureSection';
 import { ModifiersSection } from '../components/settings/ModifiersSection';
 import { UsersSection } from '../components/settings/UsersSection';
 import { RolesSection } from '../components/settings/RolesSection';
 import { PaymentsSection } from '../components/settings/PaymentsSection';
-import { PrintersDiagnosticSection } from '../components/settings/PrintersDiagnosticSection';
-import { RoutingMatrixSection } from '../components/settings/RoutingMatrixSection';
 import { SystemSection } from '../components/settings/SystemSection';
 import { TicketsSection } from '../components/settings/TicketsSection';
 import { FelSection } from '../components/settings/FelSection';
@@ -54,7 +49,8 @@ import {
   ChefHat,
   BedDouble,
   GitBranch,
-  QrCode
+  QrCode,
+  Layers
 } from 'lucide-react';
 
 const GROUPS = [
@@ -113,65 +109,35 @@ const GROUPS = [
   {
     id: 'operations',
     label: 'Piso y Operaciones',
-    description: 'Áreas, estaciones, terminales e impresoras',
+    description: 'Centros, salones, cocinas, cajas e impresoras',
     items: [
       {
-        id: 'tables',
-        label: 'Mesas y Áreas',
-        shortDesc: 'Distribución y capacidad',
-        icon: UtensilsCrossed,
-        color: 'text-teal-600 bg-teal-50 border-teal-200/80',
-        keywords: ['áreas', 'terraza', 'mesas', 'sillas', 'capacidad', 'layout'],
-        getBadge: (d) => d.tables?.length,
-      },
-      {
-        id: 'centers',
-        label: 'Centros de Operación',
-        shortDesc: 'Restaurante, Bar, Delivery',
-        icon: Store,
+        id: 'infrastructure',
+        label: 'Infraestructura y Piso',
+        shortDesc: 'Centros, salones, cocinas, cajas e impresoras',
+        icon: Layers,
         color: 'text-blue-600 bg-blue-50 border-blue-200/80',
-        keywords: ['sucursales', 'bar', 'cocina', 'operacion', 'bodega'],
-        getBadge: (d) => d.centers?.length,
-      },
-      {
-        id: 'production',
-        label: 'Centros de Producción',
-        shortDesc: 'Cocina, Barra, Despacho',
-        icon: Building2,
-        color: 'text-violet-600 bg-violet-50 border-violet-200/80',
-        keywords: ['cocina', 'barra', 'kds', 'produccion', 'despacho'],
-        requiresRole: ['superadmin'],
-        getBadge: (d) => d.productionCenters?.length,
-      },
-      {
-        id: 'terminals',
-        label: 'Terminales POS',
-        shortDesc: 'Cajas y estaciones',
-        icon: Monitor,
-        color: 'text-sky-600 bg-sky-50 border-sky-200/80',
-        keywords: ['dispositivos', 'cajas', 'estaciones', 'ip', 'maquinas'],
-        requiresRole: ['superadmin'],
-        getBadge: (d) => d.terminals?.length,
-      },
-      {
-        id: 'printers',
-        label: 'Impresoras y Diagnóstico',
-        shortDesc: 'Comandas y tickets',
-        icon: Printer,
-        color: 'text-orange-600 bg-orange-50 border-orange-200/80',
-        keywords: ['tickets', 'comandas', 'red', 'escpos', 'imprimir', 'papel', 'puerto'],
-        requiresRole: ['superadmin'],
-        getBadge: (d) => d.printers?.length,
-      },
-      {
-        id: 'routing',
-        label: 'Matriz de Enrutamiento',
-        shortDesc: 'Comandas, KDS y rutas',
-        icon: Network,
-        color: 'text-rose-600 bg-rose-50 border-rose-200/80',
-        keywords: ['enrutamiento', 'kds', 'comandas', 'impresion', 'matriz', 'cocina', 'bar', 'categorias impresion'],
-        requiresRole: ['superadmin'],
-        getBadge: (d) => d.routingMatrix?.length,
+        keywords: [
+          'centros de venta',
+          'salones',
+          'mesas',
+          'cocinas',
+          'barras',
+          'cajas',
+          'terminales',
+          'impresoras',
+          'ruteo',
+          'comandas',
+          'piso',
+          'areas'
+        ],
+        requiresRole: ['superadmin', 'admin'],
+        getBadge: (d) =>
+          (d.centers?.length || 0) +
+          (d.tables?.length || 0) +
+          (d.productionCenters?.length || 0) +
+          (d.terminals?.length || 0) +
+          (d.printers?.length || 0),
       },
     ],
   },
@@ -716,38 +682,25 @@ export function SettingsPage({ onBack, initialTab }) {
             />
           )}
 
-          {activeTab === 'centers' && (
-            <CentersSection
+          {(activeTab === 'infrastructure' ||
+            activeTab === 'centers' ||
+            activeTab === 'tables' ||
+            activeTab === 'production' ||
+            activeTab === 'terminals' ||
+            activeTab === 'printers' ||
+            activeTab === 'routing') && (
+            <InfrastructureSection
+              initialTab={activeTab === 'infrastructure' ? 'centers' : activeTab}
               centers={data.centers}
-              onReload={loadData}
-            />
-          )}
-
-          {activeTab === 'production' && (
-            <ProductionCentersSection
-              productionCenters={data.productionCenters}
-              printers={data.printers || []}
-              centers={data.centers}
-              onReload={loadData}
-            />
-          )}
-
-          {activeTab === 'tables' && (
-            <TablesSection
               tables={data.tables}
-              centers={data.centers}
-              onReload={loadData}
-            />
-          )}
-
-          {activeTab === 'terminals' && (
-            <TerminalsSection
+              areas={data.areas}
+              productionCenters={data.productionCenters}
               terminals={data.terminals}
               printers={data.printers || []}
-              centers={data.centers}
-              areas={data.areas}
-              productionCenters={data.productionCenters || []}
               licensedTerminals={data.licensedTerminals || []}
+              products={data.products}
+              routingMatrix={data.routingMatrix}
+              printCategories={data.printCategories}
               onReload={loadData}
             />
           )}
@@ -806,26 +759,7 @@ export function SettingsPage({ onBack, initialTab }) {
             <PmsSection />
           )}
 
-          {activeTab === 'printers' && (
-            <PrintersDiagnosticSection
-              printers={data.printers || []}
-              productionCenters={data.productionCenters || []}
-              terminals={data.terminals || []}
-              products={data.products || []}
-              onReload={loadData}
-            />
-          )}
 
-          {activeTab === 'routing' && (
-            <RoutingMatrixSection
-              areas={data.areas}
-              productionCenters={data.productionCenters}
-              printCategories={data.printCategories}
-              routingMatrix={data.routingMatrix}
-              products={data.products}
-              onReload={loadData}
-            />
-          )}
 
           {activeTab === 'licenses' && (
             <LicensesTab />
