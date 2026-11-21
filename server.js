@@ -39,6 +39,13 @@ const maintenanceService = require("./src/modules/maintenance/maintenance.servic
     // Si la tabla o columna no existe aún, digital_menu.migration se encargará
   }
   try {
+    await query(
+      `ALTER TABLE print_jobs MODIFY COLUMN job_type ENUM('kitchen_ticket','customer_receipt','precheck','test') NOT NULL`
+    );
+  } catch (e) {
+    // Si print_jobs aún no existe, se creará abajo
+  }
+  try {
     await query(`ALTER TABLE staff_users MODIFY COLUMN role VARCHAR(40) NOT NULL DEFAULT 'waiter'`);
     await query(`
       INSERT INTO roles (name, slug, description, is_system)
@@ -49,13 +56,16 @@ const maintenanceService = require("./src/modules/maintenance/maintenance.servic
       INSERT IGNORE INTO role_permissions (role_id, permission_id)
       SELECT r.id, p.id FROM roles r, permissions p WHERE r.slug = 'superadmin'
     `);
-    // Promover usuario principal (Carlos Samalaj) a superadmin
-    await query(`UPDATE staff_users SET role = 'superadmin' WHERE id = 3 OR full_name LIKE '%Carlos Samalaj%' OR pin_code = '1203'`);
-    await query(`
-      INSERT IGNORE INTO user_roles (user_id, role_id)
-      SELECT u.id, r.id FROM staff_users u, roles r WHERE (u.id = 3 OR u.full_name LIKE '%Carlos Samalaj%' OR u.pin_code = '1203') AND r.slug = 'superadmin'
-    `);
-    console.log("[MIGRATION] Rol superadmin configurado y asignado a Carlos Samalaj");
+    // Promover superadmin inicial solo si aún no existe ningún usuario superadmin
+    const [superRows] = await query(`SELECT COUNT(*) AS cnt FROM staff_users WHERE role = 'superadmin'`);
+    if (Number(superRows?.[0]?.cnt || 0) === 0) {
+      await query(`UPDATE staff_users SET role = 'superadmin' WHERE id = 3 LIMIT 1`);
+      await query(`
+        INSERT IGNORE INTO user_roles (user_id, role_id)
+        SELECT u.id, r.id FROM staff_users u, roles r WHERE u.role = 'superadmin' AND r.slug = 'superadmin'
+      `);
+      console.log("[MIGRATION] Rol superadmin inicial asignado");
+    }
   } catch (e) {
     console.warn("[MIGRATION] Error al configurar rol superadmin:", e.message);
   }
@@ -217,12 +227,13 @@ const io = new Server(server, {
         if (allowedOrigins.includes(origin)) return callback(null, true);
         return callback(null, false);
       }
-      // Permitir localhost, loopback y terminales POS en subredes locales (LAN)
+      // Permitir localhost, loopback, terminales POS en LAN y dominio de producción HTTPS
       const isLocalOrLan =
         /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(
           origin
         );
-      if (isLocalOrLan) return callback(null, true);
+      const isHttpsProduction = /^https:\/\/[a-zA-Z0-9.-]+\.(tech|com|net|org)(:\d+)?$/.test(origin);
+      if (isLocalOrLan || isHttpsProduction) return callback(null, true);
       return callback(null, false);
     },
     methods: ["GET", "POST"],
@@ -323,6 +334,9 @@ function sanitizeMojibake(val) {
   if (Array.isArray(val)) {
     return val.map(sanitizeMojibake);
   }
+  if (val instanceof Date || Buffer.isBuffer(val)) {
+    return val;
+  }
   if (val !== null && typeof val === "object") {
     const out = {};
     for (const k of Object.keys(val)) {
@@ -360,6 +374,7 @@ app.use("/api", (req, res, next) => {
 const MAINTENANCE_EXEMPT_PATHS = [
   "/api/maintenance",
   "/api/auth/login",
+  "/api/auth/pin-login",
   "/api/bootstrap",
   "/api/license",
   "/api/public",

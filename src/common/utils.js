@@ -5,8 +5,10 @@ function money(n) {
   return Number((Number(n) || 0).toFixed(2));
 }
 
-function nowSql() {
-  return new Date().toISOString().slice(0, 19).replace("T", " ");
+function nowSql(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function clientIp(req) {

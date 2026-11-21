@@ -85,18 +85,32 @@ const paymentsRepository = {
   },
 
   /**
-   * Obtiene el estado actual de una cuenta.
+   * Obtiene el estado actual de una cuenta (con opción de bloqueo transaccional FOR UPDATE).
    */
-  async findAccountStatus(accountId) {
-    const [rows] = await query(
-      `SELECT id, status, check_number FROM accounts WHERE id = ? LIMIT 1`,
+  async findAccountStatus(accountId, conn = null, forUpdate = false) {
+    const q = conn ? conn.query.bind(conn) : query;
+    const [rows] = await q(
+      `SELECT id, status, check_number, operation_center_id, shift_id, table_id
+       FROM accounts WHERE id = ? LIMIT 1${forUpdate ? " FOR UPDATE" : ""}`,
       [accountId]
     );
     return rows[0] || null;
   },
 
   /**
-   * Marca una cuenta como pagada y cerrada, vinculándola al turno activo si no tenía o si pertenecía a uno cerrado.
+   * Verifica si el inventario ya fue descontado previamente para esta cuenta (idempotencia).
+   */
+  async hasInventoryBeenDeducted(accountId, conn = null) {
+    const q = conn ? conn.query.bind(conn) : query;
+    const [rows] = await q(
+      `SELECT 1 FROM stock_movements WHERE reference_type = 'sale' AND reference_id = ? LIMIT 1`,
+      [Number(accountId)]
+    );
+    return rows.length > 0;
+  },
+
+  /**
+   * Marca una cuenta abierta como pagada y cerrada, vinculándola al turno activo solo si no tenía turno.
    */
   async markAccountAsPaid(accountId, closedAt = nowSql(), conn) {
     const q = conn ? conn.query.bind(conn) : query;
@@ -110,7 +124,7 @@ const paymentsRepository = {
              WHEN a.shift_id IS NULL OR s.status = 'closed' THEN COALESCE(active_s.id, a.shift_id)
              ELSE a.shift_id
            END
-       WHERE a.id = ?`,
+       WHERE a.id = ? AND a.status = 'open'`,
       [closedAt, accountId]
     );
   },

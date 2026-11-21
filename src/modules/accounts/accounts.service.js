@@ -10,7 +10,7 @@ const { BadRequestError, NotFoundError } = require("../../common/errors");
 
 let printService = null;
 try {
-  printService = require("../../../../server/print-service");
+  printService = require("../../../server/print-service");
 } catch (_) {
   try {
     printService = require("../../print-service");
@@ -388,6 +388,9 @@ const accountsService = {
 
     if (String(account.status) === "open") {
       throw new BadRequestError("La cuenta ya se encuentra abierta");
+    }
+    if (String(account.status) !== "paid") {
+      throw new BadRequestError("Solo se pueden reabrir cuentas en estado pagado");
     }
 
     // 1. Validar integridad de turnos
@@ -866,7 +869,17 @@ const accountsService = {
       const { table_id, waiter_id, operation_center_id } = src;
       const openShift = await accountsRepository.findOpenShift(operation_center_id, conn);
       const shiftId = openShift ? openShift.id : null;
-      const fractionalQty = 1 / count;
+      if (!Number.isInteger(count) || count < 2) {
+        throw new BadRequestError("peopleCount debe ser un entero mayor o igual a 2");
+      }
+      const itemShares = items.map((item) => {
+        const origQty = Number(item.qty) || 1;
+        const unitPrice = Number(item.unit_price) || 0;
+        const origLineTotal = money(item.line_total != null ? Number(item.line_total) : origQty * unitPrice);
+        const baseQty = Math.floor((origQty / count) * 100) / 100;
+        const baseTotal = Math.floor((origLineTotal / count) * 100) / 100;
+        return { origQty, origLineTotal, baseQty, baseTotal };
+      });
       const results = [];
 
       for (let i = 0; i < count; i++) {
@@ -890,9 +903,17 @@ const accountsService = {
         const checkNumber = `CHK-${String(newAccountId).padStart(4, "0")}`;
         await accountsRepository.updateCheckNumber(newAccountId, checkNumber, conn);
 
-        for (const item of items) {
+        for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+          const item = items[itemIdx];
+          const share = itemShares[itemIdx];
+          const isLastPerson = i === count - 1;
+          const fractionalQty = isLastPerson
+            ? Number((share.origQty - share.baseQty * (count - 1)).toFixed(2))
+            : share.baseQty;
           const unitPrice = Number(item.unit_price) || 0;
-          const fractionalTotal = Number((unitPrice * fractionalQty).toFixed(2));
+          const fractionalTotal = isLastPerson
+            ? money(share.origLineTotal - share.baseTotal * (count - 1))
+            : share.baseTotal;
 
           await accountsRepository.insertOrderItem(
             {
@@ -924,7 +945,7 @@ const accountsService = {
         });
       }
 
-      await accountsRepository.closeAccountWithStatus(sourceAccountId, "shared_split", null, conn);
+      await accountsRepository.closeAccountWithStatus(sourceAccountId, "void", null, conn);
       await accountsRepository.addEvent(
         sourceAccountId,
         "account_shared",

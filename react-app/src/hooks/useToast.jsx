@@ -17,9 +17,11 @@ export function ToastProvider({ children }) {
   const success = useCallback((msg) => addToast(msg, 'success'), [addToast]);
   const error = useCallback((msg) => addToast(msg, 'error'), [addToast]);
   const info = useCallback((msg) => addToast(msg, 'info'), [addToast]);
+  const warning = useCallback((msg) => addToast(msg, 'warning'), [addToast]);
+  const show = useCallback((msg, type = 'info') => addToast(msg, type), [addToast]);
 
   // Actions are completely stable and never change reference when toasts change
-  const actions = useMemo(() => ({ success, error, info }), [success, error, info]);
+  const actions = useMemo(() => ({ success, error, info, warning, show }), [success, error, info, warning, show]);
 
   return (
     <ToastActionContext.Provider value={actions}>

@@ -359,26 +359,31 @@ const ordersService = {
     let voidedItemId = parsedItemId;
 
     if (parsedQtyToVoid < currentQty) {
-      // Reversión parcial: reduce cantidad del ítem activo e inserta registro anulado
+      // Reversión parcial: reduce cantidad del ítem activo e inserta registro anulado en transacción
       const remainingQty = currentQty - parsedQtyToVoid;
       const unitPrice = Number(item.unit_price || 0);
       const remainingLineTotal = money(unitPrice * remainingQty);
       const voidedLineTotal = money(unitPrice * parsedQtyToVoid);
 
-      await ordersRepository.reduceOrderItemQty(parsedItemId, remainingQty, remainingLineTotal);
-
-      voidedItemId = await ordersRepository.insertVoidedOrderItem({
-        accountId,
-        productId: item.product_id,
-        seatNo: item.seat_no,
-        qty: parsedQtyToVoid,
-        unitPrice,
-        lineTotal: voidedLineTotal,
-        notes: item.notes,
-        sentAt: item.sent_at,
-        voidReason: reason,
-        voidAuthorizedBy: finalAuthorizedBy,
-        voidedAt: reversedAt,
+      const { withTransaction } = require("../../common/db");
+      voidedItemId = await withTransaction(async (conn) => {
+        await ordersRepository.reduceOrderItemQty(parsedItemId, remainingQty, remainingLineTotal, conn);
+        return ordersRepository.insertVoidedOrderItem(
+          {
+            accountId,
+            productId: item.product_id,
+            seatNo: item.seat_no,
+            qty: parsedQtyToVoid,
+            unitPrice,
+            lineTotal: voidedLineTotal,
+            notes: item.notes,
+            sentAt: item.sent_at,
+            voidReason: reason,
+            voidAuthorizedBy: finalAuthorizedBy,
+            voidedAt: reversedAt,
+          },
+          conn
+        );
       });
     } else {
       // Reversión total

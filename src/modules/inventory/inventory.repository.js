@@ -75,12 +75,12 @@ const inventoryRepository = {
         [Number(inventoryItemId), String(type), Number(quantity), String(note), createdAt]
       );
 
-      const sign = type === "exit" ? -1 : 1;
+      const delta = type === "exit" ? -Math.abs(Number(quantity)) : Number(quantity);
       await conn.query(
         `UPDATE inventory_items 
-         SET current_stock = current_stock + (? * ?) 
+         SET current_stock = GREATEST(0, current_stock + ?) 
          WHERE id = ?`,
-        [sign, Number(quantity), Number(inventoryItemId)]
+        [delta, Number(inventoryItemId)]
       );
     });
   },

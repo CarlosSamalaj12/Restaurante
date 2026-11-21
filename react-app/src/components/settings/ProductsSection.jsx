@@ -337,7 +337,7 @@ function ProductWizardModal({ categories, editingProduct, productionCenters, pro
       let productId = editingProduct?.id;
       const payload = { 
         ...form, 
-        isActive: 1,
+        isActive: isEditing ? (editingProduct?.is_active ?? 1) : 1,
         centerId: form.operationCenterId || null,
         categoriaImpresionId: form.categoriaImpresionId ? Number(form.categoriaImpresionId) : null,
         centroProduccionExclusivoId: form.centroProduccionExclusivoId ? Number(form.centroProduccionExclusivoId) : null,

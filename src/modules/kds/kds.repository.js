@@ -206,8 +206,12 @@ const kdsRepository = {
     if (productionCenterId) {
       const [result] = await query(
         `UPDATE order_items oi
+         INNER JOIN accounts a ON a.id = oi.account_id
+         LEFT JOIN restaurant_tables rt ON rt.id = a.table_id
          INNER JOIN products p ON p.id = oi.product_id
-         LEFT JOIN matriz_enrutamiento me ON me.categoria_impresion_id = p.categoria_impresion_id
+         LEFT JOIN matriz_enrutamiento me
+                ON me.area_trabajo_id = rt.area_id
+               AND me.categoria_impresion_id = p.categoria_impresion_id
          LEFT JOIN production_centers pc 
                 ON pc.id = COALESCE(oi.production_center_id, p.centro_produccion_exclusivo_id, me.centro_produccion_id)
          LEFT JOIN product_production_centers ppc ON ppc.product_id = p.id

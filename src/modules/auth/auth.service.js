@@ -117,7 +117,11 @@ const authService = {
 
       let permissions = [];
       try {
-        permissions = row.permissions_json ? JSON.parse(row.permissions_json) : [];
+        if (Array.isArray(row.permissions_json)) {
+          permissions = row.permissions_json;
+        } else if (typeof row.permissions_json === "string" && row.permissions_json.trim()) {
+          permissions = JSON.parse(row.permissions_json);
+        }
       } catch (_) {
         permissions = [];
       }
@@ -257,7 +261,7 @@ const authService = {
       );
       userAllowed = activeCodes.filter((code) => enabled.has(code));
     } else {
-      userAllowed = String(user.role || "") === "admin" ? [...activeCodes] : (activeCodes.includes("restaurant") ? ["restaurant"] : []);
+      userAllowed = ["admin", "superadmin"].includes(String(user.role || "").toLowerCase()) ? [...activeCodes] : (activeCodes.includes("restaurant") ? ["restaurant"] : []);
     }
 
     // Permisos por terminal IP

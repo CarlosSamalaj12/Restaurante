@@ -220,6 +220,8 @@ const ordersRepository = {
         oi.sent_at,
         oi.status,
         oi.qty,
+        oi.unit_price,
+        oi.line_total,
         oi.seat_no,
         oi.notes,
         p.id AS product_id,

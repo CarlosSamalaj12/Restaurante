@@ -7,17 +7,8 @@ const authService = require("../auth/auth.service");
 
 const router = express.Router();
 
-// Middleware ligero para resolver sesión de usuario si se envía token
-router.use(async (req, res, next) => {
-  const token = req.headers["x-auth-token"];
-  if (token) {
-    try {
-      const session = await authService.getAuthSession(token);
-      if (session) req.session = session;
-    } catch (_) {}
-  }
-  next();
-});
+// Exigir autenticación en todas las rutas de Gastos, Proveedores y Balance
+router.use(authService.requireAuth());
 
 // Balance y Ganancias (P&L)
 router.get("/financial-summary", expensesController.getFinancialSummary);

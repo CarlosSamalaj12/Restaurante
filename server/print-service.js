@@ -69,6 +69,7 @@ async function logPrintJob({
         status,
         attempts,
         error,
+        status === "printed" ? new Date() : null,
       ]
     );
     const insertId = res?.insertId || res?.[0]?.insertId || null;

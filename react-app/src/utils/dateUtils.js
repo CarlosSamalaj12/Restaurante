@@ -79,3 +79,16 @@ export function safeFormatLocaleTime(dateInput, fallback = '---', options = { ho
     return fallback;
   }
 }
+
+/**
+ * Retorna la fecha local en formato 'YYYY-MM-DD' sin desfase UTC.
+ * Evita que después de las 18:00 en UTC-6 (Guatemala) los filtros salten al día siguiente.
+ */
+export function getLocalDateStr(dateInput = new Date()) {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}

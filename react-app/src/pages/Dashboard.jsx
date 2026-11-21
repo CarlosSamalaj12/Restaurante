@@ -147,7 +147,7 @@ export function Dashboard({ onNavigate, onSelectTable }) {
       }
 
       // 4. KDS Órdenes
-      const kdsData = await api.kds.getOrders(targetCenter).catch(() => []);
+      const kdsData = await api.kds.getOrders({ operationCenterId: targetCenter }).catch(() => []);
       setKdsOrders(Array.isArray(kdsData) ? kdsData : []);
 
       // 5. Turno Activo
@@ -197,14 +197,14 @@ export function Dashboard({ onNavigate, onSelectTable }) {
 
   // Comensales
   const occupiedPax = openAccounts.reduce((acc, a) => acc + (Number(a.guest_count) || 2), 0);
-  const totalPaxCapacity = tables.reduce((acc, t) => acc + (Number(t.capacity) || 4), 0);
+  const totalPaxCapacity = tables.reduce((acc, t) => acc + (Number(t.seats ?? t.capacity) || 4), 0);
   const freePax = Math.max(0, totalPaxCapacity - occupiedPax);
 
   // Ventas y cuentas por cobrar en salón
   const pendingFloorTotal = openAccounts.reduce((sum, a) => sum + (Number(a.total) || 0), 0);
   const shiftCashTotal = Number(shiftSummary?.cash_total || 0);
   const shiftSalesTotal = Number(shiftSummary?.total_sales || shiftSummary?.grand_total || shiftCashTotal || 0);
-  const openingCash = Number(activeShift?.opening_cash || shiftSummary?.openingCash || 300);
+  const openingCash = Number(activeShift?.opening_cash ?? shiftSummary?.openingCash ?? 0);
 
   // Cocina y tiempos (conteo estricto de órdenes reales en KDS)
   const kitchenOrdersCount = Array.isArray(kdsOrders) ? kdsOrders.length : 0;

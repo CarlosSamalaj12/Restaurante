@@ -2,7 +2,6 @@
 // Controlador para endpoints de sincronización offline
 
 const syncService = require("./sync.service");
-const { getCorrelativeStatus } = require("../../../react-app/src/lib/offlineCorrelatives"); // Si aplica o fallback
 
 const syncController = {
   async processBatch(req, res, next) {

@@ -59,6 +59,7 @@ export function useSettingsData() {
         tables: configData.tables || [],
         areas: configData.areas || [],
         terminals: configData.terminals || bootstrapData.terminals || [],
+        licensedTerminals: configData.licensedTerminals || [],
         modifierGroups: configData.groups || [],
         modifierOptions: configData.options || [],
         productProductionCenters: configData.productProductionCenters || [],
@@ -73,7 +74,7 @@ export function useSettingsData() {
         permByRole: configData.permByRole || {},
         rolesByUser: configData.rolesByUser || {},
         restaurantName: bootstrapData.restaurantName || 'Mi Restaurante',
-        tipPercent: 0,
+        tipPercent: Number(bootstrapData.tipPercent ?? configData.tipPercent ?? bootstrapData.businessProfile?.tip_percent ?? 0),
         logoUrl: bootstrapData.logoUrl || '',
         loginBgUrl: bootstrapData.loginBgUrl || '',
       });

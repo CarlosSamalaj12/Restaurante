@@ -29,10 +29,11 @@ export function TipsReportPage({ onBack }) {
   const [data, setData] = useState(null);
   const toast = useToast();
 
-  const today = new Date().toISOString().slice(0, 10);
+  const fmtLocalYMD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const today = fmtLocalYMD(new Date());
   const firstDay = new Date();
   firstDay.setDate(1);
-  const [startDate, setStartDate] = useState(firstDay.toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(fmtLocalYMD(firstDay));
   const [endDate, setEndDate] = useState(today);
   const [filterWaiterId, setFilterWaiterId] = useState('');
   const [filterCenterId, setFilterCenterId] = useState('');

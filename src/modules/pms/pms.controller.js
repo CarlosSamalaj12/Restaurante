@@ -6,7 +6,7 @@ const pmsService = require("./pms.service");
 const pmsController = {
   async getConfig(req, res, next) {
     try {
-      const config = await pmsService.getConfig();
+      const config = await pmsService.getPublicConfig();
       res.json(config);
     } catch (err) {
       next(err);
@@ -63,7 +63,7 @@ const pmsController = {
 
   async getRecentCharges(req, res, next) {
     try {
-      const limit = Number(req.query.limit) || 25;
+      const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 200);
       const history = await pmsService.getRecentCharges(limit);
       res.json(history);
     } catch (err) {

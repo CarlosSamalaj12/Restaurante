@@ -79,10 +79,28 @@ const syncRepository = {
     return result.insertId;
   },
 
+  async findProductBasePrice(productId, conn = null) {
+    const [rows] = await query(`SELECT base_price FROM products WHERE id = ? LIMIT 1`, [Number(productId)], conn);
+    return rows[0] ? Number(rows[0].base_price || 0) : 0;
+  },
+
+  async findOrderItemByOfflineId(offlineId, conn = null) {
+    if (!offlineId) return null;
+    const [rows] = await query(`SELECT id FROM order_items WHERE offline_id = ? LIMIT 1`, [offlineId], conn);
+    return rows[0] || null;
+  },
+
+  async findPaymentByOfflineId(offlineId, conn = null) {
+    if (!offlineId) return null;
+    const [rows] = await query(`SELECT id FROM account_payments WHERE offline_id = ? LIMIT 1`, [offlineId], conn);
+    return rows[0] || null;
+  },
+
   async updateAccountStatus(accountId, status, closedAt, conn = null) {
+    const validStatus = status === "closed" ? "paid" : status;
     await query(
       `UPDATE accounts SET status = ?, closed_at = ? WHERE id = ?`,
-      [status, closedAt || nowSql(), accountId],
+      [validStatus, closedAt || nowSql(), accountId],
       conn
     );
   },

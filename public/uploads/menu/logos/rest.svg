@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFB800" />
+      <stop offset="60%" stop-color="#F59300" />
+      <stop offset="100%" stop-color="#D97200" />
+    </linearGradient>
+
+    
+    <mask id="cutleryCutout">
+      <rect width="512" height="512" fill="white" />
+      
+      
+      <g fill="black">
+        <rect x="225" y="232" width="4" height="32" rx="2" />
+        <rect x="234" y="232" width="4" height="32" rx="2" />
+        <rect x="243" y="232" width="4" height="32" rx="2" />
+        <path d="M 225 258 C 225 272, 247 272, 247 258 Z" />
+        <rect x="233" y="266" width="6" height="68" />
+      </g>
+
+      
+      <g fill="black">
+        <path d="M 268 232 C 275 232, 277 248, 277 292 L 268 292 Z" />
+        <rect x="268" y="295" width="8" height="39" />
+      </g>
+    </mask>
+  </defs>
+
+  
+  <circle cx="256" cy="256" r="240" fill="#1C1C1C" />
+
+  
+  <g fill="url(#goldGrad)">
+    
+    <path d="M 212 184 C 194 166, 232 146, 214 122 C 224 146, 186 166, 212 184 Z" />
+    
+    <path d="M 256 170 C 238 150, 276 128, 258 102 C 268 128, 230 150, 256 170 Z" />
+    
+    <path d="M 300 184 C 282 166, 320 146, 302 122 C 312 146, 274 166, 300 184 Z" />
+  </g>
+
+  
+  <g fill="url(#goldGrad)" mask="url(#cutleryCutout)">
+    
+    <circle cx="256" cy="202" r="16" />
+    
+    <path d="M 148 320 A 108 106 0 0 1 364 320 Z" />
+    
+    <rect x="122" y="318" width="268" height="12" rx="6" />
+  </g>
+</svg>

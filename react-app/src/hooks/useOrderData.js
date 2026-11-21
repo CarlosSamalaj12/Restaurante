@@ -48,6 +48,13 @@ export function useOrderData(accountId) {
           if (match) {
             selectedCenterRef.current = accountCenterId;
             setSelectedCenter(accountCenterId);
+            // Recargar catálogo filtrado al centro de venta de la cuenta
+            const [centerProds, centerCats] = await Promise.all([
+              api.getProducts(null, accountCenterId).catch(() => productsData || []),
+              api.getCategories(accountCenterId).catch(() => categoriesData || []),
+            ]);
+            setProducts(centerProds || []);
+            setCategories(centerCats || []);
           }
         }
       }

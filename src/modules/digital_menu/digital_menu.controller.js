@@ -32,13 +32,17 @@ const digitalMenuController = {
 
   bindDeviceSession: asyncHandler(async (req, res) => {
     const { deviceFingerprint, guestAlias, joinAccountId, menuId } = req.body || {};
-    const tableId = req.tableContext ? req.tableContext.tableId : req.body.tableId;
+    if (!req.tableContext || !req.tableContext.tableId) {
+      const { ForbiddenError } = require("../../common/errors");
+      throw new ForbiddenError("Se requiere un código QR de mesa válido para iniciar sesión.");
+    }
+    const tableId = req.tableContext.tableId;
     const result = await digitalMenuService.bindDeviceSession({
       tableId,
       deviceFingerprint,
       guestAlias,
       joinAccountId,
-      menuId,
+      menuId: req.tableContext.menuId || menuId,
     });
     res.status(201).json(result);
   }),

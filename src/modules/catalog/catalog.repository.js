@@ -104,12 +104,12 @@ const catalogRepository = {
   },
 
   async reorderCategories(orderList, conn = null) {
-    const runner = conn || query;
     for (const item of orderList) {
       if (!item.id || typeof item.sortOrder !== "number") continue;
-      await runner(
+      await query(
         "UPDATE product_categories SET sort_order = ? WHERE id = ?",
-        [item.sortOrder, item.id]
+        [item.sortOrder, item.id],
+        conn
       );
     }
   },
@@ -125,9 +125,8 @@ const catalogRepository = {
 
   // Product management
   async createProduct({ categoryId, name, basePrice = 0, allowDiscount = 1, trackInventory = 0, categoriaImpresionId = null, centroProduccionExclusivoId = null, imageUrl = null, description = null, estimatedPrepMin = null }, conn = null) {
-    const runner = conn || query;
     const catImpId = categoriaImpresionId ? Number(categoriaImpresionId) : Number(categoryId);
-    const [result] = await runner(
+    const [result] = await query(
       `INSERT INTO products (category_id, name, base_price, allow_discount, is_active, track_inventory, categoria_impresion_id, centro_produccion_exclusivo_id, image_url, description, estimated_prep_min)
        VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
       [
@@ -141,7 +140,8 @@ const catalogRepository = {
         imageUrl || null,
         description || null,
         estimatedPrepMin && Number(estimatedPrepMin) > 0 ? Number(estimatedPrepMin) : 15,
-      ]
+      ],
+      conn
     );
     return result.insertId;
   },
@@ -179,27 +179,25 @@ const catalogRepository = {
   },
 
   async deleteProduct(productId, conn = null) {
-    const runner = conn || query;
-    await runner(`DELETE FROM product_production_centers WHERE product_id = ?`, [productId]);
-    await runner(`DELETE FROM product_modifier_groups WHERE product_id = ?`, [productId]);
-    await runner(`DELETE FROM products WHERE id = ?`, [productId]);
+    await query(`DELETE FROM product_production_centers WHERE product_id = ?`, [productId], conn);
+    await query(`DELETE FROM product_modifier_groups WHERE product_id = ?`, [productId], conn);
+    await query(`DELETE FROM products WHERE id = ?`, [productId], conn);
   },
 
   async setProductProductionCenters(productId, centerIds, conn = null) {
-    const runner = conn || query;
-    await runner(`DELETE FROM product_production_centers WHERE product_id = ?`, [productId]);
+    await query(`DELETE FROM product_production_centers WHERE product_id = ?`, [productId], conn);
     for (const centerId of centerIds) {
-      await runner(
+      await query(
         `INSERT INTO product_production_centers (product_id, center_id) VALUES (?, ?)`,
-        [productId, Number(centerId)]
+        [productId, Number(centerId)],
+        conn
       );
     }
   },
 
   // Modifiers and groups
   async createModifierGroup({ name, groupType, minSelect, maxSelect, isMandatory, displayMethod, sortOrder, isActive }, conn = null) {
-    const runner = conn || query;
-    const [result] = await runner(
+    const [result] = await query(
       `INSERT INTO modifier_groups (name, group_type, min_select, max_select, is_mandatory, display_method, sort_order, is_active)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -211,7 +209,8 @@ const catalogRepository = {
         displayMethod,
         Number(sortOrder) || 0,
         Number(isActive) ? 1 : 0,
-      ]
+      ],
+      conn
     );
     return result.insertId;
   },
@@ -246,17 +245,16 @@ const catalogRepository = {
   },
 
   async deleteModifierGroup(groupId, conn = null) {
-    const runner = conn || query;
-    await runner(`DELETE FROM modifier_options WHERE group_id = ?`, [groupId]);
-    await runner(`DELETE FROM modifier_groups WHERE id = ?`, [groupId]);
+    await query(`DELETE FROM modifier_options WHERE group_id = ?`, [groupId], conn);
+    await query(`DELETE FROM modifier_groups WHERE id = ?`, [groupId], conn);
   },
 
   async createModifierOption({ groupId, name, priceDelta = 0, sortOrder = 0, isActive = 1 }, conn = null) {
-    const runner = conn || query;
-    const [result] = await runner(
+    const [result] = await query(
       `INSERT INTO modifier_options (group_id, name, price_delta, sort_order, is_active)
        VALUES (?, ?, ?, ?, ?)`,
-      [groupId, String(name).trim(), Number(priceDelta) || 0, Number(sortOrder) || 0, Number(isActive) ? 1 : 0]
+      [groupId, String(name).trim(), Number(priceDelta) || 0, Number(sortOrder) || 0, Number(isActive) ? 1 : 0],
+      conn
     );
     return result.insertId;
   },
@@ -275,12 +273,12 @@ const catalogRepository = {
   },
 
   async addProductStep({ productId, groupId, sortOrder = 0 }, conn = null) {
-    const runner = conn || query;
-    await runner(
+    await query(
       `INSERT INTO product_modifier_groups (product_id, group_id, sort_order)
        VALUES (?, ?, ?)
        ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order)`,
-      [Number(productId), Number(groupId), Number(sortOrder) || 0]
+      [Number(productId), Number(groupId), Number(sortOrder) || 0],
+      conn
     );
   },
 

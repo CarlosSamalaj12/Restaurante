@@ -54,7 +54,10 @@ const cxcService = {
   async updateArea(areaId, { name, is_active }) {
     const parsedId = Number(areaId);
     if (!parsedId) throw new BadRequestError("areaId inválido");
-    await cxcRepository.updateArea(parsedId, { name, isActive: is_active });
+    await cxcRepository.updateArea(parsedId, {
+      name: name !== undefined ? String(name).trim() : null,
+      isActive: is_active !== undefined ? Number(is_active) : null,
+    });
     return { ok: true };
   },
 
@@ -92,12 +95,12 @@ const cxcService = {
 
     const { full_name, phone, credit_limit, cxc_area_id, default_discount_percent, is_active } = data || {};
     await cxcRepository.updateClient(parsedId, {
-      fullName: full_name ? String(full_name).trim() : undefined,
-      phone: phone !== undefined ? phone : undefined,
-      creditLimit: credit_limit !== undefined ? Number(credit_limit) : undefined,
-      cxcAreaId: cxc_area_id !== undefined ? (cxc_area_id ? Number(cxc_area_id) : null) : undefined,
-      defaultDiscountPercent: default_discount_percent !== undefined ? Number(default_discount_percent) : undefined,
-      isActive: is_active !== undefined ? Number(is_active) : undefined,
+      fullName: full_name !== undefined && full_name !== "" ? String(full_name).trim() : null,
+      phone: phone !== undefined ? phone : null,
+      creditLimit: credit_limit !== undefined ? Number(credit_limit) : null,
+      cxcAreaId: cxc_area_id !== undefined ? (cxc_area_id ? Number(cxc_area_id) : null) : null,
+      defaultDiscountPercent: default_discount_percent !== undefined ? Number(default_discount_percent) : null,
+      isActive: is_active !== undefined ? Number(is_active) : null,
     });
 
     return { ok: true };
@@ -189,14 +192,22 @@ const cxcService = {
 
     const cxc = await cxcRepository.findCxcAccountById(parsedCxcAccountId);
     if (!cxc) throw new NotFoundError("Cuenta CXC no encontrada");
+    if (String(cxc.status) === "paid" || String(cxc.status) === "void") {
+      throw new BadRequestError("Esta cuenta CXC ya está pagada o anulada");
+    }
 
     const currentAccBalance = Number(cxc.balance || 0);
-    const newBalance = currentAccBalance - parsedAmount;
+    if (parsedAmount > currentAccBalance + 0.01) {
+      throw new BadRequestError(`El abono (Q${parsedAmount.toFixed(2)}) excede el saldo pendiente de la cuenta (Q${currentAccBalance.toFixed(2)})`);
+    }
+    const appliedAmount = Math.min(parsedAmount, currentAccBalance);
+    const newBalance = Math.max(0, Number((currentAccBalance - appliedAmount).toFixed(2)));
     const newStatus = newBalance <= 0 ? "paid" : newBalance < currentAccBalance ? "partial" : "pending";
+    const { nowSql } = require("../../common/utils");
 
     await cxcRepository.insertCxcPayment({
       cxcAccountId: parsedCxcAccountId,
-      amount: parsedAmount,
+      amount: appliedAmount,
       paymentMethod: payment_method,
       reference,
       notes,
@@ -204,12 +215,12 @@ const cxcService = {
 
     await cxcRepository.updateCxcAccountAfterPayment({
       cxcAccountId: parsedCxcAccountId,
-      balance: newBalance > 0 ? newBalance : 0,
+      balance: newBalance,
       status: newStatus,
-      paidAt: newStatus === "paid" ? new Date().toISOString().slice(0, 19).replace("T", " ") : null,
+      paidAt: newStatus === "paid" ? nowSql() : null,
     });
 
-    await cxcRepository.decrementCustomerBalance(cxc.client_id, parsedAmount);
+    await cxcRepository.decrementCustomerBalance(cxc.client_id, appliedAmount);
 
     return { ok: true, new_balance: newBalance, status: newStatus };
   },
@@ -341,30 +352,47 @@ const cxcService = {
       center_name: null,
     });
 
+    const rawMovements = [];
     for (const acc of accounts) {
-      runningBalance = Number((runningBalance + Number(acc.amount)).toFixed(2));
-      movements.push({
+      rawMovements.push({
         date: acc.created_at,
+        sortTs: new Date(acc.created_at || 0).getTime() || 0,
+        orderPriority: 0,
         type: "charge",
         description: `Cargo - ${acc.check_number || `#${acc.id}`}${acc.waiter_name ? ` (${acc.waiter_name})` : ""}`,
         charge: Number(acc.amount),
         payment: 0,
-        balance: runningBalance,
         center_name: acc.center_name || null,
       });
     }
 
     for (const pay of payments) {
-      runningBalance = Number((runningBalance - Number(pay.amount)).toFixed(2));
-      const acc = accounts.find((a) => a.id === pay.account_id);
-      movements.push({
+      const acc = accounts.find((a) => Number(a.id) === Number(pay.cxc_account_id));
+      rawMovements.push({
         date: pay.created_at,
+        sortTs: new Date(pay.created_at || 0).getTime() || 0,
+        orderPriority: 1,
         type: "payment",
         description: `Pago - ${pay.payment_method}${pay.reference ? ` (Ref: ${pay.reference})` : ""}${acc ? ` - ${acc.check_number || `#${acc.id}`}` : ""}`,
         charge: 0,
         payment: Number(pay.amount),
-        balance: runningBalance,
         center_name: acc?.center_name || null,
+      });
+    }
+
+    // Ordenar cronológicamente antes de calcular el saldo acumulado
+    rawMovements.sort((a, b) => a.sortTs - b.sortTs || a.orderPriority - b.orderPriority);
+
+    for (const mov of rawMovements) {
+      runningBalance = Number((runningBalance + mov.charge - mov.payment).toFixed(2));
+      movements.push({
+        date: mov.date,
+        type: mov.type,
+        description: mov.description,
+        charge: mov.charge,
+        payment: mov.payment,
+        balance: runningBalance,
+        center_name: mov.center_name,
       });
     }
 

@@ -613,7 +613,9 @@ const expensesRepository = {
       revParams.push(Number(centerId), Number(centerId));
     }
 
-    const revWhere = revConditions.length ? `WHERE ${revConditions.join(" AND ")}` : "";
+    const revWhere = revConditions.length
+      ? `WHERE a.status != 'void' AND ${revConditions.join(" AND ")}`
+      : `WHERE a.status != 'void'`;
 
     const [incomeRows] = await query(
       `SELECT 
@@ -668,13 +670,13 @@ const expensesRepository = {
     // 4. Gastos agrupados por categoría
     const [expensesByCategoryRows] = await query(
       `SELECT 
-         c.id AS category_id,
-         c.name AS category_name,
-         c.color AS category_color,
+         COALESCE(c.id, 0) AS category_id,
+         COALESCE(c.name, 'Sin categoría') AS category_name,
+         COALESCE(c.color, '#64748b') AS category_color,
          COALESCE(SUM(e.amount), 0) AS total_amount,
          COUNT(e.id) AS count
        FROM expenses e
-       JOIN expense_categories c ON c.id = e.category_id
+       LEFT JOIN expense_categories c ON c.id = e.category_id
        ${expWhere}
        GROUP BY c.id, c.name, c.color
        ORDER BY total_amount DESC`,

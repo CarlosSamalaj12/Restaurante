@@ -6,7 +6,7 @@ const { BadRequestError, NotFoundError } = require("../../common/errors");
 
 const pmsService = {
   /**
-   * Obtiene la configuración del PMS.
+   * Obtiene la configuración del PMS (uso interno con api_key real).
    */
   async getConfig() {
     const config = await pmsRepository.findConfig();
@@ -22,17 +22,60 @@ const pmsService = {
   },
 
   /**
+   * Obtiene la configuración segura para la UI (api_key enmascarada, nunca en texto plano).
+   */
+  async getPublicConfig() {
+    const config = await this.getConfig();
+    const masked = { ...config };
+    if (masked.api_key && masked.api_key.length > 4) {
+      masked.api_key_masked = "••••••••" + masked.api_key.slice(-4);
+    } else if (masked.api_key) {
+      masked.api_key_masked = "••••••••";
+    } else {
+      masked.api_key_masked = "";
+    }
+    delete masked.api_key;
+    return masked;
+  },
+
+  /**
    * Actualiza la configuración de la integración con el PMS.
    */
   async updateConfig(data) {
     const { is_enabled, base_url, api_key, sandbox_mode } = data || {};
+    let cleanBaseUrl = null;
+    if (base_url !== undefined) {
+      const trimmedUrl = String(base_url || "").trim();
+      if (trimmedUrl) {
+        let parsed;
+        try {
+          parsed = new URL(trimmedUrl);
+        } catch (_) {
+          throw new BadRequestError("base_url inválida; debe ser una URL http:// o https:// válida");
+        }
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+          throw new BadRequestError("base_url solo permite protocolos http o https");
+        }
+      }
+      cleanBaseUrl = trimmedUrl;
+    }
+
+    let cleanApiKey = null;
+    if (api_key !== undefined) {
+      const trimmedKey = String(api_key || "").trim();
+      // Preservar la llave existente si llegó enmascarada desde la UI
+      if (!trimmedKey.startsWith("••••")) {
+        cleanApiKey = trimmedKey;
+      }
+    }
+
     await pmsRepository.updateConfig({
-      isEnabled: is_enabled !== undefined ? Number(is_enabled) : undefined,
-      baseUrl: base_url !== undefined ? String(base_url).trim() : undefined,
-      apiKey: api_key !== undefined ? String(api_key).trim() : undefined,
-      sandboxMode: sandbox_mode !== undefined ? Number(sandbox_mode) : undefined,
+      isEnabled: is_enabled !== undefined ? (Number(is_enabled) ? 1 : 0) : null,
+      baseUrl: cleanBaseUrl,
+      apiKey: cleanApiKey,
+      sandboxMode: sandbox_mode !== undefined ? (Number(sandbox_mode) ? 1 : 0) : null,
     });
-    return this.getConfig();
+    return this.getPublicConfig();
   },
 
   /**
@@ -260,6 +303,9 @@ const pmsService = {
 
     const charge = await pmsRepository.findChargeByTransactionId(cleanTrx);
     if (!charge) throw new NotFoundError("Cargo a habitación no encontrado");
+    if (String(charge.status || "").toLowerCase() === "reversed") {
+      throw new BadRequestError("Este cargo a habitación ya fue reversado anteriormente");
+    }
 
     if (config.sandbox_mode || !config.base_url) {
       await pmsRepository.reverseFolioCharge(cleanTrx);

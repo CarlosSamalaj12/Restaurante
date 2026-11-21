@@ -18,8 +18,8 @@ const expensesController = {
       paymentMethod: req.query.paymentMethod || null,
       status: req.query.status || null,
       search: req.query.search || null,
-      limit: req.query.limit ? Number(req.query.limit) : 200,
-      offset: req.query.offset ? Number(req.query.offset) : 0,
+      limit: Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000),
+      offset: Math.max(Number(req.query.offset) || 0, 0),
     };
     const result = await expensesService.getExpenses(filters);
     res.json(result);
@@ -31,7 +31,7 @@ const expensesController = {
   }),
 
   createExpense: asyncHandler(async (req, res) => {
-    const user = req.session ? { id: req.session.userId } : { id: req.body.createdBy || 1 };
+    const user = { id: req.session?.userId || 1 };
     const created = await expensesService.createExpense(req.body || {}, user);
     res.status(201).json(created);
   }),
@@ -116,7 +116,7 @@ const expensesController = {
   }),
 
   registerSupplierPayment: asyncHandler(async (req, res) => {
-    const user = req.session ? { id: req.session.userId } : { id: req.body.createdBy || 1 };
+    const user = { id: req.session?.userId || 1 };
     const payment = await expensesService.registerSupplierPayment(req.params.id, req.body || {}, user);
     res.status(201).json(payment);
   }),

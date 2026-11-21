@@ -97,17 +97,34 @@ const syncService = {
             }
 
             for (const item of orderItems) {
+              const productId = Number(item.product_id || item.productId || item.id);
+              if (!productId || Number.isNaN(productId)) continue;
+              const itemOfflineId = item.offline_id || item.offlineId || null;
+              if (itemOfflineId) {
+                const existingItem = await syncRepository.findOrderItemByOfflineId(itemOfflineId, conn);
+                if (existingItem) continue;
+              }
+              const qty = Number(item.qty || 1) || 1;
+              let unitPrice = Number(item.unit_price ?? item.unitPrice ?? item.price ?? 0);
+              if (!unitPrice) {
+                unitPrice = await syncRepository.findProductBasePrice(productId, conn);
+              }
+              const rawCreated = item.created_at || item.createdAt;
+              const createdAtSql = rawCreated
+                ? new Date(rawCreated).toISOString().slice(0, 19).replace("T", " ")
+                : undefined;
+
               await syncRepository.insertOfflineOrderItem(
                 {
                   accountId: serverAccountId,
-                  productId: Number(item.product_id || item.id),
-                  seatNo: Number(item.seat_no) || 1,
-                  qty: Number(item.qty) || 1,
-                  unitPrice: Number(item.unit_price || item.price || 0),
-                  lineTotal: Number(item.line_total || (item.qty * (item.unit_price || item.price || 0))),
+                  productId,
+                  seatNo: Number(item.seat_no || item.seatNo) || 1,
+                  qty,
+                  unitPrice,
+                  lineTotal: Number(item.line_total ?? item.lineTotal ?? (qty * unitPrice)),
                   notes: item.notes || "",
-                  offlineId: item.offline_id || null,
-                  createdAt: item.created_at,
+                  offlineId: itemOfflineId,
+                  createdAt: createdAtSql,
                 },
                 conn
               );
@@ -133,22 +150,34 @@ const syncService = {
               continue;
             }
 
-            await syncRepository.insertOfflinePayment(
-              {
-                accountId: serverAccountId,
-                method: payment.payment_method || "cash",
-                amount: Number(payment.amount) || 0,
-                referenceNo: payment.reference_no || "",
-                offlineId: payment.offline_id || null,
-                felPendingNit: payment.fel_pending_nit || null,
-                felPendingName: payment.fel_pending_name || null,
-                createdAt: payment.created_at,
-              },
-              conn
-            );
+            const payOfflineId = payment.offline_id || payment.offlineId || null;
+            const rawPayCreated = payment.created_at || payment.createdAt;
+            const payCreatedAtSql = rawPayCreated
+              ? new Date(rawPayCreated).toISOString().slice(0, 19).replace("T", " ")
+              : undefined;
 
-            await syncRepository.updateAccountStatus(serverAccountId, "closed", payment.created_at, conn);
-            paymentsCount++;
+            const existingPayment = payOfflineId
+              ? await syncRepository.findPaymentByOfflineId(payOfflineId, conn)
+              : null;
+
+            if (!existingPayment) {
+              await syncRepository.insertOfflinePayment(
+                {
+                  accountId: serverAccountId,
+                  method: payment.payment_method || payment.method || "cash",
+                  amount: Number(payment.amount) || 0,
+                  referenceNo: payment.reference_no || payment.referenceNo || "",
+                  offlineId: payOfflineId,
+                  felPendingNit: payment.fel_pending_nit || null,
+                  felPendingName: payment.fel_pending_name || null,
+                  createdAt: payCreatedAtSql,
+                },
+                conn
+              );
+              paymentsCount++;
+            }
+
+            await syncRepository.updateAccountStatus(serverAccountId, "paid", payCreatedAtSql, conn);
             results.push({ queueId, ok: true, serverAccountId, paid: true });
           } else {
             results.push({ queueId, ok: true, status: "ignored_unknown_action" });

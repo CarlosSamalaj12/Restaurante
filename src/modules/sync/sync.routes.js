@@ -3,9 +3,10 @@
 
 const express = require("express");
 const syncController = require("./sync.controller");
+const authService = require("../auth/auth.service");
 const syncRouter = express.Router();
 
 syncRouter.get("/health", syncController.getSyncHealth);
-syncRouter.post("/batch", syncController.processBatch);
+syncRouter.post("/batch", authService.requireAuth(), syncController.processBatch);
 
 module.exports = syncRouter;

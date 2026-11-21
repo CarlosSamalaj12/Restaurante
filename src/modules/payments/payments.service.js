@@ -6,7 +6,8 @@ const accountsRepository = require("../accounts/accounts.repository");
 const accountsService = require("../accounts/accounts.service");
 const printService = require("../../../server/print-service");
 const { normalizePaymentMethodCode } = require("../../common/utils");
-const { BadRequestError, NotFoundError } = require("../../common/errors");
+const { withTransaction } = require("../../common/db");
+const { BadRequestError, NotFoundError, ForbiddenError } = require("../../common/errors");
 const { emitEvent } = require("../../common/sockets");
 
 const paymentsService = {
@@ -22,8 +23,17 @@ const paymentsService = {
     }
 
     const valueNum = Number(value || 0);
-    if (!valueNum || valueNum <= 0 || !createdBy) {
+    if (!Number.isFinite(valueNum) || valueNum <= 0 || !createdBy) {
       throw new BadRequestError("value y createdBy son requeridos");
+    }
+    if (type === "percent" && valueNum > 100) {
+      throw new BadRequestError("El descuento porcentual no puede superar el 100%");
+    }
+
+    const account = await paymentsRepository.findAccountStatus(parsedAccountId);
+    if (!account) throw new NotFoundError("Cuenta no encontrada");
+    if (String(account.status) !== "open") {
+      throw new BadRequestError("Solo se pueden aplicar descuentos a cuentas abiertas");
     }
 
     await paymentsRepository.insertDiscount({
@@ -49,12 +59,16 @@ const paymentsService = {
    */
   async deductInventoryForAccount(accountId, conn = null) {
     try {
+      const alreadyDeducted = await paymentsRepository.hasInventoryBeenDeducted(accountId, conn);
+      if (alreadyDeducted) return;
+
       const items = await paymentsRepository.findItemsForInventoryDeduction(accountId, conn);
       for (const item of items) {
         if (!item.track_inventory) continue;
         const recipe = await paymentsRepository.findProductRecipe(item.product_id, conn);
         for (const ingredient of recipe) {
-          const deductQty = ingredient.quantity * item.qty;
+          const deductQty = Number(ingredient.quantity) * Number(item.qty);
+          if (!Number.isFinite(deductQty) || deductQty <= 0) continue;
           await paymentsRepository.recordStockExit(
             {
               inventoryItemId: ingredient.inventory_item_id,
@@ -76,7 +90,7 @@ const paymentsService = {
   },
 
   /**
-   * Registra un pago en la cuenta, deduce inventario y cierra la cuenta si se cubre el total.
+   * Registra un pago en la cuenta de forma transaccional, deduce inventario al cerrar y liquida si se cubre el total.
    */
   async addPayment({ accountId, method, amount, referenceNo = "", userId = null }) {
     const parsedAccountId = Number(accountId);
@@ -85,7 +99,7 @@ const paymentsService = {
     const normalizedMethod = normalizePaymentMethodCode(method);
     const amountNum = Number(amount || 0);
 
-    if (!normalizedMethod || !amountNum || amountNum <= 0) {
+    if (!normalizedMethod || !Number.isFinite(amountNum) || amountNum <= 0) {
       throw new BadRequestError("method y amount (> 0) son requeridos");
     }
 
@@ -94,43 +108,68 @@ const paymentsService = {
       throw new BadRequestError("Forma de pago inválida o inactiva");
     }
 
-    await paymentsRepository.insertPayment({
-      accountId: parsedAccountId,
-      method: normalizedMethod,
-      amount: amountNum,
-      referenceNo,
-    });
+    const { totals, accountJustClosed, tableId } = await withTransaction(async (conn) => {
+      const lockedAccount = await paymentsRepository.findAccountStatus(parsedAccountId, conn, true);
+      if (!lockedAccount) {
+        throw new NotFoundError("Cuenta no encontrada");
+      }
+      if (String(lockedAccount.status) !== "open") {
+        throw new BadRequestError("No se puede registrar pago: la cuenta ya está cerrada o anulada");
+      }
 
-    // Vincular la cuenta al turno activo de su centro si no tiene shift_id o si pertenecía a un turno cerrado
-    const account = await accountsRepository.findById(parsedAccountId);
-    if (account) {
-      const activeShift = await accountsRepository.findOpenShift(account.operation_center_id);
-      if (activeShift) {
-        let needsShiftUpdate = !account.shift_id;
-        if (account.shift_id) {
-          const currentAccountShift = await accountsRepository.findAccountShift(parsedAccountId);
-          if (currentAccountShift && String(currentAccountShift.status) === "closed") {
-            needsShiftUpdate = true;
-          }
-        }
-        if (needsShiftUpdate) {
-          await accountsRepository.updateAccountShift(parsedAccountId, activeShift.id);
+      // Calcular saldo pendiente actual antes de aplicar el pago para evitar sobrepagos que inflen el arqueo
+      const preTotals = await accountsService.getAccountTotals(parsedAccountId, conn);
+      const pendingBefore = Number(preTotals.pending || 0);
+      const appliedAmount =
+        pendingBefore > 0 && amountNum > pendingBefore && normalizedMethod === "cash"
+          ? pendingBefore
+          : amountNum;
+
+      await paymentsRepository.insertPayment(
+        {
+          accountId: parsedAccountId,
+          method: normalizedMethod,
+          amount: appliedAmount,
+          referenceNo,
+        },
+        conn
+      );
+
+      // Vincular la cuenta abierta al turno activo solo si no tenía turno asignado
+      if (!lockedAccount.shift_id) {
+        const activeShift = await accountsRepository.findOpenShift(lockedAccount.operation_center_id, conn);
+        if (activeShift) {
+          await accountsRepository.updateAccountShift(parsedAccountId, activeShift.id, conn);
         }
       }
-    }
 
-    await accountsService.addAccountEvent(
-      parsedAccountId,
-      "payment_added",
-      { method: normalizedMethod, amount: amountNum, referenceNo },
-      userId
-    );
+      await accountsService.addAccountEvent(
+        parsedAccountId,
+        "payment_added",
+        { method: normalizedMethod, amount: appliedAmount, tendered: amountNum, referenceNo },
+        userId,
+        conn
+      );
 
-    // Deducir inventario
-    await this.deductInventoryForAccount(parsedAccountId);
+      const postTotals = await accountsService.getAccountTotals(parsedAccountId, conn);
+      let closedNow = false;
 
-    const totals = await accountsService.getAccountTotals(parsedAccountId);
-    let accountJustClosed = false;
+      if (Number(postTotals.pending || 0) <= 0) {
+        await paymentsRepository.markAccountAsPaid(parsedAccountId, undefined, conn);
+        // Deducir inventario una sola vez al quedar pagada la cuenta
+        await this.deductInventoryForAccount(parsedAccountId, conn);
+        await accountsService.addAccountEvent(
+          parsedAccountId,
+          "account_closed_auto",
+          postTotals,
+          userId,
+          conn
+        );
+        closedNow = true;
+      }
+
+      return { totals: postTotals, accountJustClosed: closedNow, tableId: lockedAccount.table_id };
+    });
 
     // Emitir evento de nuevo pago en tiempo real
     emitEvent("sales:payment", {
@@ -141,26 +180,16 @@ const paymentsService = {
       totals,
     });
 
-    if (Number(totals.pending || 0) <= 0) {
-      const account = await paymentsRepository.findAccountStatus(parsedAccountId);
-      if (account && String(account.status) === "open") {
-        await paymentsRepository.markAccountAsPaid(parsedAccountId);
-        await accountsService.addAccountEvent(
-          parsedAccountId,
-          "account_closed_auto",
-          totals,
-          userId
-        );
-        accountJustClosed = true;
-      }
-    }
-
-    // Si la cuenta se cerró, emitir sales:closed y disparar impresión si aplica
+    // Si la cuenta se cerró, emitir sales:closed, actualizar mapa de mesas y disparar impresión si aplica
     if (accountJustClosed) {
       emitEvent("sales:closed", {
         accountId: parsedAccountId,
+        tableId,
         totals,
       });
+      if (tableId) {
+        emitEvent("table:update", { tableId, accountId: parsedAccountId, status: "paid" });
+      }
 
       this.printCustomerReceipt(parsedAccountId, userId, totals).catch((printErr) => {
         console.error(`[PRINT] Error preparando recibo: ${printErr.message}`);
@@ -171,24 +200,40 @@ const paymentsService = {
   },
 
   /**
-   * Cierra manualmente una cuenta ya liquidada.
+   * Cierra manualmente una cuenta ya liquidada (ej. 100% descuento).
    */
   async closeAccount({ accountId, userId = null }) {
     const parsedAccountId = Number(accountId);
     if (!parsedAccountId) throw new BadRequestError("accountId inválido");
 
-    const totals = await accountsService.getAccountTotals(parsedAccountId);
-    if (Number(totals.pending || 0) > 0) {
-      throw new BadRequestError("La cuenta aún tiene saldo pendiente");
-    }
+    const { totals, tableId } = await withTransaction(async (conn) => {
+      const lockedAccount = await paymentsRepository.findAccountStatus(parsedAccountId, conn, true);
+      if (!lockedAccount) {
+        throw new NotFoundError("Cuenta no encontrada");
+      }
+      if (String(lockedAccount.status) !== "open") {
+        throw new BadRequestError("Solo se pueden cerrar cuentas en estado abierto");
+      }
 
-    await paymentsRepository.markAccountAsPaid(parsedAccountId);
-    await accountsService.addAccountEvent(parsedAccountId, "account_closed", totals, userId);
+      const accTotals = await accountsService.getAccountTotals(parsedAccountId, conn);
+      if (Number(accTotals.pending || 0) > 0) {
+        throw new BadRequestError("La cuenta aún tiene saldo pendiente");
+      }
+
+      await paymentsRepository.markAccountAsPaid(parsedAccountId, undefined, conn);
+      await this.deductInventoryForAccount(parsedAccountId, conn);
+      await accountsService.addAccountEvent(parsedAccountId, "account_closed", accTotals, userId, conn);
+      return { totals: accTotals, tableId: lockedAccount.table_id };
+    });
 
     emitEvent("sales:closed", {
       accountId: parsedAccountId,
+      tableId,
       totals,
     });
+    if (tableId) {
+      emitEvent("table:update", { tableId, accountId: parsedAccountId, status: "paid" });
+    }
 
     return { ok: true };
   },
@@ -340,7 +385,7 @@ const paymentsService = {
       authorizer = authResult.user;
     } else if (session) {
       const role = String(session.role || "").toLowerCase();
-      if (role === "admin" || role === "manager" || (session.permissions && session.permissions.includes("accounts.reopen"))) {
+      if (["superadmin", "admin", "manager"].includes(role) || (session.permissions && session.permissions.includes("accounts.reopen"))) {
         authorizer = { id: session.userId || session.id, full_name: session.userName || "Supervisor" };
       } else {
         throw new ForbiddenError("Se requiere PIN de supervisor para rectificar formas de pago");

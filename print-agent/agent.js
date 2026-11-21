@@ -112,24 +112,44 @@ async function processQueue() {
 // ───────── Envío Directo a la Impresora Térmica en LAN ─────────
 function sendToThermalPrinter(ip, port, builder) {
   return new Promise((resolve, reject) => {
+    const connectTimeoutMs = Number(config.connectTimeoutMs) || 3500;
     const device = new escpos.Network(ip, Number(port) || 9100, {
-      timeout: Number(config.connectTimeoutMs) || 3500,
+      timeout: connectTimeoutMs,
     });
     const printer = new escpos.Printer(device, { encoding: "CP850" });
     let settled = false;
 
+    const cleanupTimer = () => {
+      if (hardTimer) {
+        clearTimeout(hardTimer);
+        hardTimer = null;
+      }
+    };
+
     const fail = (err) => {
       if (settled) return;
       settled = true;
-      try { device.close(() => {}); } catch (_) {}
+      cleanupTimer();
+      try {
+        if (device.device && typeof device.device.destroy === "function") {
+          device.device.destroy();
+        }
+        device.close(() => {});
+      } catch (_) {}
       reject(err);
     };
 
     const ok = () => {
       if (settled) return;
       settled = true;
+      cleanupTimer();
       resolve();
     };
+
+    // Timeout estricto de conexión/impresión para evitar que una impresora apagada congele la cola
+    let hardTimer = setTimeout(() => {
+      fail(new Error(`Timeout (${connectTimeoutMs}ms) conectando a la impresora ${ip}:${port}`));
+    }, connectTimeoutMs + 1500);
 
     try {
       device.open((openErr) => {
@@ -279,6 +299,10 @@ async function sendAck(jobId, status, errorMessage = null) {
       }
     );
 
+    req.on("timeout", () => {
+      req.destroy(new Error("ACK HTTP timeout"));
+    });
+
     req.on("error", (e) => {
       console.warn(`[ACK HTTP] No pude enviar ACK por HTTP para #${jobId}:`, e.message);
     });
@@ -324,6 +348,10 @@ async function pollPendingJobs() {
         });
       }
     );
+
+    req.on("timeout", () => {
+      req.destroy();
+    });
 
     req.on("error", () => {
       // Silencioso en caso de caída temporal de red

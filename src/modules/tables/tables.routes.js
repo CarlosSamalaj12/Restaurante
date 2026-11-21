@@ -17,13 +17,12 @@ tablesRouter.get("/", tablesController.getTables);
 tablesRouter.post("/:tableId/accounts", accountsController.createAccount);
 tablesRouter.get("/:tableId/accounts", accountsController.getTableAccounts);
 
-// Rutas de administración / configuración (requieren admin)
-tableSettingsRouter.use(requireAdmin);
-tableSettingsRouter.post("/tables", tablesController.createTable);
-tableSettingsRouter.post("/tables/:tableId", tablesController.updateTable);
-tableSettingsRouter.delete("/tables/:tableId", tablesController.deleteTable);
-tableSettingsRouter.post("/areas", tablesController.createArea);
-tableSettingsRouter.post("/areas/:areaId", tablesController.updateArea);
+// Rutas de administración / configuración (requireAdmin por ruta para no bloquear otros sub-routers en /api/settings)
+tableSettingsRouter.post("/tables", requireAdmin, tablesController.createTable);
+tableSettingsRouter.post("/tables/:tableId", requireAdmin, tablesController.updateTable);
+tableSettingsRouter.delete("/tables/:tableId", requireAdmin, tablesController.deleteTable);
+tableSettingsRouter.post("/areas", requireAdmin, tablesController.createArea);
+tableSettingsRouter.post("/areas/:areaId", requireAdmin, tablesController.updateArea);
 
 module.exports = {
   tablesRouter,

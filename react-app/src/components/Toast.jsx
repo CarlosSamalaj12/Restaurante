@@ -1,5 +1,5 @@
 import { useToastState } from '../hooks/useToast';
-import { X, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 
 export function Toast() {
   const toasts = useToastState() || [];
@@ -12,6 +12,8 @@ export function Toast() {
         return 'bg-green-500 text-white';
       case 'error':
         return 'bg-red-500 text-white';
+      case 'warning':
+        return 'bg-amber-500 text-white';
       default:
         return 'bg-gray-800 text-white';
     }
@@ -23,6 +25,8 @@ export function Toast() {
         return <CheckCircle className="w-5 h-5" />;
       case 'error':
         return <AlertCircle className="w-5 h-5" />;
+      case 'warning':
+        return <AlertTriangle className="w-5 h-5" />;
       default:
         return <Info className="w-5 h-5" />;
     }

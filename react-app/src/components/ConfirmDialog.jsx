@@ -62,18 +62,20 @@ export function ConfirmDialog({
   loading = false,
   onConfirm,
   onCancel,
+  onClose,
 }) {
+  const handleCancel = onCancel || onClose;
   // Manejo de tecla Escape
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && !loading) {
-        onCancel && onCancel();
+        handleCancel && handleCancel();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, loading, onCancel]);
+  }, [isOpen, loading, handleCancel]);
 
   if (!isOpen) return null;
 
@@ -94,7 +96,7 @@ export function ConfirmDialog({
         <div className="absolute top-4 right-4 z-10">
           <button
             type="button"
-            onClick={onCancel}
+            onClick={handleCancel}
             disabled={loading}
             className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition disabled:opacity-50"
             aria-label="Cerrar"
@@ -143,7 +145,7 @@ export function ConfirmDialog({
           <div className="flex gap-2.5 pt-2">
             <button
               type="button"
-              onClick={onCancel}
+              onClick={handleCancel}
               disabled={loading}
               className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition disabled:opacity-50"
             >

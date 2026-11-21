@@ -8,7 +8,7 @@ import { BackButton } from '../components/BackButton';
 import { printPrecheckThermal } from '../utils/printReceipts';
 import { executePrecheckPrint } from '../utils/precheckPrinter';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { formatElapsedTime, safeMinutesSince, safeFormatLocaleTime } from '../utils/dateUtils';
+import { formatElapsedTime, safeMinutesSince, safeFormatLocaleTime, getLocalDateStr } from '../utils/dateUtils';
 import { 
   Receipt, 
   Printer, 
@@ -115,7 +115,7 @@ export function AccountsPage({ onBack, onSelectAccount, onNavigate }) {
     if (!silent) setLoadingClosed(true);
     try {
       const cId = centerId || centers[0]?.id || 1;
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateStr();
       const results = await api.searchPaidAccounts(searchQuery || '', cId, today, today);
       setClosedAccounts(results || []);
     } catch (err) {

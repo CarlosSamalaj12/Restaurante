@@ -31,8 +31,6 @@ async function ensureDigitalMenuTables() {
   await safeExec(`ALTER TABLE product_categories ADD COLUMN name_en VARCHAR(120) NULL`);
   await safeExec(`ALTER TABLE modifier_groups ADD COLUMN name_en VARCHAR(120) NULL`);
   await safeExec(`ALTER TABLE modifier_options ADD COLUMN name_en VARCHAR(120) NULL`);
-  await safeExec(`ALTER TABLE digital_menus ADD COLUMN name_en VARCHAR(120) NULL`);
-  await safeExec(`ALTER TABLE digital_menus ADD COLUMN description_en TEXT NULL`);
 
   // 3. Extensión de columnas en 'accounts' para trazabilidad de auto-comanda sin mesero
   await safeExec(
@@ -67,6 +65,10 @@ async function ensureDigitalMenuTables() {
       INDEX idx_menu_active (is_active)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
   );
+
+  // Columnas multilingües para digital_menus (después de asegurar que la tabla existe)
+  await safeExec(`ALTER TABLE digital_menus ADD COLUMN name_en VARCHAR(120) NULL`);
+  await safeExec(`ALTER TABLE digital_menus ADD COLUMN description_en TEXT NULL`);
 
   // 5. Tabla de Categorías asignadas por Menú
   await query(

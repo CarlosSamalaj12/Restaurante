@@ -301,6 +301,7 @@ const reportsRepository = {
          COALESCE(SUM(oi.line_total), 0) AS total_sales
        FROM order_items oi
        INNER JOIN accounts a ON a.id = oi.account_id
+       INNER JOIN products p ON p.id = oi.product_id
        LEFT JOIN operation_centers oc ON oc.id = a.operation_center_id
        WHERE ${where}
        GROUP BY oc.id
@@ -424,6 +425,7 @@ const reportsRepository = {
               COALESCE(SUM(oi.qty), 0) AS grand_qty
        FROM order_items oi
        INNER JOIN accounts a ON a.id = oi.account_id
+       INNER JOIN products p ON p.id = oi.product_id
        WHERE ${where}`,
       params
     );

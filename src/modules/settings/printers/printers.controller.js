@@ -103,7 +103,8 @@ const printersController = {
   }),
 
   deleteRoutingRule: asyncHandler(async (req, res) => {
-    const { areaTrabajoId, categoriaImpresionId } = req.body || req.query || {};
+    const src = req.body && Object.keys(req.body).length > 0 ? req.body : (req.query || {});
+    const { areaTrabajoId, categoriaImpresionId } = src;
     const result = await printersService.deleteRoutingRule(
       areaTrabajoId,
       categoriaImpresionId

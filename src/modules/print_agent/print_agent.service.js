@@ -58,6 +58,8 @@ function registerAgent(socket, data = {}) {
   };
 
   connectedAgents.set(socket.id, agentInfo);
+  socket.data = socket.data || {};
+  socket.data.isPrintAgent = true;
   socket.join("room:print-agents");
 
   console.log(`[PRINT AGENT] Agente "${agentInfo.agentName}" (${agentInfo.agentId}) conectado desde ${agentInfo.ip}`);
@@ -139,6 +141,12 @@ async function dispatchPendingJobsToSocket(socket) {
 function emitNewJob(jobData) {
   const io = getSocket();
   if (!io) return false;
+  // Enviar a un solo agente conectado (el primero disponible) para evitar impresiones duplicadas en multi-agente
+  const primarySocketId = connectedAgents.keys().next().value;
+  if (primarySocketId) {
+    io.to(primarySocketId).emit("print:new_job", jobData);
+    return true;
+  }
   io.to("room:print-agents").emit("print:new_job", jobData);
   return true;
 }

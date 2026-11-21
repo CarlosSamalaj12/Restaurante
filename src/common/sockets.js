@@ -23,8 +23,9 @@ function initSocket(ioInstance) {
       printAgentService.registerAgent(socket, data);
     });
 
-    // Confirmación de ejecución de impresión desde el agente local
+    // Confirmación de ejecución de impresión desde el agente local (solo sockets autenticados como agente)
     socket.on("print:ack", async (data = {}) => {
+      if (!socket.data?.isPrintAgent) return;
       try {
         const { jobId, status, errorMessage } = data;
         if (jobId) {
@@ -35,8 +36,9 @@ function initSocket(ioInstance) {
       }
     });
 
-    // Petición manual de trabajos pendientes por si el agente reconecta
+    // Petición manual de trabajos pendientes por si el agente reconecta (solo agentes autenticados)
     socket.on("print_agent:get_pending", async () => {
+      if (!socket.data?.isPrintAgent) return;
       try {
         await printAgentService.dispatchPendingJobsToSocket(socket);
       } catch (err) {

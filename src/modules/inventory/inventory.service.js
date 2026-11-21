@@ -58,13 +58,17 @@ const inventoryService = {
   async recordMovement({ inventoryItemId, type, quantity, note = "" }) {
     const parsedItemId = Number(inventoryItemId);
     const parsedQty = Number(quantity);
-    const cleanType = String(type || "").trim();
+    const cleanType = String(type || "").trim().toLowerCase();
 
-    if (!parsedItemId || !cleanType || !parsedQty) {
+    if (!parsedItemId || !cleanType || !Number.isFinite(parsedQty) || parsedQty === 0) {
       throw new BadRequestError("inventoryItemId, type y quantity son requeridos");
     }
 
-    if (parsedQty <= 0) {
+    if (!["entry", "exit", "adjustment"].includes(cleanType)) {
+      throw new BadRequestError("type debe ser 'entry', 'exit' o 'adjustment'");
+    }
+
+    if (cleanType !== "adjustment" && parsedQty <= 0) {
       throw new BadRequestError("quantity debe ser mayor a 0");
     }
 
@@ -89,7 +93,14 @@ const inventoryService = {
     const parsedProductId = Number(productId);
     if (!parsedProductId) throw new BadRequestError("productId inválido");
 
-    await inventoryRepository.replaceRecipeIngredients(parsedProductId, ingredients);
+    const sanitized = (Array.isArray(ingredients) ? ingredients : [])
+      .map((ing) => ({
+        inventoryItemId: Number(ing.inventoryItemId || ing.inventory_item_id),
+        quantity: Number(ing.quantity),
+      }))
+      .filter((ing) => ing.inventoryItemId > 0 && Number.isFinite(ing.quantity) && ing.quantity > 0);
+
+    await inventoryRepository.replaceRecipeIngredients(parsedProductId, sanitized);
     return { ok: true };
   },
 };

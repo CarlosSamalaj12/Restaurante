@@ -131,7 +131,7 @@ export function ProductionCentersSection({ productionCenters, centers, printers 
   const handleDeleteCenter = async () => {
     if (!confirmDelete) return;
     try {
-      await api.settings.deleteProductionCenter(confirmDelete.id);
+      await api.deleteProductionCenter(confirmDelete.id);
       toast.success('Centro eliminado');
       setConfirmDelete(null);
       if (onReload) onReload();

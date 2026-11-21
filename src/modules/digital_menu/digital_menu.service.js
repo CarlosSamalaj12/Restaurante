@@ -270,6 +270,9 @@ const digitalMenuService = {
     if (!Array.isArray(items) || items.length === 0) {
       throw new BadRequestError("El carrito está vacío");
     }
+    if (tableContext && String(tableContext.menuMode || "").toLowerCase() === "catalog") {
+      throw new ForbiddenError("Este menú digital está en modo catálogo (solo lectura) y no admite pedidos.");
+    }
 
     let accountId = null;
     let tableCode = "";

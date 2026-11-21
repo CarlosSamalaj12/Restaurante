@@ -193,9 +193,6 @@ export const api = {
       throw err;
     }
   },
-  deleteAccount: (accountId) => request(`/accounts/${accountId}`, {
-    method: 'DELETE',
-  }),
 
   // Account details
   getAccount: async (accountId) => {

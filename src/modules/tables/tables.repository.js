@@ -5,6 +5,23 @@ const { query } = require("../../common/db");
 
 const tablesRepository = {
   /**
+   * Busca una mesa activa por su código exacto (ej. "M-1", "VAQ-2").
+   */
+  async findByCode(code, conn = null) {
+    const clean = String(code || "").trim();
+    if (!clean) return [];
+    const [rows] = await query(
+      `SELECT id, code, area_id, seats, operation_center_id, is_active
+       FROM restaurant_tables
+       WHERE UPPER(code) = UPPER(?) AND is_active = 1
+       LIMIT 1`,
+      [clean],
+      conn
+    );
+    return rows;
+  },
+
+  /**
    * Obtiene la lista de mesas activas con estadísticas de cuentas abiertas y consumo.
    */
   async getTablesWithActivity(centerId = 0, conn = null) {

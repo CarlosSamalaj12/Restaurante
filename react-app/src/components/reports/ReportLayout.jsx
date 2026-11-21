@@ -60,7 +60,7 @@ export function ReportLayout({
   const handlePreset = (preset) => {
     setDatePreset(preset);
     const today = new Date();
-    const toYMD = (d) => d.toISOString().split('T')[0];
+    const toYMD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     if (preset === 'today') {
       const todayStr = toYMD(today);

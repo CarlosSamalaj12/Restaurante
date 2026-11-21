@@ -27,6 +27,7 @@ const printersService = {
   async createProductionCenter(data) {
     const {
       name,
+      printerId = null,
       printerName = "",
       printerIp = "",
       printerPort = 9100,
@@ -36,6 +37,7 @@ const printersService = {
     if (!name || !String(name).trim()) throw new BadRequestError("name es requerido");
     const centerId = await printersRepository.createProductionCenter({
       name: String(name).trim(),
+      printerId: printerId ? Number(printerId) : null,
       printerName: String(printerName).trim(),
       printerIp: printerIp ? String(printerIp).trim() : null,
       printerPort,
@@ -49,6 +51,7 @@ const printersService = {
     const cid = Number(centerId);
     const {
       name,
+      printerId = null,
       printerName = "",
       printerIp = "",
       printerPort = 9100,
@@ -60,6 +63,7 @@ const printersService = {
     }
     await printersRepository.updateProductionCenter(cid, {
       name: String(name).trim(),
+      printerId: printerId ? Number(printerId) : null,
       printerName: String(printerName).trim(),
       printerIp: printerIp ? String(printerIp).trim() : null,
       printerPort,

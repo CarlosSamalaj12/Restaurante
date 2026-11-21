@@ -33,8 +33,13 @@ export function ExpenseFormModal({
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  const getTodayLocal = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   const [formData, setFormData] = useState({
-    expenseDate: new Date().toISOString().split('T')[0],
+    expenseDate: getTodayLocal(),
     categoryId: '',
     supplierId: '',
     description: '',
@@ -49,7 +54,7 @@ export function ExpenseFormModal({
   useEffect(() => {
     if (initialData) {
       setFormData({
-        expenseDate: initialData.expense_date || new Date().toISOString().split('T')[0],
+        expenseDate: initialData.expense_date ? String(initialData.expense_date).split('T')[0] : getTodayLocal(),
         categoryId: initialData.category_id || '',
         supplierId: initialData.supplier_id || '',
         description: initialData.description || '',
@@ -62,7 +67,7 @@ export function ExpenseFormModal({
       });
     } else {
       setFormData({
-        expenseDate: new Date().toISOString().split('T')[0],
+        expenseDate: getTodayLocal(),
         categoryId: categories[0]?.id || '',
         supplierId: '',
         description: '',

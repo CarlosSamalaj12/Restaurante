@@ -3,7 +3,19 @@
 
 class BaseFelDriver {
   constructor(config = {}) {
-    this.config = config;
+    this.config = {
+      ...config,
+      environment: config.environment || "sandbox",
+      apiUsername: config.apiUsername || config.api_username || "",
+      apiKey: config.apiKey || config.api_key || "",
+      apiToken: config.apiToken || config.api_token || "",
+      apiAlias: config.apiAlias || config.api_alias || "",
+      issuerNit: config.issuerNit || config.issuer_nit || "",
+      issuerName: config.issuerName || config.issuer_name || "",
+      establishmentCode: config.establishmentCode || config.establishment_code || 1,
+      satPhraseType: config.satPhraseType || config.sat_phrase_type || 1,
+      satPhraseCode: config.satPhraseCode || config.sat_phrase_code || 1,
+    };
   }
 
   /**

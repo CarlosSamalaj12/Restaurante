@@ -19,30 +19,29 @@ const modifierTemplatesRouter = express.Router();
 modifierTemplatesRouter.use(requireAuth);
 modifierTemplatesRouter.get("/", catalogController.getModifierTemplates);
 
-// Router para /api/settings (rutas asociadas a catálogo)
+// Router para /api/settings (rutas asociadas a catálogo — requireAdmin por ruta para no bloquear settingsRouter)
 const catalogSettingsRouter = express.Router();
-catalogSettingsRouter.use(requireAdmin);
 
 // Categorías
-catalogSettingsRouter.post("/categories", catalogController.createCategory);
-catalogSettingsRouter.post("/categories/reorder", catalogController.reorderCategories);
-catalogSettingsRouter.post("/categories/:categoryId", catalogController.updateCategory);
-catalogSettingsRouter.delete("/categories/:categoryId", catalogController.deleteCategory);
+catalogSettingsRouter.post("/categories", requireAdmin, catalogController.createCategory);
+catalogSettingsRouter.post("/categories/reorder", requireAdmin, catalogController.reorderCategories);
+catalogSettingsRouter.post("/categories/:categoryId", requireAdmin, catalogController.updateCategory);
+catalogSettingsRouter.delete("/categories/:categoryId", requireAdmin, catalogController.deleteCategory);
 
 // Productos
-catalogSettingsRouter.post("/products", catalogController.createProduct);
-catalogSettingsRouter.post("/products-complete", catalogController.createProductComplete);
-catalogSettingsRouter.post("/products/:productId", catalogController.updateProduct);
-catalogSettingsRouter.delete("/products/:productId", catalogController.deleteProduct);
-catalogSettingsRouter.post("/products/:productId/production-centers", catalogController.setProductProductionCenters);
+catalogSettingsRouter.post("/products", requireAdmin, catalogController.createProduct);
+catalogSettingsRouter.post("/products-complete", requireAdmin, catalogController.createProductComplete);
+catalogSettingsRouter.post("/products/:productId", requireAdmin, catalogController.updateProduct);
+catalogSettingsRouter.delete("/products/:productId", requireAdmin, catalogController.deleteProduct);
+catalogSettingsRouter.post("/products/:productId/production-centers", requireAdmin, catalogController.setProductProductionCenters);
 
 // Modificadores
-catalogSettingsRouter.post("/modifier-groups", catalogController.createModifierGroup);
-catalogSettingsRouter.post("/modifier-groups/:groupId", catalogController.updateModifierGroup);
-catalogSettingsRouter.delete("/modifier-groups/:groupId", catalogController.deleteModifierGroup);
-catalogSettingsRouter.post("/modifier-groups/:groupId/options", catalogController.createModifierOption);
-catalogSettingsRouter.post("/modifier-options/:optionId", catalogController.updateModifierOption);
-catalogSettingsRouter.delete("/modifier-options/:optionId", catalogController.deleteModifierOption);
+catalogSettingsRouter.post("/modifier-groups", requireAdmin, catalogController.createModifierGroup);
+catalogSettingsRouter.post("/modifier-groups/:groupId", requireAdmin, catalogController.updateModifierGroup);
+catalogSettingsRouter.delete("/modifier-groups/:groupId", requireAdmin, catalogController.deleteModifierGroup);
+catalogSettingsRouter.post("/modifier-groups/:groupId/options", requireAdmin, catalogController.createModifierOption);
+catalogSettingsRouter.post("/modifier-options/:optionId", requireAdmin, catalogController.updateModifierOption);
+catalogSettingsRouter.delete("/modifier-options/:optionId", requireAdmin, catalogController.deleteModifierOption);
 
 // Pasos de producto
 catalogSettingsRouter.post("/product-steps", catalogController.addProductStep);

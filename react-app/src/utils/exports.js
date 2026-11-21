@@ -412,10 +412,15 @@ export function exportToExcel({ sheets }) {
 // ============================================================
 // EXPORT TO PDF (print via browser)
 // ============================================================
-export function exportToPDF({ title, subtitle, tables }) {
+export function exportToPDF({ title, subtitle, tables, columns, rows }) {
+  const normalizedTables = Array.isArray(tables)
+    ? tables
+    : columns && rows
+      ? [{ headers: columns, rows }]
+      : [];
   let tablesHTML = '';
 
-  tables.forEach(({ headers, rows, totals, grandTotals, sectionTitle }) => {
+  normalizedTables.forEach(({ headers = [], rows: tableRows = [], totals, grandTotals, sectionTitle }) => {
     if (sectionTitle) {
       tablesHTML += `<div class="section-title">${sectionTitle}</div>`;
     }
@@ -431,7 +436,7 @@ export function exportToPDF({ title, subtitle, tables }) {
 
     // Body
     tablesHTML += '<tbody>';
-    rows.forEach((row, rowIdx) => {
+    tableRows.forEach((row, rowIdx) => {
       const altClass = rowIdx % 2 === 1 ? ' class="alt"' : '';
       tablesHTML += `<tr${altClass}>`;
       row.forEach(cell => {

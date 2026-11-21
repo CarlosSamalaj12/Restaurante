@@ -49,7 +49,7 @@ function PosViewLoading() {
 }
 
 function AppContent() {
-  const { user, loading, canView } = useAuth();
+  const { user, loading, canView, logout } = useAuth();
   const [view, setView] = useState(() => {
     const cachedUser = api ? null : null; // lazy fallback
     return 'dashboard';
@@ -61,11 +61,12 @@ function AppContent() {
   const [selectedTableId, setSelectedTableId] = useState(null);
   const [autoOpenTable, setAutoOpenTable] = useState(null);
 
-  // Inicializar motor de sincronización offline / online
+  // Inicializar motor de sincronización offline / online solo cuando hay sesión activa
   useEffect(() => {
+    if (!user) return;
     const cleanup = syncService.init(api);
     return cleanup;
-  }, []);
+  }, [user]);
 
   // Al iniciar sesión o cambiar usuario, dirigir automáticamente a su vista predeterminada
   useEffect(() => {

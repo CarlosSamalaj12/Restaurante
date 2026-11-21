@@ -796,7 +796,7 @@ export function usePaymentModal({ accountId, totals, onClose, onSuccess }) {
             financials: {
               subtotal_food: Number(currentTotals?.subtotal || lineAmt),
               subtotal_beverage: 0,
-              tip_amount: Number(currentTotals?.tip || 0),
+              tip_amount: Number(currentTotals?.tipAmount ?? currentTotals?.tip ?? 0),
               total_charged: Number(lineAmt.toFixed(2)),
             },
             notes: `Cargo comanda #${currentTotals?.check_number || accountId} autorizado por ${line.pmsGuestName || 'Huésped'}`,

@@ -132,7 +132,7 @@ const analyticsRepository = {
 
     // KPI: Cuentas abiertas actualmente
     const [openAccountsRow] = await query(
-      `SELECT COUNT(*) AS count, COALESCE(SUM(oi.line_total), 0) AS potential_revenue
+      `SELECT COUNT(DISTINCT a.id) AS count, COALESCE(SUM(oi.line_total), 0) AS potential_revenue
        FROM accounts a
        LEFT JOIN restaurant_tables t ON t.id = a.table_id
        LEFT JOIN order_items oi ON oi.account_id = a.id AND oi.status = 'active'

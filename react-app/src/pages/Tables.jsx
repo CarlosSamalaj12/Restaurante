@@ -244,6 +244,13 @@ export function Tables({ onBack, onSelectTable, centers, autoOpenTable, onNaviga
   };
 
   useSocket({
+    'sales:order': () => loadTables(),
+    'sales:payment': () => loadTables(),
+    'sales:closed': () => loadTables(),
+    'sales:update': () => loadTables(),
+    'account:updated': () => loadTables(),
+    'table:update': () => loadTables(),
+    'sync:completed': () => loadTables(),
     'orders:self_service_new': handleSelfServiceOrder,
     'table:call_waiter': handleCallWaiter,
     'table:request_bill': handleRequestBill,

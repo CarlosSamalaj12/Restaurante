@@ -6,14 +6,14 @@ const { query } = require("../../../common/db");
 const printersRepository = {
   // App Settings helper (para modo de ruteo)
   async getAppSetting(key) {
-    const [rows] = await query(`SELECT value FROM app_settings WHERE \`key\` = ? LIMIT 1`, [key]);
-    return rows?.[0]?.value || null;
+    const [rows] = await query(`SELECT setting_value FROM app_settings WHERE setting_key = ? LIMIT 1`, [key]);
+    return rows?.[0]?.setting_value || null;
   },
 
   async setAppSetting(key, val) {
     await query(
-      `INSERT INTO app_settings (\`key\`, value) VALUES (?, ?)
-       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      `INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
       [key, String(val)]
     );
   },

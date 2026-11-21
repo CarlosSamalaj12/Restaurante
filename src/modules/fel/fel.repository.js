@@ -122,7 +122,7 @@ const felRepository = {
     const [accRows] = await query(
       `SELECT a.*, t.code as table_code, u.full_name as waiter_name
        FROM accounts a
-       LEFT JOIN tables t ON a.table_id = t.id
+       LEFT JOIN restaurant_tables t ON a.table_id = t.id
        LEFT JOIN staff_users u ON a.waiter_id = u.id
        WHERE a.id = ? LIMIT 1`,
       [accountId]

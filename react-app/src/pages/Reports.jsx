@@ -1,7 +1,7 @@
 // react-app/src/pages/Reports.jsx
 // Centro de Reportes & Analíticas - Rediseño Profesional v3.4 POS
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ArrowLeft,
   Search,
@@ -45,6 +45,7 @@ import { ProductSalesReportPage } from '../components/reports/ProductSalesReport
 import { PaymentMethodReportPage } from '../components/reports/PaymentMethodReportPage';
 import { SalesByCenterReportPage } from '../components/reports/SalesByCenterReportPage';
 import { SalesByUserReportPage } from '../components/reports/SalesByUserReportPage';
+import { getLocalDateStr } from '../utils/dateUtils';
 
 export function ReportsPage({ onBack, onNavigateShifts }) {
   const toast = useToast();
@@ -62,19 +63,19 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'finances' | 'operations' | 'inventory' | 'staff'
   const [datePreset, setDatePreset] = useState('today'); // 'today' | 'shift' | 'week' | 'month'
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(() => getLocalDateStr());
+  const [endDate, setEndDate] = useState(() => getLocalDateStr());
 
   // Métricas en tiempo real cargadas de analytics / shifts
   const [kpiMetrics, setKpiMetrics] = useState({
-    totalSales: 14850.0,
-    salesTrend: '+12.4% vs. ayer',
-    closedTickets: 142,
-    avgTicket: 104.57,
-    totalTips: 1485.0,
-    avgTipRate: '10.0%',
-    voidCount: 2,
-    voidAmount: 120.0,
+    totalSales: 0,
+    salesTrend: '',
+    closedTickets: 0,
+    avgTicket: 0,
+    totalTips: 0,
+    avgTipRate: '0.0%',
+    voidCount: 0,
+    voidAmount: 0,
   });
   const [loadingMetrics, setLoadingMetrics] = useState(false);
 
@@ -116,21 +117,22 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
           centerId: selectedCenter || undefined,
         });
         if (res) {
-          const rev = Number(res.totalRevenue ?? res.total_sales ?? 14850);
-          const closedCount = Number(res.closedAccountsCount ?? res.ticketsCount ?? 142);
-          const avg = closedCount > 0 ? rev / closedCount : 104.57;
-          const tips = Number(res.totalTips ?? 1485);
-          const tipRate = rev > 0 ? ((tips / rev) * 100).toFixed(1) + '%' : '10.0%';
+          const k = res.kpis || res;
+          const rev = Number(k.totalRevenue ?? k.total_sales ?? 0);
+          const closedCount = Number(k.closedAccountsCount ?? k.ticketsCount ?? 0);
+          const avg = Number(k.avgTicket ?? (closedCount > 0 ? rev / closedCount : 0));
+          const tips = Number(k.totalTips ?? 0);
+          const tipRate = rev > 0 ? ((tips / rev) * 100).toFixed(1) + '%' : '0.0%';
 
           setKpiMetrics((prev) => ({
             ...prev,
-            totalSales: rev || 14850.0,
-            closedTickets: closedCount || 142,
-            avgTicket: avg || 104.57,
-            totalTips: tips || 1485.0,
+            totalSales: rev,
+            closedTickets: closedCount,
+            avgTicket: avg,
+            totalTips: tips,
             avgTipRate: tipRate,
-            voidCount: res.voidItemsCount ?? 2,
-            voidAmount: Number(res.voidItemsTotal ?? 120.0),
+            voidCount: Number(k.voidItemsCount ?? 0),
+            voidAmount: Number(k.voidItemsTotal ?? 0),
           }));
         }
       }
@@ -149,7 +151,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
   const handleDatePresetChange = (preset) => {
     setDatePreset(preset);
     const today = new Date();
-    const toYMD = (d) => d.toISOString().split('T')[0];
+    const toYMD = (d) => getLocalDateStr(d);
 
     if (preset === 'today' || preset === 'shift') {
       const todayStr = toYMD(today);
@@ -174,7 +176,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
       const centerId = selectedCenter || (centers[0] && centers[0].id) || 1;
       let previewData = null;
       try {
-        previewData = await api.getShiftPreview(centerId);
+        previewData = await api.previewShift(centerId);
       } catch (e) {
         console.warn('[REPORTS] Fallo getShiftPreview:', e.message);
       }
@@ -189,9 +191,9 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
         return;
       }
 
-      const totalSales = Number(previewData?.sales?.total_sales ?? kpiMetrics.totalSales).toFixed(2);
-      const totalTips = Number(previewData?.tips?.total_tips ?? kpiMetrics.totalTips).toFixed(2);
-      const accountsCount = previewData?.sales?.accounts_count ?? kpiMetrics.closedTickets;
+      const totalSales = Number(previewData?.summary?.grand_total ?? previewData?.sales?.total_sales ?? kpiMetrics.totalSales ?? 0).toFixed(2);
+      const totalTips = Number(previewData?.summary?.tips_total ?? previewData?.tips?.total_tips ?? kpiMetrics.totalTips ?? 0).toFixed(2);
+      const accountsCount = previewData?.summary?.total_checks ?? previewData?.sales?.accounts_count ?? kpiMetrics.closedTickets ?? 0;
 
       win.document.write(`
         <!DOCTYPE html>
@@ -247,6 +249,10 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
     }
   };
 
+  // Mantener referencia actualizada de handlePrintCorteX para evitar stale closure en Ctrl+P
+  const printCorteXRef = useRef(handlePrintCorteX);
+  printCorteXRef.current = handlePrintCorteX;
+
   // Atajos de teclado: ESC para volver, F5 para actualizar, Ctrl+P para imprimir corte X
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -263,7 +269,7 @@ export function ReportsPage({ onBack, onNavigateShifts }) {
         toast.info('Métricas actualizadas');
       } else if (e.ctrlKey && (e.key === 'p' || e.key === 'P')) {
         e.preventDefault();
-        handlePrintCorteX();
+        printCorteXRef.current();
       }
     };
     window.addEventListener('keydown', handleKeyDown);

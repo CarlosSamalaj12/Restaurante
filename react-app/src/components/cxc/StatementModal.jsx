@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { m } from 'framer-motion';
 import api from '../../api';
+import { tokenStorage } from '../../lib/tokenStorage';
+import { getOrCreateSerial } from '../../lib/terminalSerial';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
 import {
@@ -49,10 +51,14 @@ export function StatementModal({ client, onClose }) {
     if (filterEndDate) params.end_date = filterEndDate;
     if (filterCheck) params.check_number = filterCheck;
     const qs = new URLSearchParams(params).toString();
-    const token = localStorage.getItem('authToken');
+    const token = tokenStorage.getToken();
+    const serial = getOrCreateSerial();
     try {
       const res = await fetch(`/api/cxc/export-statement/${client.id}${qs ? '?' + qs : ''}`, {
-        headers: { ...(token && { 'X-Auth-Token': token }) }
+        headers: {
+          ...(token && { 'X-Auth-Token': token }),
+          ...(serial && { 'X-Terminal-Serial': serial }),
+        }
       });
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();

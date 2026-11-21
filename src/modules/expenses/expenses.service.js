@@ -115,6 +115,13 @@ const expensesService = {
     const existing = await expensesRepository.findExpenseById(id);
     if (!existing) throw new NotFoundError("Gasto no encontrado");
 
+    if (data && data.amount !== undefined) {
+      const amt = Number(data.amount);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        throw new BadRequestError("El monto del gasto debe ser mayor a 0");
+      }
+    }
+
     return await withTransaction(async (conn) => {
       await expensesRepository.updateExpense(id, data, conn);
       return await expensesRepository.findExpenseById(id, conn);
@@ -126,8 +133,16 @@ const expensesService = {
     if (!existing) throw new NotFoundError("Gasto no encontrado");
 
     return await withTransaction(async (conn) => {
-      // Si afectó caja chica y el turno sigue abierto, remover el registro de caja chica
+      // Solo remover registro de caja chica si el turno asociado sigue abierto
       if (existing.shift_expense_id) {
+        const [shiftRows] = await query(
+          `SELECT s.status FROM shift_expenses se INNER JOIN shifts s ON s.id = se.shift_id WHERE se.id = ? LIMIT 1`,
+          [existing.shift_expense_id],
+          conn
+        );
+        if (shiftRows?.[0] && String(shiftRows[0].status) === "closed") {
+          throw new BadRequestError("No se puede eliminar un gasto de caja chica perteneciente a un turno ya cerrado");
+        }
         await query(`DELETE FROM shift_expenses WHERE id = ?`, [existing.shift_expense_id], conn);
       }
 
@@ -145,11 +160,11 @@ const expensesService = {
   // ==========================================
 
   async uploadVoucher(fileData) {
-    const { base64, fileName = "voucher.jpg" } = fileData;
-    if (!base64) throw new BadRequestError("No se proporcionó archivo base64");
+    const { base64, fileName = "voucher.jpg" } = fileData || {};
+    if (!base64 || typeof base64 !== "string") throw new BadRequestError("No se proporcionó archivo base64");
 
-    const matches = base64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    const dataString = matches ? matches[2] : base64;
+    const matches = base64.match(/^data:([A-Za-z-+\/]+);base64,([\s\S]+)$/);
+    const dataString = (matches ? matches[2] : base64).replace(/\s+/g, "");
     const buffer = Buffer.from(dataString, "base64");
 
     let ext = "";

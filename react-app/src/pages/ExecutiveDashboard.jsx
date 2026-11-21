@@ -34,6 +34,7 @@ import {
 import api from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useSocket } from '../hooks/useSocket';
+import { getLocalDateStr } from '../utils/dateUtils';
 import * as XLSX from 'xlsx';
 
 export function ExecutiveDashboard({ onBack }) {
@@ -41,8 +42,8 @@ export function ExecutiveDashboard({ onBack }) {
 
   // Estados de Filtros
   const [datePreset, setDatePreset] = useState('today'); // 'today' | 'yesterday' | 'week' | 'month' | 'custom'
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(() => getLocalDateStr());
+  const [endDate, setEndDate] = useState(() => getLocalDateStr());
   const [selectedCenter, setSelectedCenter] = useState('');
   const [selectedArea, setSelectedArea] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('');

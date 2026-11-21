@@ -52,7 +52,11 @@ const tablesService = {
       throw new BadRequestError("tableId, centerId y code son requeridos");
     }
 
-    const resolvedAreaId = areaId ? Number(areaId) : await tablesRepository.getFirstAreaId();
+    let resolvedAreaId = areaId ? Number(areaId) : null;
+    if (!resolvedAreaId) {
+      const existingTable = await tablesRepository.findById(parsedTableId);
+      resolvedAreaId = existingTable?.area_id || (await tablesRepository.getFirstAreaId());
+    }
     await tablesRepository.updateTable(parsedTableId, {
       areaId: resolvedAreaId,
       centerId: Number(centerId),

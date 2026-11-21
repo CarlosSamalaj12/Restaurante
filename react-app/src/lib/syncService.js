@@ -185,7 +185,10 @@ export const syncService = {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      if (autoSyncInterval) clearInterval(autoSyncInterval);
+      if (autoSyncInterval) {
+        clearInterval(autoSyncInterval);
+        autoSyncInterval = null;
+      }
     };
   },
 };

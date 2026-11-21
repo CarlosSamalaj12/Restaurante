@@ -156,27 +156,51 @@ export function TablesSection({ tables, centers, onReload }) {
 }
 
 // Table Wizard Modal
-function TableWizardModal({ centers, onClose, onCreated }) {
+function TableWizardModal({ editingTable = null, centers, onClose, onCreated }) {
+  const isEditing = Boolean(editingTable);
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ prefix: '', seats: 4, quantity: 1, centerId: '' });
+  const [form, setForm] = useState({
+    prefix: editingTable?.code || '',
+    seats: editingTable?.seats || 4,
+    quantity: 1,
+    centerId: editingTable?.operation_center_id || '',
+  });
   const [loading, setLoading] = useState(false);
   const toast = useToast();
 
   const handleSave = async () => {
+    if (!form.prefix.trim()) {
+      toast.error(isEditing ? 'Ingresa el código de la mesa' : 'Ingresa el prefijo');
+      return;
+    }
+    if (!form.centerId) {
+      toast.error('Selecciona un centro de venta');
+      return;
+    }
     setLoading(true);
     try {
-      for (let i = 1; i <= form.quantity; i++) {
-        const code = `${form.prefix}-${i}`;
-        await api.settings.createTable({
-          code,
+      if (isEditing) {
+        await api.settings.updateTable(editingTable.id, {
+          code: form.prefix.trim(),
           seats: Number(form.seats),
           centerId: Number(form.centerId),
+          areaId: editingTable.area_id || undefined,
         });
+        toast.success(`Mesa ${form.prefix.trim()} actualizada`);
+      } else {
+        for (let i = 1; i <= form.quantity; i++) {
+          const code = `${form.prefix}-${i}`;
+          await api.settings.createTable({
+            code,
+            seats: Number(form.seats),
+            centerId: Number(form.centerId),
+          });
+        }
+        toast.success(`¡${form.quantity} mesa${form.quantity > 1 ? 's' : ''} creada${form.quantity > 1 ? 's' : ''}!`);
       }
-      toast.success(`¡${form.quantity} mesa${form.quantity > 1 ? 's' : ''} creada${form.quantity > 1 ? 's' : ''}!`);
       onCreated();
     } catch (error) {
-      toast.error(error.message || 'Error al crear mesa');
+      toast.error(error.message || (isEditing ? 'Error al actualizar mesa' : 'Error al crear mesa'));
     } finally {
       setLoading(false);
     }
@@ -204,7 +228,7 @@ function TableWizardModal({ centers, onClose, onCreated }) {
         </div>
 
         <div className="px-5 pb-3 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900 text-lg">Crear Mesas</h3>
+          <h3 className="font-bold text-gray-900 text-lg">{isEditing ? `Editar Mesa ${editingTable.code}` : 'Crear Mesas'}</h3>
           <div className="flex items-center justify-center gap-1 mt-3">
             {['1', '2', '3', '4', '5'].map((num, i) => (
               <div key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${step > i + 1 ? 'bg-primary-600 text-white' : step === i + 1 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
@@ -313,11 +337,11 @@ function TableWizardModal({ centers, onClose, onCreated }) {
               </div>
             </div>
           )}
-          {step === 4 && (
+          {step === 5 && (
             <div className="space-y-4">
               <p className="text-gray-500 text-sm">Confirma los datos</p>
               <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-4 text-center">
-                <p className="text-sm text-gray-500 mb-2">Se crearán:</p>
+                <p className="text-sm text-gray-500 mb-2">{isEditing ? 'Se actualizará:' : 'Se crearán:'}</p>
                 <div className="flex flex-wrap justify-center gap-2 mb-3">
                   {previews.map((code, i) => (
                     <span key={i} className="px-3 py-1 bg-white rounded-lg text-sm font-medium text-gray-700 border">
@@ -356,11 +380,15 @@ function TableWizardModal({ centers, onClose, onCreated }) {
                   toast.error('Ingresa los asientos');
                   return;
                 }
-                if (step === 3 && (!form.quantity || Number(form.quantity) < 1)) {
+                if (step === 3 && !isEditing && (!form.quantity || Number(form.quantity) < 1)) {
                   toast.error('Ingresa la cantidad');
                   return;
                 }
-                setStep(step + 1);
+                if (step === 4 && !form.centerId) {
+                  toast.error('Selecciona un centro de venta');
+                  return;
+                }
+                setStep(step === 2 && isEditing ? 4 : step + 1);
               }}
               className="flex-1 py-3 bg-primary-600 text-white font-medium rounded-xl"
             >
@@ -372,7 +400,7 @@ function TableWizardModal({ centers, onClose, onCreated }) {
               disabled={loading}
               className="flex-1 py-3 bg-emerald-600 text-white font-medium rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : `Crear ${form.quantity} Mesa${form.quantity > 1 ? 's' : ''}`}
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : isEditing ? 'Guardar Cambios' : `Crear ${form.quantity} Mesa${form.quantity > 1 ? 's' : ''}`}
             </button>
           )}
         </div>

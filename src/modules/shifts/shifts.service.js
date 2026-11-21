@@ -5,6 +5,7 @@ const shiftsRepository = require("./shifts.repository");
 const authService = require("../auth/auth.service");
 const { money, nowSql } = require("../../common/utils");
 const { BadRequestError, NotFoundError, ForbiddenError } = require("../../common/errors");
+const { emitEvent } = require("../../common/sockets");
 
 const shiftsService = {
   /**
@@ -51,6 +52,8 @@ const shiftsService = {
 
     // Vincular cuentas abiertas del centro que no tenían turno asignado
     await shiftsRepository.attachOrphanAccountsToShift(shiftId, parsedCenterId, nowSql());
+
+    emitEvent("shifts:opened", { shiftId, centerId: parsedCenterId, cashierId: parsedCashierId });
 
     return { shiftId };
   },
@@ -164,6 +167,8 @@ const shiftsService = {
     });
 
     const summary = await this.getShiftSummary(shiftId, closingCash);
+
+    emitEvent("shifts:closed", { shiftId, centerId: parsedCenterId, closedAt });
 
     return {
       shiftId,
@@ -286,7 +291,7 @@ const shiftsService = {
       }
     } else if (session) {
       const role = String(session.role || "").toLowerCase();
-      if (role !== "admin" && role !== "manager") {
+      if (!["superadmin", "admin", "manager"].includes(role)) {
         throw new ForbiddenError("Se requiere PIN de supervisor");
       }
     } else {

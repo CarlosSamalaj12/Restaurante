@@ -170,10 +170,15 @@ const operationsService = {
     const {
       operationCenterId,
       name,
+      printerId = null,
       printerName = null,
       printerIp = null,
       printerPort = 9100,
       areaTrabajoId = null,
+      isKds = 0,
+      kdsProductionCenterId = null,
+      kdsOperationCenterId = null,
+      deviceSerial = null,
     } = data || {};
     if (!operationCenterId || !name) {
       throw new BadRequestError("operationCenterId y name son requeridos");
@@ -181,10 +186,15 @@ const operationsService = {
     const terminalId = await operationsRepository.createTerminal({
       operationCenterId,
       name: String(name).trim(),
+      printerId: printerId ? Number(printerId) : null,
       printerName,
       printerIp,
       printerPort,
       areaTrabajoId: areaTrabajoId ? Number(areaTrabajoId) : null,
+      isKds: isKds ? 1 : 0,
+      kdsProductionCenterId: kdsProductionCenterId ? Number(kdsProductionCenterId) : null,
+      kdsOperationCenterId: kdsOperationCenterId ? Number(kdsOperationCenterId) : null,
+      deviceSerial: deviceSerial ? String(deviceSerial).trim() : null,
     });
     return { terminalId };
   },
@@ -194,11 +204,16 @@ const operationsService = {
     const {
       operationCenterId,
       name,
+      printerId = null,
       printerName,
       printerIp,
       printerPort = 9100,
       isActive = 1,
       areaTrabajoId = null,
+      isKds = 0,
+      kdsProductionCenterId = null,
+      kdsOperationCenterId = null,
+      deviceSerial = null,
     } = data || {};
     if (!tid || !operationCenterId || !name) {
       throw new BadRequestError("terminalId, operationCenterId y name son requeridos");
@@ -206,11 +221,16 @@ const operationsService = {
     await operationsRepository.updateTerminal(tid, {
       operationCenterId,
       name: String(name).trim(),
+      printerId: printerId ? Number(printerId) : null,
       printerName,
       printerIp,
       printerPort,
       isActive,
       areaTrabajoId: areaTrabajoId ? Number(areaTrabajoId) : null,
+      isKds: isKds ? 1 : 0,
+      kdsProductionCenterId: kdsProductionCenterId ? Number(kdsProductionCenterId) : null,
+      kdsOperationCenterId: kdsOperationCenterId ? Number(kdsOperationCenterId) : null,
+      deviceSerial: deviceSerial ? String(deviceSerial).trim() : null,
     });
     return { ok: true };
   },

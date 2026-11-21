@@ -54,21 +54,33 @@ export function useSocket(eventHandlers = {}) {
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
 
-    // Escuchar eventos de ventas clave y sistema/mantenimiento
-    const events = [
-      'sales:payment', 
-      'sales:closed', 
+    // Escuchar dinámicamente TODOS los eventos declarados en eventHandlers más los eventos clave del sistema
+    const baseEvents = [
+      'sales:payment',
+      'sales:closed',
       'sales:order',
+      'sales:update',
+      'account:updated',
+      'table:update',
+      'sync:completed',
+      'shifts:opened',
+      'shifts:closed',
+      'settings:module_kds_toggled',
+      'settings:module_digital_menu_toggled',
       'orders:self_service_new',
       'table:call_waiter',
       'table:request_bill',
       'table:call_waiter_dismissed',
+      'print_agent:status_change',
+      'print:job_updated',
       'system:maintenance_warning',
       'system:maintenance_start',
       'system:maintenance_abort',
       'system:maintenance_end',
       'system:version_published'
     ];
+    const handlerEvents = handlersRef.current ? Object.keys(handlersRef.current) : [];
+    const events = Array.from(new Set([...baseEvents, ...handlerEvents]));
     const listeners = {};
 
     events.forEach((ev) => {

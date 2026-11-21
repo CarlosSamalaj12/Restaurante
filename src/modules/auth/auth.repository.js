@@ -40,7 +40,12 @@ const authRepository = {
   async insertSession({ token, userId, role, permissionsJson, expiresAt, ip, userAgent }) {
     await query(
       `INSERT INTO auth_sessions (token, user_id, role, permissions_json, expires_at, created_at, ip_address, user_agent)
-       VALUES (?, ?, ?, ?, FROM_UNIXTIME(?/1000), NOW(), ?, ?)`,
+       VALUES (?, ?, ?, ?, FROM_UNIXTIME(?/1000), NOW(), ?, ?)
+       ON DUPLICATE KEY UPDATE
+         role = VALUES(role),
+         permissions_json = VALUES(permissions_json),
+         expires_at = VALUES(expires_at),
+         last_seen_at = NOW()`,
       [
         token,
         userId,

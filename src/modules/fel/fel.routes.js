@@ -11,8 +11,8 @@ const requireSuperadmin = authService.requireSuperadmin();
 router.get("/config", requireAuth, felController.getConfig);
 router.put("/config", requireSuperadmin, felController.updateConfig);
 router.post("/test-connection", requireSuperadmin, felController.testConnection);
-router.get("/consultar-nit/:nit", felController.consultarNit);
-router.post("/emitir", felController.emitirFactura);
-router.get("/account/:accountId", felController.getAccountInvoice);
+router.get("/consultar-nit/:nit", requireAuth, felController.consultarNit);
+router.post("/emitir", requireAuth, felController.emitirFactura);
+router.get("/account/:accountId", requireAuth, felController.getAccountInvoice);
 
 module.exports = router;

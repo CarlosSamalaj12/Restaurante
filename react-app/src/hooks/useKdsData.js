@@ -65,13 +65,16 @@ export function useKdsData(options = {}) {
       try {
         const serial = getOrCreateSerial();
         const res = await api.kds.getMyStation({ serial });
-        if (isMounted && res?.station) {
-          setStationConfig(res.station);
-          if (res.station.kds_production_center_id) {
-            setSelectedProductionCenter(res.station.kds_production_center_id);
+        const station = res?.station || (res?.configured ? res : null);
+        if (isMounted && station) {
+          setStationConfig(station);
+          const prodCenterId = station.kds_production_center_id ?? station.productionCenterId;
+          const opCenterId = station.kds_operation_center_id ?? station.operationCenterId;
+          if (prodCenterId) {
+            setSelectedProductionCenter(prodCenterId);
           }
-          if (res.station.kds_operation_center_id) {
-            setSelectedOperationCenter(res.station.kds_operation_center_id);
+          if (opCenterId) {
+            setSelectedOperationCenter(opCenterId);
           }
         }
       } catch (e) {

@@ -14,8 +14,8 @@ kdsRouter.post("/toggle", authService.requireSuperadmin(), kdsController.toggleM
 kdsRouter.get("/orders", kdsController.getActiveOrders);
 kdsRouter.get("/orders-with-voided", kdsController.getOrdersWithVoided);
 kdsRouter.get("/my-station", kdsController.getMyStation);
-kdsRouter.post("/items/:itemId/done", kdsController.markItemDone);
-kdsRouter.post("/accounts/:accountId/done-all", kdsController.markAccountDone);
+kdsRouter.post("/items/:itemId/done", authService.requireAuth(), kdsController.markItemDone);
+kdsRouter.post("/accounts/:accountId/done-all", authService.requireAuth(), kdsController.markAccountDone);
 kdsRouter.get("/completed", kdsController.getCompleted);
 kdsRouter.get("/voided", kdsController.getVoided);
 kdsRouter.get("/production-centers", kdsController.getProductionCenters);

@@ -1,7 +1,7 @@
 // react-app/src/components/reports/VoidedReportPage.jsx
 // Reporte de Anulaciones y Devoluciones con diseño uniforme POS v3.4
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import api from '../../api';
 import { useToast } from '../../hooks/useToast';
 import { exportToExcel, exportToPDF } from '../../utils/exports';
@@ -35,9 +35,12 @@ export function VoidedReportPage({ onBack }) {
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(1);
-    return d.toISOString().split('T')[0];
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
 
   useEffect(() => {
     api.bootstrap().then((b) => {
@@ -60,15 +63,19 @@ export function VoidedReportPage({ onBack }) {
 
   const fmt = (n) => `Q ${Number(n || 0).toFixed(2)}`;
 
-  // Filtrado por fecha y término de búsqueda
+  // Filtrado por fecha, centro y término de búsqueda
   const filteredItems = useMemo(() => {
     return voidedItems.filter((it) => {
+      if (selectedCenter) {
+        const itemCenterId = it.operation_center_id ?? it.center_id;
+        if (itemCenterId && Number(itemCenterId) !== Number(selectedCenter)) return false;
+      }
       if (startDate && it.voided_at) {
-        const itemDate = it.voided_at.split('T')[0];
+        const itemDate = String(it.voided_at).split('T')[0].split(' ')[0];
         if (itemDate < startDate) return false;
       }
       if (endDate && it.voided_at) {
-        const itemDate = it.voided_at.split('T')[0];
+        const itemDate = String(it.voided_at).split('T')[0].split(' ')[0];
         if (itemDate > endDate) return false;
       }
       if (searchQuery.trim()) {
@@ -81,7 +88,7 @@ export function VoidedReportPage({ onBack }) {
       }
       return true;
     });
-  }, [voidedItems, startDate, endDate, searchQuery]);
+  }, [voidedItems, selectedCenter, startDate, endDate, searchQuery]);
 
   // Cálculos de KPIs
   const totalVoidAmount = useMemo(() => {
@@ -339,8 +346,8 @@ export function VoidedReportPage({ onBack }) {
                 {filteredItems.map((item, i) => {
                   const isSelected = selectedId === item.id;
                   return (
+                    <Fragment key={item.id}>
                     <tr
-                      key={item.id}
                       onClick={() => setSelectedId(isSelected ? null : item.id)}
                       className={`cursor-pointer transition-colors ${
                         isSelected
@@ -399,6 +406,31 @@ export function VoidedReportPage({ onBack }) {
                         </button>
                       </td>
                     </tr>
+                    {isSelected && (
+                      <tr key={`detail-${item.id}`} className="bg-rose-50/40">
+                        <td colSpan={6} className="px-6 py-3 text-xs text-slate-700 border-b border-rose-100">
+                          <div className="flex flex-wrap gap-4 mb-2">
+                            <span><strong>Cantidad anulada:</strong> {item.qty || 1}</span>
+                            <span><strong>Mesa:</strong> {item.table_code || '-'}</span>
+                            <span><strong>Mesero:</strong> {item.waiter_name || '-'}</span>
+                            <span><strong>Motivo completo:</strong> {item.void_reason || 'Sin motivo registrado'}</span>
+                          </div>
+                          {Array.isArray(item.account_products) && item.account_products.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-rose-200/60">
+                              <p className="font-bold text-slate-600 mb-1">Productos en la comanda:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {item.account_products.map((ap, idx) => (
+                                  <span key={idx} className={`px-2 py-0.5 rounded-lg border text-[11px] font-medium ${ap.status === 'void' ? 'bg-rose-100 text-rose-800 border-rose-200 line-through' : 'bg-white text-slate-700 border-slate-200'}`}>
+                                    {ap.qty}× {ap.product_name} ({fmt(ap.line_total)})
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>

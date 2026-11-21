@@ -324,13 +324,17 @@ const cxcRepository = {
         `SELECT c.id, c.full_name, c.phone, c.credit_limit, c.current_balance, ca.name as area_name,
                 COUNT(DISTINCT cxa.id) as account_count,
                 COALESCE(SUM(cxa.amount), 0) as total_charged,
-                COALESCE(SUM(cxp.amount), 0) as total_paid
+                COALESCE(SUM(COALESCE(cxp.paid_sum, 0)), 0) as total_paid
          FROM customers c
          LEFT JOIN cxc_areas ca ON c.cxc_area_id = ca.id
-         LEFT JOIN cxc_accounts cxa ON cxa.client_id = c.id
+         LEFT JOIN cxc_accounts cxa ON cxa.client_id = c.id AND cxa.status != 'void'
          LEFT JOIN accounts a ON cxa.account_id = a.id
          LEFT JOIN restaurant_tables t ON t.id = a.table_id
-         LEFT JOIN cxc_payments cxp ON cxp.cxc_account_id = cxa.id
+         LEFT JOIN (
+           SELECT cxc_account_id, SUM(amount) AS paid_sum
+           FROM cxc_payments
+           GROUP BY cxc_account_id
+         ) cxp ON cxp.cxc_account_id = cxa.id
          WHERE c.cxc_enabled = 1 AND c.is_active = 1 AND ${whereCharge}
          GROUP BY c.id
          HAVING total_charged > 0
@@ -348,11 +352,15 @@ const cxcRepository = {
         `SELECT c.id, c.full_name, c.phone, c.credit_limit, c.current_balance, ca.name as area_name,
                 COUNT(DISTINCT cxa.id) as account_count,
                 COALESCE(SUM(cxa.amount), 0) as total_charged,
-                COALESCE(SUM(cxp.amount), 0) as total_paid
+                COALESCE(SUM(COALESCE(cxp.paid_sum, 0)), 0) as total_paid
          FROM customers c
          LEFT JOIN cxc_areas ca ON c.cxc_area_id = ca.id
-         LEFT JOIN cxc_accounts cxa ON cxa.client_id = c.id
-         LEFT JOIN cxc_payments cxp ON cxp.cxc_account_id = cxa.id
+         LEFT JOIN cxc_accounts cxa ON cxa.client_id = c.id AND cxa.status != 'void'
+         LEFT JOIN (
+           SELECT cxc_account_id, SUM(amount) AS paid_sum
+           FROM cxc_payments
+           GROUP BY cxc_account_id
+         ) cxp ON cxp.cxc_account_id = cxa.id
          WHERE c.cxc_enabled = 1 AND c.is_active = 1 AND ${fbWhere}
          GROUP BY c.id
          HAVING total_charged > 0

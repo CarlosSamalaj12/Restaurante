@@ -1,13 +1,15 @@
 // Service Worker para SamaPos PWA
-const CACHE_NAME = 'samapos-pwa-v1.0';
+const CACHE_NAME = 'samapos-pwa-v1.1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/favicon.svg',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
-  '/icons/apple-touch-icon.png'
+  '/favicon.svg?v=2',
+  '/icons/icon-192x192.png?v=2',
+  '/icons/icon-512x512.png?v=2',
+  '/icons/icon-maskable-192x192.png?v=2',
+  '/icons/icon-maskable-512x512.png?v=2',
+  '/icons/apple-touch-icon.png?v=2'
 ];
 
 // Install: pre-cachear assets estáticos esenciales

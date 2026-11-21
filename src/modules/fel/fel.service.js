@@ -31,19 +31,21 @@ const felService = {
 
     if (!config) return { is_enabled: 0, provider: "demo", paymentMethods: [] };
 
-    // Enmascarar credenciales sensibles para seguridad en la UI
+    // Enmascarar credenciales sensibles y eliminar secretos en texto plano de la respuesta
     const masked = { ...config };
     if (masked.api_key && masked.api_key.length > 4) {
       masked.api_key_masked = "••••••••" + masked.api_key.slice(-4);
     } else if (masked.api_key) {
       masked.api_key_masked = "••••••••";
     }
+    delete masked.api_key;
 
     if (masked.api_token && masked.api_token.length > 4) {
       masked.api_token_masked = "••••••••" + masked.api_token.slice(-4);
     } else if (masked.api_token) {
       masked.api_token_masked = "••••••••";
     }
+    delete masked.api_token;
 
     return {
       config: masked,
@@ -87,10 +89,14 @@ const felService = {
         ...effectiveConfig,
         ...customCreds,
       };
-      // Preservar llave si vino enmascarada
+      // Preservar credenciales si vinieron enmascaradas
       if (customCreds.api_key && customCreds.api_key.startsWith("••••")) {
         const stored = await felRepository.getConfig();
         effectiveConfig.api_key = stored?.api_key || "";
+      }
+      if (customCreds.api_token && customCreds.api_token.startsWith("••••")) {
+        const stored = await felRepository.getConfig();
+        effectiveConfig.api_token = stored?.api_token || "";
       }
     }
 

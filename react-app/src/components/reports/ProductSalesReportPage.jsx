@@ -38,11 +38,12 @@ export function ProductSalesReportPage({ onBack }) {
   const [data, setData] = useState(null);
   const [topSortBy, setTopSortBy] = useState('qty'); // 'qty' | 'sales'
 
-  // Fechas (por defecto mes en curso)
-  const today = new Date().toISOString().slice(0, 10);
+  // Fechas locales (por defecto mes en curso, sin desfase UTC)
+  const fmtLocalYMD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const today = fmtLocalYMD(new Date());
   const firstDay = new Date();
   firstDay.setDate(1);
-  const [startDate, setStartDate] = useState(firstDay.toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(fmtLocalYMD(firstDay));
   const [endDate, setEndDate] = useState(today);
 
   // Autocompletado de productos

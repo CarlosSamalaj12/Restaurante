@@ -79,18 +79,15 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    // Limpia local primero para que la UI reaccione ya, sin esperar al server.
+    // Avisar al server con el token vigente antes de limpiarlo del storage local
+    const serverLogoutPromise = api.logout().catch(() => {});
+    // Limpia local de inmediato para que la UI reaccione sin esperar la red
     setUser(null);
     setToken('');
     setModules([]);
     setSelectedTerminal(null);
     tokenStorage.clearAll();
-    // Después avisa al server (best-effort: si falla o no hay red, ya cerramos local).
-    try {
-      await api.logout();
-    } catch (_) {
-      // ignore — el usuario ya está logged out localmente
-    }
+    await serverLogoutPromise;
   };
 
   const hasPermission = (slug) => {

@@ -65,15 +65,20 @@ const shiftsRepository = {
    * pero que quedaron huérfanas (shift_id NULL) o pertenecían a un turno ya cerrado.
    */
   async attachOrphanAccountsToShift(shiftId, centerId, openedAt) {
+    // Solo vincular cuentas sin turno (shift_id IS NULL), o cuentas abiertas de un turno ya cerrado
+    // que NO tengan pagos previamente contabilizados en aquel turno cerrado.
     await query(
       `UPDATE accounts a
        LEFT JOIN shifts s ON s.id = a.shift_id
        SET a.shift_id = ?
        WHERE a.operation_center_id = ?
-         AND (a.shift_id IS NULL OR s.status = 'closed')
          AND (
-           a.status = 'open'
-           OR (a.status = 'paid' AND a.closed_at >= ?)
+           (a.shift_id IS NULL AND (a.status = 'open' OR (a.status = 'paid' AND a.closed_at >= ?)))
+           OR (
+             s.status = 'closed'
+             AND a.status = 'open'
+             AND NOT EXISTS (SELECT 1 FROM account_payments ap WHERE ap.account_id = a.id)
+           )
          )`,
       [Number(shiftId), Number(centerId), openedAt]
     );
@@ -102,16 +107,16 @@ const shiftsRepository = {
   async getShiftPaymentTotals(shiftId) {
     const [rows] = await query(
       `SELECT
-        COUNT(DISTINCT a.id) AS total_checks,
+        COUNT(DISTINCT CASE WHEN a.status = 'paid' THEN a.id END) AS total_checks,
         COALESCE(SUM(CASE WHEN p.method = 'cash' THEN p.amount ELSE 0 END), 0) AS cash_total,
         COALESCE(SUM(CASE WHEN p.method = 'card' THEN p.amount ELSE 0 END), 0) AS card_total,
         COALESCE(SUM(CASE WHEN p.method = 'transfer' THEN p.amount ELSE 0 END), 0) AS transfer_total,
         COALESCE(SUM(CASE WHEN p.method = 'cxc' THEN p.amount ELSE 0 END), 0) AS cxc_total,
-        COALESCE(SUM(CASE WHEN p.method = 'other' THEN p.amount ELSE 0 END), 0) AS other_total,
+        COALESCE(SUM(CASE WHEN p.method IS NOT NULL AND p.method NOT IN ('cash', 'card', 'transfer', 'cxc') THEN p.amount ELSE 0 END), 0) AS other_total,
         COALESCE(SUM(p.amount), 0) AS grand_total
        FROM accounts a
        LEFT JOIN account_payments p ON p.account_id = a.id
-       WHERE a.shift_id = ?`,
+       WHERE a.shift_id = ? AND a.status != 'void'`,
       [Number(shiftId)]
     );
     return rows[0] || {};
@@ -125,7 +130,7 @@ const shiftsRepository = {
       `SELECT COALESCE(SUM(oi.qty), 0) AS items_sold
        FROM order_items oi
        INNER JOIN accounts a ON a.id = oi.account_id
-       WHERE a.shift_id = ? AND oi.status = 'active'`,
+       WHERE a.shift_id = ? AND a.status != 'void' AND oi.status = 'active'`,
       [Number(shiftId)]
     );
     return Number(rows[0]?.items_sold || 0);
@@ -151,7 +156,7 @@ const shiftsRepository = {
        FROM account_payments p
        INNER JOIN accounts a ON a.id = p.account_id
        LEFT JOIN staff_users u ON u.id = a.waiter_id
-       WHERE a.shift_id = ?
+       WHERE a.shift_id = ? AND a.status != 'void'
        ORDER BY p.method, a.check_number`,
       [Number(shiftId)]
     );
